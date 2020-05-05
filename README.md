@@ -16,6 +16,8 @@ The Temporal proposal process begins when you create an [issue RFC](./RFC_TEMPLA
 
 We appreciate the time and energy it takes to create a well constructed proposal. If you ever feel that your proposal was constructed properly but not given a fair chance, please reach out to us!
 
+If you're struggling to understand what a basic issue proposal will look like, [heck out this example issue](https://github.com/temporalio/proposals/issues/1).
+
 ### Active proposals (Stage 1)
 
 | Proposal  | Author | <sub>Last Presented</sub> |
