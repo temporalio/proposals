@@ -13,7 +13,7 @@ The UX lacks in the number of areas such as consistency, semantics, commands dis
 - Integrate with Bash/zsh
 - Support default configs file
 - Standardize wording
-- Reimplement the short versions of commands
+- Rework the short versions of commands
 - Bring consistent schema for operations on multiple entities
 - Use hyphens instead of underscores
 - Lower priority: Improve help command output/UI
