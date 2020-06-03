@@ -128,7 +128,8 @@ class UploadWorkflow
         // syntax sugar?
         yield new Workflow\WaitAll($a, $b);
 
-        return (yield $this->sendEmail($result))->get(new Obj());
+        // blocking Get atomic?
+        return yield ($this->sendEmail($result))->get(new Obj());
     }
 }
 ```
