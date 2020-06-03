@@ -120,10 +120,10 @@ function doSomething(ContextInterface $ctx, MyObj $input)
 ```php
 class UploadWorkflow
 {
-    public function run() // context to get time and etc?
+    public function run($in) // context to get time and etc?
     {
         $a = yield $this->downloadURL('x', 'a');
-        $b = yield $this->process($result);
+        $b = yield $this->process($in);
 
         // syntax sugar?
         yield new Workflow\WaitAll($a, $b);
