@@ -10,7 +10,10 @@ distributed applications.
     - Payloads
     - Process Isolation
 - Workflows
-- Implementation Point
+- Implementation Details
+    - Features
+    - Service RPC
+    - Current Milestones
 - Development  
 
 ## Activities
@@ -26,7 +29,7 @@ function downloadFile(string $url)
 {
     return doDownload($url);
 }
-```  
+```
 
 Heartbeat example:
 
@@ -86,6 +89,8 @@ class FileController
 }
 ```
 
+> PHP 8 annotations or alternative registration methods possible as well.
+
 ### Process Isolation
 Activity handler will stay in memory permanently, only the context will change. Such an approach will reduce bootload
 overhead and memory consumption. Only one activity can be executed in worker at moment of time to keep PHP share nothing
@@ -102,12 +107,44 @@ class MyObj
     public string $something;
 }
 
-function doSoimething(ContextInterface $ctx, MyObj $input)
+function doSomething(ContextInterface $ctx, MyObj $input)
 {
   // ...
     return new Response('something');
 }
 ```
+
+## Workflows
+:)
+
+```php
+class UploadWorkflow
+{
+    public function run() // context to get time and etc?
+    {
+        $a = yield $this->downloadURL('x', 'a');
+        $b = yield $this->process($result);
+
+        // syntax sugar?
+        yield new Workflow\WaitAll($a, $b);
+
+        return (yield $this->sendEmail($result))->get(new Obj());
+    }
+}
+```
+
+## Implementation Details
+
+### Features
+hot reload must
+
+### Service RPC
+
+### Current Milestones
+A number of steps required to implement such SDK properly:
+- receive stable API for Temporal Workflows on Golang (https://github.com/temporalio/temporal-go-sdk/commit/09ced59198a7e5a402ba463a8d11f2952c34dd5e)
+- modernize RoadRunner to expose low level async API to communicate with PHP workers (in progress)
+- implement SDK 
 
 ## Development
 The author of this proposal and his team capable and ready to handle the implementation of this SDK for general purpose
