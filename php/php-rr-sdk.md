@@ -100,7 +100,7 @@ It should be possible to provide third argument to define custom payload seriali
 $worker->register('my.activity', 'functionName', new JsonMarshaller());
 ```
 
-The marshaller must operate of method basis, instead of parameter basis in order to ensure effective reflection caching
+The marshaller must operate on method basis, instead of parameter basis in order to ensure effective reflection caching
 and parameter type validation.
 
 ### Using Annotations
