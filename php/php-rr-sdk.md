@@ -17,8 +17,10 @@ which can perfectly align with the workflow execution model.
     - Queries
     - Sessions
     - Deterministic Time
+    - Side Effects
     - Error Handling
     - Termination and Cancel Requests
+- Examples
 - Service RPC
 - Implementation
     - Features
@@ -253,11 +255,52 @@ Workflows must avoid calling SPL functions `time()` and `date()`. Context method
 $ctx->getNow(); //DateTimeImmutable object.
 ```
 
+### Side Effects
+Similar to Golang SDK the side effects can be registered using yield call:
+
+```php
+$result = yield new SideEffect(function(){
+    return mt_rand(0, 1000);
+});
+```
+
+Using syntax sugar (point of discussion):
+
+```php
+$result = yield $this->sideEffect(function(){
+    return mt_rand(0, 1000);
+});
+```
+
 ### Error Handling
 todo
 
 ### Termination and Cancel Requests
 todo
+
+## Examples
+
+
+```php
+public function subscriptionWorkflow(string $customerID)
+{
+    $activities = $this->activities;
+    yield $activities->onboardFreeTrial($customerID);
+    
+    try {
+        yield $this->sleep(60 * Time::DAY);
+        yield $activities->upgradeFromTrialToPaid($customerID);
+
+        while(true) {
+            yield $this->sleep(30 * Time::DAY);
+            yield $activities->chargeMonthlyFee($customerID);
+        }       
+    }
+    catch (CancellationException $e) {
+    
+    }
+}
+```
 
 ## Service RPC
 The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
