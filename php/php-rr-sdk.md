@@ -19,12 +19,11 @@ which can perfectly align with workflow execution model.
 
 ## TODO
 - rpc
-- extranal activities
+- external activities
 - sessions
 - how to schedule activities
 - signals 
 - queries
-- activity registry 
 
 ## Service RPC
 
@@ -200,7 +199,21 @@ class UploadWorkflow
 ```
 
 ### Service RPC
---- 
+The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
+and does not require much explanation.
+
+```php
+use Temporal\Workflow\Service;
+
+// ...
+
+public function doSomething(Service $service)
+{
+    $service->startWorkflow("workflowName", ["payload"], ...);
+}
+
+// ...
+```
 
 ## Implementation Details
 We propose to implement the SDK as module of [RoadRunner](https://github.com/spiral/roadrunner) application server. The server
