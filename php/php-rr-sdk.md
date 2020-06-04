@@ -17,17 +17,6 @@ which can perfectly align with workflow execution model.
     - Current Milestones
 - Development
 
-## TODO
-- rpc
-- external activities
-- sessions
-- how to schedule activities
-- signals 
-- queries
-
-## Service RPC
-
-
 ## Activities
 Similar to other SDKs, the Activity implementation in PHP won't have any feasible limitations. Is it possible to invoke 
 any callable function, object method or anonymous function. The invocation arguments can be hydrated based on provided
@@ -190,6 +179,12 @@ The system must limit to only one concurrent execution per worker, which makes p
 libraries without changes. 
 
 ## Workflows
+
+- rpc
+- sessions
+- how to schedule activities
+- signals 
+- queries
 :)
 
 ```php
@@ -225,6 +220,8 @@ public function doSomething(Service $service)
 
 // ...
 ```
+
+> Same client can be used to control the state and heartbeats of external activities. 
 
 ## Implementation Details
 We propose to implement the SDK as module of [RoadRunner](https://github.com/spiral/roadrunner) application server. The server
