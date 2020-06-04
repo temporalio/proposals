@@ -297,7 +297,7 @@ public function subscriptionWorkflow(string $customerID)
         }       
     }
     catch (CancellationException $e) {
-    
+        yield $activities->cancelSubscription($customerID);
     }
 }
 ```
