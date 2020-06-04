@@ -12,9 +12,12 @@ which can perfectly align with the workflow execution model.
     - Process Isolation
 - Workflows
     - Registration
-    - Syntax
+    - Using Annotations
+    - Syntax and Atomic Blocks
+    - Syntax Sugar
     - Queries
     - Sessions
+    - Deterministic Time
 - Service RPC
 - Implementation
     - Features
@@ -174,27 +177,53 @@ Each yield command will return Promise/Future object which can later be referenc
 look as following:
 
 ```php
+use Temporal\Workflow;
+
 class UploadWorkflow
 {
-    public function run($in) // context to get time and etc?
+    public function run(Workflow\ContextInterface $ctx, string $input): string
     {
-        $a = yield $this->downloadURL('x', 'a');
-        $b = yield $this->process($in);
+        $promise = yield new Workflow\ExecuteActivy(
+            'activityName',
+            $input, 
+            100 // startToFinishTimeout, etc. 
+        );        
+    
+        $result = yield $promise->get(Obj::class);
 
-        // syntax sugar?
-        yield new Workflow\WaitAll($a, $b);
-
-        // blocking Get atomic?
-        return yield ($this->sendEmail($result))->get(new Obj());
+        return $result->getValue();
     }
 }
 ```
 
-> No common interface is required.
+Read more about proposed syntax approach and syntax sugar down below. The given example can be simplified into:
+
+```php
+use Temporal\Workflow;
+
+class UploadWorkflow extends Workflow\Workflow
+{
+    public function run(string $input): string
+    {
+        $result = yield $this->activities
+            ->withStartToFinish(100)
+            ->activityName($input)
+            ->get(Obj::class);
+
+        return $result->getValue();
+    }
+}
+```
+
+> No common interface required.
 
 ### Registration
 
-### Syntax
+### Using Annotations
+
+### Syntax and Atomic Blocks
+
+### Syntax Sugar
 
 ### Queries
 
@@ -202,6 +231,12 @@ class UploadWorkflow
 
 ### Sessions
 
+### Deterministic Time
+Workflows must avoid calling SPL functions `time()` and `date()`. Context method must be used instead:
+
+```php
+$ctx->getNow(); //DateTimeImmutable object.
+```
 
 ### Service RPC
 The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
