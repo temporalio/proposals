@@ -94,15 +94,6 @@ $worker->run(new RoadRunner\Worker(...));
 > It might be beneficial to provide underlying registry abstraction to simplify the coding of workflows. See the
 > example below.
 
-It should be possible to provide third argument to define custom payload serializer/deserializer:
-
-```php
-$worker->register('my.activity', 'functionName', new JsonMarshaller());
-```
-
-The marshaller must operate on method basis, instead of parameter basis in order to ensure effective reflection caching
-and parameter type validation.
-
 ### Using Annotations
 In a more sophisticated frameworks, some activities can be detected and registered automatically using static analysis
 of codebase and annotations. No common interface required.
@@ -122,18 +113,6 @@ class FileController
 
     // ...
 }
-```
-
-Annotation can be used to configure marshaller/mapper as well:
-
-```php
-/**
- * @Workflow\Activity(
- *    "name"   = "file.download",
- *    "mapper" = ProtocMapper::class 
- * ) 
- */         
-public function processFile(string $file): string; 
 ```
 
 > PHP 8 annotations or alternative registration methods possible as well.
