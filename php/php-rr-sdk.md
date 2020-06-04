@@ -14,10 +14,11 @@ which can perfectly align with the workflow execution model.
     - Registration
     - Using Annotations
     - Syntax and Atomic Blocks
-    - Syntax Sugar
     - Queries
     - Sessions
     - Deterministic Time
+    - Error Handling
+    - Termination and Cancel Requests
 - Service RPC
 - Implementation
     - Features
@@ -223,13 +224,27 @@ class UploadWorkflow extends Workflow\Workflow
 
 ### Syntax and Atomic Blocks
 
-### Syntax Sugar
-
 ### Queries
 
 ### Signals
 
 ### Sessions
+Sessions can be created as sub-activity group, using similar approach as `withTimeout` and other methods. However,
+the explicit yield required. 
+
+```php
+public function run(string $input): string
+{
+    $session = yield $this->activities->createSession(100, 100); // timeouts
+    
+    $result = yield $session->doSomething($input)->get();
+    $result = yield $session->somethingElse($result)->get();
+    
+    yield $session->complete();
+    
+    return $result;
+}
+```
 
 ### Deterministic Time
 Workflows must avoid calling SPL functions `time()` and `date()`. Context method must be used instead:
@@ -238,7 +253,13 @@ Workflows must avoid calling SPL functions `time()` and `date()`. Context method
 $ctx->getNow(); //DateTimeImmutable object.
 ```
 
-### Service RPC
+### Error Handling
+todo
+
+### Termination and Cancel Requests
+todo
+
+## Service RPC
 The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
 and does not require much explanation.
 
