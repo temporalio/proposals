@@ -11,6 +11,10 @@ which can perfectly align with the workflow execution model.
     - Payloads
     - Process Isolation
 - Workflows
+    - Registration
+    - Syntax
+    - Queries
+    - Sessions
 - Service RPC
 - Implementation
     - Features
@@ -158,13 +162,16 @@ The system must limit to only one concurrent execution per worker, which makes p
 libraries without changes. 
 
 ## Workflows
+Unlike activities, the workflow execution must be based on a physical memory object. In order to ensure proper density
+and effectiveness of the system, multiple workflows will locate inside singe PHP process. Each workflow will operate
+as one or multiple [Generators](https://www.php.net/manual/en/class.generator.php). The execution can be controlled using
+system [keyword](https://www.php.net/manual/en/language.generators.syntax.php) `yield`.
 
-- rpc
-- sessions
-- how to schedule activities
-- signals 
-- queries
-:)
+Yield keyword should be used to request the command execution by Temporal system. For the sake of simplify each command
+must be presented as typed object, though, end user API can encapsulate object construction using helper functions. 
+
+Each yield command will return Promise/Future object which can later be referenced in a code. Simple workflow execution might
+look as following:
 
 ```php
 class UploadWorkflow
@@ -182,6 +189,19 @@ class UploadWorkflow
     }
 }
 ```
+
+> No common interface is required.
+
+### Registration
+
+### Syntax
+
+### Queries
+
+### Signals
+
+### Sessions
+
 
 ### Service RPC
 The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
