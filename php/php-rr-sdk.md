@@ -1,7 +1,8 @@
 # PHP-SDK proposal
 The dynamic nature of PHP provides a wide range of possibilities how workflows can be defined or dynamically generated.
 A large variety of instruments, language performance and ease of use opens a lot of possibilities in a field of high-throughput 
-distributed applications.
+distributed applications. Since PHP 5.5 we can use [cooperative multitasking](https://nikic.github.io/2012/12/22/Cooperative-multitasking-using-coroutines-in-PHP.html) 
+which can perfectly align with workflow execution model.
 
 ## Table of Contents
 - Activities
@@ -10,24 +11,38 @@ distributed applications.
     - Payloads
     - Process Isolation
 - Workflows
-- Implementation Details
+- Service RPC
+- Implementation
     - Features
-    - Service RPC
     - Current Milestones
-- Development  
+- Development
+
+## TODO
+- rpc
+- extranal activities
+- sessions
+- how to schedule activities
+- signals 
+- queries
+- activity registry 
+
+## Service RPC
+
 
 ## Activities
-Similar to other SDKs the Activity implementation in PHP won't have any feasible limitations. Is it possible to invoke 
-any callable function or object method. The invocation arguments can be hydrated based on provided payload using
-[method reflection](https://www.php.net/manual/en/class.reflectionfunctionabstract.php) mechanism provided by php.    
+Similar to other SDKs, the Activity implementation in PHP won't have any feasible limitations. Is it possible to invoke 
+any callable function, object method or anonymous function. The invocation arguments can be hydrated based on provided
+payload using [method reflection](https://www.php.net/manual/en/class.reflectionfunctionabstract.php) mechanism provided by php.    
 
 The invocation context and heartbeats could be addressed `ContextInterface` object. The error handling done using classic
 PHP exceptions.
 
 ```php
-function downloadFile(string $url)
+function processFile(string $url): string
 {
-    return doDownload($url);
+    $result = doSomeWork($url);
+
+    return $result;
 }
 ```
 
@@ -50,8 +65,31 @@ function downloadFile(ContextInterface $ctx, string $url)
 }
 ```
 
+Alternatively we can embed the heartbeat method directly into `ContextInterface` or `ActivityContextInterface`:
+
+```php
+use Temporal\Workflow\ActivityContextInterface;
+
+// parameter order does not matter
+function downloadFile(ActivityContextInterface $ctx, string $url)
+{
+    $downloader = new FileDownloader();
+    $downloader->onProgress(function($progress) use($ctx){
+        // subject of discussion
+        $ctx->heartbeat($progress);
+    });
+
+    // for external activities
+    dump($ctx->getTaskToken());
+
+    return $downloader->download($url);
+}
+```
+
+The second approach deviate from a read-only concept of contexts but makes testing much easier.
+
 ### Registration
-Activities can be registered in corresponding workers. Since workflows will run in different workers there are no need to
+Activities can be registered in corresponding workers. Since workflows will run in different process there are no need to
 mix two abstractions together:
 
 ```php
@@ -65,41 +103,57 @@ $worker->register('activity.name2', [$object, 'methodName']);
 $worker->run(new RoadRunner\Worker(...));
 ```
 
+> It might be beneficial to provide underlying registry abstraction to simplify the coding of workflows. See the
+> example below.
+
 It should be possible to provide third argument to define custom payload serializer/deserializer:
 
 ```php
 $worker->register('my.activity', 'functionName', new JsonMarshaller());
 ```
 
+The marshaller must operate of method basis, instead of parameter basis in order to ensure effective reflection caching
+and parameter type validation.
+
 ### Using Annotations
-In a more sophisticated frameworks some activities can be detected and registered automatically using static analysis
+In a more sophisticated frameworks, some activities can be detected and registered automatically using static analysis
 of codebase and annotations. No common interface required.
 
 ```php
 class FileController 
 {
     /**
-     * @Workflow\Activity("name"="file.download") 
+     * @Workflow\Activity("name" = "file.download") 
      */         
-    public function downloadFile(string $file): string 
+    public function processFile(string $file): string 
     {
-        $result = doSomething();
+        $result = $this->doProcessing($file);
+
         return $result;
     }
+
+    // ...
 }
+```
+
+Annotation can be used to configure marshaller/mapper as well:
+
+```php
+/**
+ * @Workflow\Activity(
+ *    "name"   = "file.download",
+ *    "mapper" = ProtocMapper::class 
+ * ) 
+ */         
+public function processFile(string $file): string; 
 ```
 
 > PHP 8 annotations or alternative registration methods possible as well.
 
-### Process Isolation
-Activity handler will stay in memory permanently, only the context will change. Such an approach will reduce bootload
-overhead and memory consumption. Only one activity can be executed in worker at moment of time to keep PHP share nothing
-approach and make possible to use any classic PHP library. 
 
 ### Payloads
-The payloads and responses can be serialized and deserialized to the target format using simple type reflection 
-or alternatives (for example `GeneratedHydrator` by Ocranimus). Such an approach makes possible to use PHP objects as
-data carrying medium:
+The payloads and responses can be serialized and deserialized to the target format using simple type reflection. 
+Such an approach makes possible to use PHP objects as data carrying medium:
 
 ```php
 class MyObj 
@@ -107,12 +161,23 @@ class MyObj
     public string $something;
 }
 
-function doSomething(ContextInterface $ctx, MyObj $input)
+function doSomething(ActivityContextInterface $ctx, MyObj $input): Response
 {
   // ...
     return new Response('something');
 }
 ```
+
+It is mandatory to use proper type declarations on input and return types of activity. While PHP 7.4 is not widely adopted,
+it is recommended to use strict property typing for payload properties as well when possible or highlight the type via
+mapper specific annotation.
+
+### Process Isolation
+Activity handler will stay in memory permanently, only the execution context will change. Such an approach will ellimitate 
+the framework initialization overhead and reduce memory consumption. 
+
+The system must limit to only one concurrent execution per worker, which makes possible to use all existing PHP SPL and vendor
+libraries without changes. 
 
 ## Workflows
 :)
@@ -134,19 +199,41 @@ class UploadWorkflow
 }
 ```
 
-## Implementation Details
-
-### Features
-hot reload must
-
 ### Service RPC
+--- 
 
-### Current Milestones
+## Implementation Details
+We propose to implement the SDK as module of [RoadRunner](https://github.com/spiral/roadrunner) application server. The server
+written in Golang, tested on production and currently includes all the functions needed to run PHP effectively inside the
+Golang application. 
+ 
+### Features
+A number of features expected to be implemented in this SDK in order to utilize the scripting nature of PHP efficiently.
+
+#### Performance
+One of the side effects of the RoadRunner execution model is the ability to keep PHP process in memory
+indefinitely. Unlike classic PHP-FPM applications which recreate the process for each request it guarantees low overhead
+and near maximum language [performance](https://www.techempower.com/benchmarks/#section=data-r0&hw=ph&test=fortune&l=zg24n3-f&c=4&a=2&o=e).
+
+#### Plug In Play
+Since all the Temporal communication encapsulated in application server the workflow coordination happens over plain
+binary protocol between RR and PHP worker. Essentially, it completely eliminates the need to install any PHP extension, 
+making integration non-invasive and more reliable.   
+
+> Such an approach makes possible to implement workers in other languages as well (Python, JS) using same SDK.
+
+#### Hot Reload
+Due to the scripting nature of PHP it becomes possible to reload the workflow or activity code without stopping the worker (though, 
+new SDK API required for workflows). Such an approach makes possible to perform hot deployment of workflow updates, debug
+system on production and other things which are nearly impossible in compiled languages.  
+
+### Milestones
 A number of steps required to implement such SDK properly:
 - receive stable API for Temporal Workflows on Golang (https://github.com/temporalio/temporal-go-sdk/commit/09ced59198a7e5a402ba463a8d11f2952c34dd5e)
-- modernize RoadRunner to expose low level async API to communicate with PHP workers (in progress)
-- implement SDK 
+- modernize RoadRunner to expose low level async API to communicate with PHP workers
+
+After these steps complete, the implementation can start. 
 
 ## Development
-The author of this proposal and his team capable and ready to handle the implementation of this SDK for general purpose
-frameworks running under RoadRunner.
+The author of this proposal and his team ready to handle the implementation of this SDK for general purpose frameworks 
+via RoadRunner module.
