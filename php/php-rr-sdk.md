@@ -14,7 +14,7 @@ which can perfectly align with the workflow execution model.
 - Service RPC
 - Implementation
     - Features
-    - Current Milestones
+    - Milestones
 - Development
 
 ## Activities
