@@ -149,6 +149,17 @@ public function processFile(string $file): string;
 
 > PHP 8 annotations or alternative registration methods possible as well.
 
+### Logging
+It is possible to provide access to log stream from the `ActivityContextInterface` which makes possible to use PSR-3 compatible
+loggers.
+
+```php
+$logger = new ActivityLogger($ctx);
+$logger->debug('Hello!');
+
+// or directly
+$ctx->log('debug', 'message', ['context']);
+```
 
 ### Payloads
 The payloads and responses can be serialized and deserialized to the target format using simple type reflection. 
