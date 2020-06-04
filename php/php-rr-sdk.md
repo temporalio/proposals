@@ -1,6 +1,6 @@
 # PHP-SDK proposal
 The dynamic nature of PHP provides a wide range of possibilities how workflows can be defined or dynamically generated.
-A large variety of instruments, language performance and ease of use opens a lot of possibilities in a field of high-throughput 
+A large variety of instruments, language performance and ease of use opens a lot of possibilities in a field of high-throughput, easy-to-develop
 distributed applications. Since PHP 5.5 we can use [cooperative multitasking](https://nikic.github.io/2012/12/22/Cooperative-multitasking-using-coroutines-in-PHP.html) 
 which can perfectly align with workflow execution model.
 
