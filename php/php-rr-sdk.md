@@ -282,22 +282,24 @@ todo
 
 
 ```php
-public function subscriptionWorkflow(string $customerID)
+class SubscriptionWorkflow extends Workflow
 {
-    $activities = $this->activities;
-    yield $activities->onboardFreeTrial($customerID);
+    public function subscriptionWorkflow(string $customerID)
+    {
+        yield $this->activities->onboardFreeTrial($customerID);
+        
+        try {
+            yield $this->sleep(60 * Time::DAY);
+            yield $this->activities->upgradeFromTrialToPaid($customerID);
     
-    try {
-        yield $this->sleep(60 * Time::DAY);
-        yield $activities->upgradeFromTrialToPaid($customerID);
-
-        while(true) {
-            yield $this->sleep(30 * Time::DAY);
-            yield $activities->chargeMonthlyFee($customerID);
-        }       
-    }
-    catch (CancellationException $e) {
-        yield $activities->cancelSubscription($customerID);
+            while(true) {
+                yield $this->sleep(30 * Time::DAY);
+                yield $this->activities->chargeMonthlyFee($customerID);
+            }       
+        }
+        catch (CancellationException $e) {
+            yield $this->activities->cancelSubscription($customerID);
+        }
     }
 }
 ```
