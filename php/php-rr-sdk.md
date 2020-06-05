@@ -221,14 +221,19 @@ class UploadWorkflow extends Workflow\Workflow
 > No common interface required.
 
 ### Registration
+--
 
 ### Using Annotations
+--
 
 ### Syntax and Atomic Blocks
+--
 
 ### Queries
+--
 
 ### Signals
+--
 
 ### Sessions
 Sessions can be created as sub-activity group, using similar approach as `withTimeout` and other methods. However,
@@ -272,6 +277,8 @@ $result = yield $this->sideEffect(function(){
 });
 ```
 
+> Similary to other SDKs, PHP version **does not** guarantee that sideEffect won't be called again during the replay. 
+
 ### Error Handling
 todo
 
@@ -279,7 +286,7 @@ todo
 todo
 
 ## Examples
-
+Following examples demonstrates features described above in a more realistic scenarios.
 
 ```php
 class SubscriptionWorkflow extends Workflow
@@ -303,6 +310,13 @@ class SubscriptionWorkflow extends Workflow
     }
 }
 ```
+
+
+
+
+
+
+
 
 ## Service RPC
 The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
