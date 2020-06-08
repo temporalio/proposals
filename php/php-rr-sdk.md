@@ -446,7 +446,7 @@ class ServiceUsageWorkflow extends Workflow
     /** @Workflow(name="serviceUsage") */
     public function run(string $customerID)
     {
-        $points = yield $this->signal('points');
+        $points = yield $this->signal("points");
       
         try {
             while(true) {            
