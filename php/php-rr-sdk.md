@@ -230,7 +230,46 @@ class UploadWorkflow extends Workflow\Workflow
 --
 
 ### Queries
---
+Workflow queries can be easily implemented using dedicated query method of workflow. The state of the workflow can be 
+extracted from the properties of the object.
+
+```php
+use Temporal\Workflow;
+
+class DemoWorkflow extends Workflow\Workflow
+{
+    private $step = 0;
+
+    public function queryStep(): int 
+    {
+        return $this->step;
+    }
+
+    public function run(string $input): string
+    {
+        yield $this->activities->doSomething($input);
+        $this->step++;
+
+        // ...
+    }
+}
+```
+
+> Query methods must be registered explicitly.
+
+#### Using Annotations
+For more advanced frameworks it should be possible to register query method using annotation or attribute (PHP8) as 
+in Java SDK.
+
+```php
+/**
+ * @Workflow\QueryMethod(name="something")
+ */
+public function querySomething(string $world): string 
+{
+    return 'hello';
+}
+```
 
 ### Signals
 --
