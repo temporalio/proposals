@@ -289,7 +289,7 @@ Similar to activity errors workflow can handle these exceptions and perform a pr
 ```php
 public function run(string $input)
 {
-    $step = 1;
+    $step = 0;
     try {
         $result1 = $this->activities->doSomething($input)->get();
         $step++;
@@ -304,10 +304,13 @@ public function run(string $input)
     } catch (CancellationException $e) {
         switch ($step) {
             case 3:
-                $this->activities->rollbackSomethingElse2($result3)->get();
+                yield $this->activities->rollbackSomethingElse2($result3);
                 // no break
             case 2:
-                $this->activities->rollbackSomethingElse($result2)->get();
+                yield $this->activities->rollbackSomethingElse($result2);
+                // no break
+            case 1:
+                yield $this->activities->rollbackSomething($result1);
         }
     
         throw $e;   
