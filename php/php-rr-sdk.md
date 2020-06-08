@@ -468,11 +468,13 @@ class ServiceUsageWorkflow extends Workflow
                 if ($this->points > 0) {
                     $this->points--;
                 } else {           
+                    yield $this->activities->prolongAccess($customerID);
                     yield $this->activities->chargeDailyUsage($customerID);
                 }
             } 
         }
         catch (CancellationException $e) {
+            yield $this->activities->cancelAccess($customerID);
             yield $this->activities->cancelSubscription($customerID);
         }
     }
