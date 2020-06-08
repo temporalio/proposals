@@ -456,7 +456,7 @@ class ServiceUsageWorkflow extends Workflow
                 );
 
                 // adding points request                
-                if ($case instanceof Workflow\SignalPromise){
+                if ($this->isSignal($case) && $case->getName() === "points"){
                     $this->points += $case->get();
                     continue;
                 } 
