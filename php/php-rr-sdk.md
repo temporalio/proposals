@@ -282,7 +282,14 @@ public function querySomething(string $world): string
 ```
 
 ### Signals
---
+Unlike queries the signals are fist-class citizen of actual workflow code. Unlike activities the signal can be triggered
+at any moment, without prior expectation by workflow. 
+
+EXAMPLE
+
+SELECT EXAMPLE
+
+TODO ALTERNATIVE DEFINITION USING METHOD?
 
 ### Sessions
 Sessions can be created as sub-activity group, using similar approach as `withTimeout` and other methods. However,
@@ -326,7 +333,7 @@ $result = yield $this->sideEffect(function(){
 });
 ```
 
-> Similary to other SDKs, PHP version **does not** guarantee that sideEffect won't be called again during the replay. 
+> Similar to other SDKs, PHP version **does not** guarantee that sideEffect won't be called again during the replay. 
 
 ### Error Handling
 Like in Java version of Temporal SDK the workflow errors can be delivered in form of exceptions triggered on `yield`:
@@ -397,6 +404,7 @@ public function run(string $input): string
 ## Examples
 Following examples demonstrates features described above in a more realistic scenarios.
 
+### Simple Subscription Workflow
 ```php
 class SubscriptionWorkflow extends Workflow
 {
@@ -420,12 +428,54 @@ class SubscriptionWorkflow extends Workflow
 }
 ```
 
+### Daily charge using points and then credit card
+The workflow provides the ability to accumulate points using signals. You can run one worflow like that per
+customer.
 
+```php
+class ServiceUsageWorkflow extends Workflow
+{
+    private $points = 0;
 
+    /** @Workflow\QueryMethod(name="points") */
+    public function getPoints(): int
+    {
+        return $this->points;
+    }
 
+    /** @Workflow(name="serviceUsage") */
+    public function run(string $customerID)
+    {
+        $sh = yield new Workflow\SignalHandler('points');
+      
+        try {
 
+            while(true) {            
+                $case = yield new Workflow\Select(
+                    $sh, 
+                    $this->sleep(Time::DAY)
+                );
 
+                // adding points request                
+                if ($case instanceof Workflo\SignalPromise){
+                    $this->points += $case->get();
+                    continue;
+                } 
 
+                // must charge customer
+                if ($this->points > 0) {
+                    $this->points--;
+                } else {           
+                    yield $this->activities->chargeDailyUsage($customerID);
+                }
+            } 
+        }
+        catch (CancellationException $e) {
+            yield $this->activities->cancelSubscription($customerID);
+        }
+    }
+}
+```
 
 ## Service RPC
 The Temporal service SDK in PHP can be written as simple RPC bridge to Golang SDK. This section is pretty straight forward
