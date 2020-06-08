@@ -5,12 +5,12 @@ distributed applications. Since PHP 5.5 we can use [cooperative multitasking](ht
 which can perfectly align with the workflow execution model.
 
 ## Table of Contents
-- Activities
+- [Activities](#activities)
     - Registration
     - Using Annotations
     - Payloads
     - Process Isolation
-- Workflows
+- [Workflows](#workflows)
     - Registration
     - Using Annotations
     - Syntax and Atomic Blocks
@@ -20,12 +20,12 @@ which can perfectly align with the workflow execution model.
     - Side Effects
     - Error Handling
     - Termination and Cancel Requests
-- Examples
-- Service RPC
-- Implementation
+- [Examples](#examples)
+- [Service RPC](#service-rpc)
+- [Implementation](#implementation)
     - Features
     - Milestones
-- Development
+- [Development](#development)
 
 ## Activities
 Similar to other SDKs, the Activity implementation in PHP won't have any feasible limitations. Is it possible to invoke 
@@ -446,7 +446,7 @@ public function doSomething(Service $service)
 
 > Same client can be used to control the state and heartbeats of external activities. 
 
-## Implementation Details
+## Implementation
 We propose to implement the SDK as module of [RoadRunner](https://github.com/spiral/roadrunner) application server. The server
 written in Golang, tested on production and currently includes all the functions needed to run PHP effectively inside the
 Golang application. 
