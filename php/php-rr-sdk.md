@@ -280,7 +280,37 @@ $result = yield $this->sideEffect(function(){
 > Similary to other SDKs, PHP version **does not** guarantee that sideEffect won't be called again during the replay. 
 
 ### Error Handling
-todo
+Like in Java version of Temporal SDK the workflow errors can be delivered in form of exceptions triggered on `yield`:
+
+```php
+public function run(string $input): string
+{
+    try {
+        return yield $this->activities->doSomething($input)->get();
+    } catch (ActivityException $e) {
+        // get related activity ID
+        $this->logger->warning(
+            "Activity %s failed with %s",
+            $e->getActivityID(),
+            $e->getMessage()
+        );       
+    }
+}
+``` 
+
+Other errors can be triggered on workflow engine level, protocol error, etc. Exceptions must be diveded into following groups:
+
+Exception Type | Parent | Comment 
+--- | --- | ---
+EngineException | - | Low level exception, usually local.
+StalledException | EngineException | Triggered to indicate the workflow processing should stop (see below).
+WorkflowException | EngineException | Generic workflow error (like activity can not be created and etc)
+TimeoutException | WorkflowException | Workflow timed out (must contain information about actual timeout type). 
+TerminateException | WorkflowException | Workflow needs to be terminated.
+ActivityException | WorkflowException | Processing errors.
+ActivityTimeoutException | ActivityException | Activity processing timeouted (must contain information about actual timeout type). 
+
+> The exception tree is a subject of discussion. 
 
 ### Termination and Cancel Requests
 The termination, cancel and stalled requested will be supplied to the workflow in a form of exceptions on `yield` call.
@@ -310,7 +340,7 @@ public function run(string $input): string
         throw $e;   
     }
 }
-```  
+```
 
 > The `StalledException` or `PauseException` (TBD) used to notify the workflow that code must be offloaded from memory
 > (cache) without cancelling any activity.
