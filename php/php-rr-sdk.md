@@ -260,7 +260,7 @@ class DemoWorkflow extends Workflow\Workflow
 An alternative approach can be based on registering the callback function during the workflow execution:
 
 ```php
-yield new DeclareQueryHandler('something', function() use (&$step) {
+yield new QueryHandler('something', function() use (&$step) {
     return $step;
 });
 ```
