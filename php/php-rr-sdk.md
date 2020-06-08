@@ -315,7 +315,7 @@ public function run(string $input)
 }
 ```  
 
-> The `StalledException` or `StopProcessingException` used to notify the workflow that code must be offloaded from memory
+> The `StalledException` or `PauseException` (TBD) used to notify the workflow that code must be offloaded from memory
 > (cache) without cancelling any activity.
 
 ## Examples
