@@ -283,7 +283,40 @@ $result = yield $this->sideEffect(function(){
 todo
 
 ### Termination and Cancel Requests
-todo
+The termination, cancel and stalled requested will be supplied to the workflow in a form of exceptions on `yield` call.
+Similar to activity errors workflow can handle these exceptions and perform a proper rollback.
+
+```php
+public function run(string $input)
+{
+    $step = 1;
+    try{
+        $result1 = $this->activities->doSomething($input)->get();
+        $step++;
+        
+        $result2 = $this->activities->doSomethingElse($result1)->get();
+        $step++;
+
+        $result3 = $this->activities->doSomethingElse2($result2)->get();
+        $step++;
+
+        return $result3;
+    } catch(CancellationException $e) {
+        switch($step) {
+            case 3:
+                $this->activities->rollbackSomethingElse2($result3)->get();
+                // no break
+            case 2:
+                $this->activities->rollbackSomethingElse($result2)->get();
+        }
+    
+        throw $e;   
+    }
+}
+```  
+
+> The `StalledException` or `StopProcessingException` used to notify the workflow that code must be offloaded from memory
+> (cache) without cancelling any activity.
 
 ## Examples
 Following examples demonstrates features described above in a more realistic scenarios.
