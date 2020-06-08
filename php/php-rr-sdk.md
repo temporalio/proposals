@@ -287,7 +287,7 @@ The termination, cancel and stalled requested will be supplied to the workflow i
 Similar to activity errors workflow can handle these exceptions and perform a proper rollback.
 
 ```php
-public function run(string $input)
+public function run(string $input): string
 {
     $step = 0;
     try {
