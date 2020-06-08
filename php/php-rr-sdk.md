@@ -291,26 +291,20 @@ public function run(string $input)
 {
     $step = 0;
     try {
-        $result1 = $this->activities->doSomething($input)->get();
+        $resultA = yield $this->activities->doA($input)->get();
         $step++;
         
-        $result2 = $this->activities->doSomethingElse($result1)->get();
+        $resultB = yield $this->activities->doB($resultA)->get();
         $step++;
 
-        $result3 = $this->activities->doSomethingElse2($result2)->get();
-        $step++;
-
-        return $result3;
+        return yield $this->activities->doC($resultB)->get();
     } catch (CancellationException $e) {
         switch ($step) {
-            case 3:
-                yield $this->activities->rollbackSomethingElse2($result3);
-                // no break
             case 2:
-                yield $this->activities->rollbackSomethingElse($result2);
+                yield $this->activities->rollbackB($resultB);
                 // no break
             case 1:
-                yield $this->activities->rollbackSomething($result1);
+                yield $this->activities->rollbackA($resultA);
         }
     
         throw $e;   
