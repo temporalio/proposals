@@ -257,6 +257,16 @@ class DemoWorkflow extends Workflow\Workflow
 
 > Query methods must be registered explicitly.
 
+An alternative approach can be based on registering the callback function during the workflow execution:
+
+```php
+yield new DeclareQueryHandler('something', function() use (&$step) {
+    return $step;
+});
+```
+
+> Such an approach is more suitable for dynamic workflows. The principle of work is identical to pre-registered queries.
+
 #### Using Annotations
 For more advanced frameworks it should be possible to register query method using annotation or attribute (PHP8) as 
 in Java SDK.
