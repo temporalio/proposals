@@ -449,7 +449,6 @@ class ServiceUsageWorkflow extends Workflow
         $sh = yield new Workflow\SignalHandler('points');
       
         try {
-
             while(true) {            
                 $case = yield new Workflow\Select(
                     $sh, 
