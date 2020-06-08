@@ -446,17 +446,17 @@ class ServiceUsageWorkflow extends Workflow
     /** @Workflow(name="serviceUsage") */
     public function run(string $customerID)
     {
-        $sh = yield new Workflow\SignalHandler('points');
+        $points = yield $this->signal('points');
       
         try {
             while(true) {            
-                $case = yield new Workflow\Select(
-                    $sh, 
+                $case = yield $this->select(
+                    $points, 
                     $this->sleep(Time::DAY)
                 );
 
                 // adding points request                
-                if ($case instanceof Workflo\SignalPromise){
+                if ($case instanceof Workflow\SignalPromise){
                     $this->points += $case->get();
                     continue;
                 } 
