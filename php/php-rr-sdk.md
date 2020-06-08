@@ -302,7 +302,7 @@ public function run(string $input)
 
         return $result3;
     } catch (CancellationException $e) {
-        switch($step) {
+        switch ($step) {
             case 3:
                 $this->activities->rollbackSomethingElse2($result3)->get();
                 // no break
