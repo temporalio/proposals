@@ -6,25 +6,25 @@ which can perfectly align with the workflow execution model.
 
 ## Table of Contents
 - [Activities](#activities)
-    - Registration
-    - Using Annotations
-    - Payloads
-    - Process Isolation
+    - [Registration](#registration)
+    - [Using Annotations](#using-annotations)
+    - [Payloads](#payloads)
+    - [Process Isolation](#process-isolation)
 - [Workflows](#workflows)
     - Registration
     - Using Annotations
     - Syntax and Atomic Blocks
-    - Queries
-    - Sessions
-    - Deterministic Time
-    - Side Effects
-    - Error Handling
-    - Termination and Cancel Requests
+    - [Queries](#queries)
+    - [Sessions](#sessions)
+    - [Deterministic Time](#deterministic-time)
+    - [Side Effects](#side-effects)
+    - [Error Handling](#error-handling)
+    - [Termination and Cancel Requests](#termination-and-cancel-requests)
 - [Examples](#examples)
 - [Service RPC](#service-rpc)
 - [Implementation](#implementation)
-    - Features
-    - Milestones
+    - [Features](#features)
+    - [Milestones](#milestones)
 - [Development](#development)
 
 ## Activities
@@ -221,10 +221,47 @@ class UploadWorkflow extends Workflow\Workflow
 > No common interface required.
 
 ### Registration
---
+Similar to activities each workflow type must be registered within worker context, since worklow might expose more that 
+one method (query, primary method) meta declation is required. 
+
+```php
+$worker = new WorkflowWorker();
+
+$workflow = (new WorkflowDeclaration('name'))
+                ->setClass(WofkflowClass::class)
+                ->setHandlerMethod('run')
+                ->addQueryHandler('name', 'method-name');
+
+$worker->addWorkflow($workflow);
+```
 
 ### Using Annotations
---
+In more advanced frameworks it should be possible to register workflows using annotations or attributes.
+
+```php
+use Temporal\Workflow\Annotation as Temporal;
+
+/**
+ * @Temporal\Workflow(name="name", handler="run")
+ */
+class Workflow 
+{
+    public function run(ContextInterface $ctx, string $input): string
+    {
+        // ...   
+    }
+
+    /**
+     * @Workflow\QueryMethod(name="something")
+     */
+    public function querySomething(string $world): string 
+    {
+        // ...
+    }
+}
+``` 
+
+> The actual annotation format is TBD as it irrelevant to the implementation and might vary from framework to framework. 
 
 ### Syntax and Atomic Blocks
 --
@@ -446,6 +483,7 @@ class ServiceUsageWorkflow extends Workflow
     /** @Workflow(name="serviceUsage") */
     public function run(string $customerID)
     {
+        
         $points = yield $this->signal("points");
       
         try {
@@ -459,7 +497,7 @@ class ServiceUsageWorkflow extends Workflow
                 if (
                     $this->isSignal($case) 
                     && $case->getName() === "points"
-                ){
+                ) {
                     $this->points += $case->get();
                     continue;
                 } 
