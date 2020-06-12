@@ -578,7 +578,7 @@ customer.
 ```php
 class ServiceUsageWorkflow extends Workflow
 {
-    private $points = 0;
+    private int $points = 0;
 
     /** @Workflow\QueryMethod(name="points") */
     public function getPoints(): int
@@ -599,7 +599,6 @@ class ServiceUsageWorkflow extends Workflow
             while(true) {            
                  yield $this->sleep(Time::DAY)->wait(); 
                 
-                // must charge customer
                 if ($this->points > 0) {
                     $this->points--;
                 } else {           
