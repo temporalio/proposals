@@ -321,6 +321,39 @@ class MyWorkflow extends Workflow
 }
 ``` 
 
+Examples below will be given using sugared approach for simplicity (it is possible to fallback to commands as well). 
+
+#### Timers
+Workflow timers can operate as promise or blocking operation:
+
+```php
+$timer = yield $this->timer(1 * Time::DAY);
+
+yield $timer->wait();
+```
+
+Blocking:
+
+```php
+yield $this->timer(1 * Time::DAY)->wait();
+
+// or
+yield $this->sleep(1 * Time::DAY);
+```
+
+Can be comfined with Promises:
+
+```php
+$a = yield $this->activities->doSomething(...);
+$t = yield $this->timer(1 * Time::MINUTE);
+
+yield $this->waitAny($a, $t);
+
+if ($t->isFired()) {
+    // ...
+}
+```
+
 ### Queries
 Workflow queries can be easily implemented using dedicated query method of workflow. The state of the workflow can be 
 extracted from the properties of the object.
@@ -556,11 +589,11 @@ class SubscriptionWorkflow extends Workflow
         yield $this->activities->onboardFreeTrial($customerID);
         
         try {
-            yield $this->sleep(60 * Time::DAY)->wait();
+            yield $this->sleep(60 * Time::DAY);
             yield $this->activities->upgradeFromTrialToPaid($customerID);
     
             while(true) {
-                yield $this->sleep(30 * Time::DAY)->wait();
+                yield $this->sleep(30 * Time::DAY);
                 yield $this->activities->chargeMonthlyFee($customerID);
             }       
         }
@@ -597,7 +630,7 @@ class ServiceUsageWorkflow extends Workflow
     {
         try {
             while(true) {            
-                 yield $this->sleep(Time::DAY)->wait(); 
+                 yield $this->sleep(Time::DAY); 
                 
                 if ($this->points > 0) {
                     $this->points--;
