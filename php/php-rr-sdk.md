@@ -556,11 +556,11 @@ class SubscriptionWorkflow extends Workflow
         yield $this->activities->onboardFreeTrial($customerID);
         
         try {
-            yield $this->sleep(60 * Time::DAY);
+            yield $this->sleep(60 * Time::DAY)->wait();
             yield $this->activities->upgradeFromTrialToPaid($customerID);
     
             while(true) {
-                yield $this->sleep(30 * Time::DAY);
+                yield $this->sleep(30 * Time::DAY)->wait();
                 yield $this->activities->chargeMonthlyFee($customerID);
             }       
         }
@@ -597,7 +597,7 @@ class ServiceUsageWorkflow extends Workflow
     {
         try {
             while(true) {            
-                 yield $this->sleep(Time::DAY); 
+                 yield $this->sleep(Time::DAY)->wait(); 
                 
                 // must charge customer
                 if ($this->points > 0) {
