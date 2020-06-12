@@ -480,18 +480,6 @@ Workflows must avoid calling SPL functions `time()` and `date()`. Context method
 $ctx->getNow(); //DateTimeImmutable object.
 ```
 
-#### Sleeps
-Workflow can sleep using simple command returning promise:
-
-```php
-yield $this->sleep(1)->wait();
-
-// or as promise
-$t = yield $this->sleep(1);
-
-yield new AnyOf($t, $this->activities->doSomething());
-```
-
 ### Side Effects
 Similar to Golang SDK the side effects can be registered using yield call:
 
