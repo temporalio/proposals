@@ -586,33 +586,25 @@ class ServiceUsageWorkflow extends Workflow
         return $this->points;
     }
 
+    /** @Workflow\SignalMethod(name="points") */
+    public function addPoints(int $points)
+    {
+        $this->points += $points;
+    }
+
     /** @Workflow(name="serviceUsage") */
     public function run(string $customerID)
     {
-        $points = yield $this->signal("points");
-      
         try {
             while(true) {            
-                $case = yield $this->select(
-                    $points, 
-                    $this->sleep(Time::DAY)
-                );
-
-                // adding points request                
-                if (
-                    $this->isSignal($case) 
-                    && $case->getName() === "points"
-                ) {
-                    $this->points += $case->get();
-                    continue;
-                } 
-
+                 yield $this->sleep(Time::DAY); 
+                
                 // must charge customer
                 if ($this->points > 0) {
                     $this->points--;
                 } else {           
-                    yield $this->activities->prolongAccess($customerID);
                     yield $this->activities->chargeDailyUsage($customerID);
+                    yield $this->activities->prolongAccess($customerID);
                 }
             } 
         }
