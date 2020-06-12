@@ -14,7 +14,7 @@ which can perfectly align with the workflow execution model.
 - [Workflows](#workflows)
     - [Registration](#registration-1)
     - [Using Annotations](#using-annotations-1)
-    - Syntax and Atomic Blocks
+    - [Syntax and Atomic Blocks](#syntax-and-atomic-blocks)
     - [Queries](#queries)
     - [Signals](#signals)
     - [Sessions](#sessions)
@@ -275,7 +275,51 @@ class Workflow
 > The actual annotation format is TBD as it irrelevant to the implementation and might vary from framework to framework. 
 
 ### Syntax and Atomic Blocks
---
+The building blocks of workflow is `yield` commands which might return actual value or a promise for this value. Every
+command wrapped via dedicated class:
+
+```php
+function run()
+{
+    yield new Activity('name', 'values', [/* options */]);
+}
+```
+
+Some commands might automatically return sub-commands. For example blocking activity execution:
+
+```php
+$result = yield (new Activity('name', 'values', [/* options */]))->get();
+```
+
+To wait for multiple activities at the same time we can introduce higher level promises such as:
+
+```php
+$a = yield new Activity('a', 'values', [/* options */]);
+$b = yield new Activity('b', 'values', [/* options */]);
+
+yield new WaitAll($a, $b);
+
+// or 
+yield new WaitAny($a, $b);
+```
+
+> More atomic blocks can be added down the road.
+
+#### Syntax Sugar
+It should be possible to mock `new Activity` and other commands with shorted methods from abstract workflow implementation:
+
+```php
+class MyWorkflow extends Workflow 
+{
+    public function run()
+    {
+        $result = yield $this->activities->doSomething()->get();
+        yield $this->sleep(1);
+
+        // ...
+    }
+}
+``` 
 
 ### Queries
 Workflow queries can be easily implemented using dedicated query method of workflow. The state of the workflow can be 
@@ -333,12 +377,50 @@ public function querySomething(string $world): string
 Unlike queries the signals are fist-class citizen of actual workflow code. Unlike activities the signal can be triggered
 at any moment, without prior expectation by workflow. 
 
+Signal method can be defined explicitly:
 
-EXAMPLE
+```php
+class UploadWorkflow extends Workflow\Workflow
+{
+    /** @Temporal\SignalMethod(name="signal") */
+    public function handleSignal($input):void
+    {
+    
+    }
 
-SELECT EXAMPLE
+    public function run(string $input): string
+    {
+        
+    }
+}
+```
 
-TODO ALTERNATIVE DEFINITION USING METHOD?
+Or at runtime:
+
+```php
+public function run(string $input): string
+{
+    yield new SignalHandler('name', function($input){
+    
+    });       
+}
+```
+
+> Need Temporal authors feedback.
+
+#### Handle Signals
+Incoming signals can be handled during any workflow `yield` call. Workflow should allow to explicitly wait for signal:
+
+```php
+public function run(string $input): string
+{
+    yield new SignalHandler('name', function($input){
+        // do something
+    });       
+
+    yield new WaitSignal('name');
+}
+```
 
 ### Sessions
 Sessions can be created as sub-activity group, using similar approach as `withTimeout` and other methods. However,
@@ -363,6 +445,18 @@ Workflows must avoid calling SPL functions `time()` and `date()`. Context method
 
 ```php
 $ctx->getNow(); //DateTimeImmutable object.
+```
+
+#### Sleeps
+Workflow can sleep using simple command returning promise:
+
+```php
+yield $this->sleep(1)->wait();
+
+// or as promise
+$t = yield $this->sleep(1);
+
+yield new AnyOf($t, $this->activities->doSomething());
 ```
 
 ### Side Effects
