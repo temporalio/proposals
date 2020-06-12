@@ -8,13 +8,15 @@ which can perfectly align with the workflow execution model.
 - [Activities](#activities)
     - [Registration](#registration)
     - [Using Annotations](#using-annotations)
+    - [Logging](#logging)
     - [Payloads](#payloads)
     - [Process Isolation](#process-isolation)
 - [Workflows](#workflows)
-    - Registration
-    - Using Annotations
+    - [Registration](#registration-1)
+    - [Using Annotations](#using-annotations-1)
     - Syntax and Atomic Blocks
     - [Queries](#queries)
+    - [Signals](#signals)
     - [Sessions](#sessions)
     - [Deterministic Time](#deterministic-time)
     - [Side Effects](#side-effects)
@@ -230,7 +232,8 @@ $worker = new WorkflowWorker();
 $workflow = (new WorkflowDeclaration('name'))
                 ->setClass(WofkflowClass::class)
                 ->setHandlerMethod('run')
-                ->addQueryHandler('name', 'method-name');
+                ->addQueryHandler('name', 'method-name')
+                ->addSignalHandler('name', 'method-name');
 
 $worker->addWorkflow($workflow);
 ```
@@ -255,6 +258,14 @@ class Workflow
      * @Workflow\QueryMethod(name="something")
      */
     public function querySomething(string $world): string 
+    {
+        // ...
+    }
+    
+    /**
+     * @Workflow\SignalMethod(name="someSignal")
+     */
+    public function handleSignal(string $input): string 
     {
         // ...
     }
@@ -321,6 +332,7 @@ public function querySomething(string $world): string
 ### Signals
 Unlike queries the signals are fist-class citizen of actual workflow code. Unlike activities the signal can be triggered
 at any moment, without prior expectation by workflow. 
+
 
 EXAMPLE
 
@@ -483,7 +495,6 @@ class ServiceUsageWorkflow extends Workflow
     /** @Workflow(name="serviceUsage") */
     public function run(string $customerID)
     {
-        
         $points = yield $this->signal("points");
       
         try {
