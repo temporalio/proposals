@@ -4,11 +4,13 @@ A large variety of instruments, language performance and ease of use opens a lot
 distributed applications. Since PHP 5.5 we can use [cooperative multitasking](https://nikic.github.io/2012/12/22/Cooperative-multitasking-using-coroutines-in-PHP.html) 
 which can perfectly align with the workflow execution model.
 
+> Unit testing part of the library is currently of out of the scope of this proposal.
+
 ## Table of Contents
 - [Activities](#activities)
     - [Registration](#registration)
     - [Using Annotations](#using-annotations)
-    - [Logging](#logging)
+
     - [Payloads](#payloads)
     - [Process Isolation](#process-isolation)
 - [Workflows](#workflows)
@@ -17,6 +19,7 @@ which can perfectly align with the workflow execution model.
     - [Syntax and Atomic Blocks](#syntax-and-atomic-blocks)
     - [Queries](#queries)
     - [Signals](#signals)
+    - [Logging](#logging)
     - [Sessions](#sessions)
     - [Deterministic Time](#deterministic-time)
     - [Side Effects](#side-effects)
@@ -49,44 +52,36 @@ function processFile(string $url): string
 Heartbeat example:
 
 ```php
-use Temporal\Workflow\ContextInterface;
-use Temporal\Workflow\Activity;
-
-// parameter order does not matter
-function downloadFile(ContextInterface $ctx, string $url)
-{
-    $downloader = new FileDownloader();
-    $downloader->onProgress(function($progress) use($ctx){
-        // subject of discussion
-        Activity::heartbeat($ctx, $progress);
-    });
-
-    return $downloader->download($url);
-}
-```
-
-Alternatively we can embed the heartbeat method directly into `ContextInterface` or `ActivityContextInterface`:
-
-```php
 use Temporal\Workflow\ActivityContextInterface;
+use Temporal\Workflow\Activity;
 
 // parameter order does not matter
 function downloadFile(ActivityContextInterface $ctx, string $url)
 {
     $downloader = new FileDownloader();
-    $downloader->onProgress(function($progress) use($ctx){
-        // subject of discussion
+    $downloader->onProgress(function($progress) use($ctx) {
         $ctx->heartbeat($progress);
     });
-
-    // for external activities
-    dump($ctx->getTaskToken());
 
     return $downloader->download($url);
 }
 ```
 
-The second approach deviate from a read-only concept of contexts but makes testing much easier.
+Object `ActivityContextInterface` can be used to access task token and other activity related information. The goal of
+activity design is to avoid deviation from classic PHP.
+
+To continue activity outside of the execution:
+
+```php
+
+// parameter order does not matter
+function waitForUser(ActivityContextInterface $ctx, string $userID)
+{
+    $this->sendEmailToUser($userID, $ctx->taskToken());
+
+    return $ctx->waitExternalCompletion();
+}
+```
 
 ### Registration
 Activities can be registered in corresponding workers. Since workflows will run in different process there are no need to
@@ -129,20 +124,8 @@ class FileController
 
 > PHP 8 annotations or alternative registration methods possible as well.
 
-### Logging
-It is possible to provide access to log stream from the `ActivityContextInterface` which makes possible to use PSR-3 compatible
-loggers.
-
-```php
-$logger = new ActivityLogger($ctx);
-$logger->debug('Hello!');
-
-// or directly
-$ctx->log('debug', 'message', ['context']);
-```
-
 ### Payloads
-The payloads and responses can be serialized and deserialized to the target format using simple type reflection. 
+The payloads and responses can be serialized and de-serialized to the target format using simple type reflection. 
 Such an approach makes possible to use PHP objects as data carrying medium:
 
 ```php
@@ -170,10 +153,10 @@ The system must limit to only one concurrent execution per worker, which makes p
 libraries without changes. 
 
 ## Workflows
-Unlike activities, the workflow execution must be based on a physical memory object. In order to ensure proper density
+Unlike activities, the workflow execution represented as a physical memory object. In order to ensure proper density
 and effectiveness of the system, multiple workflows will locate inside singe PHP process. Each workflow will operate
 as one or multiple [Generators](https://www.php.net/manual/en/class.generator.php). The execution can be controlled using
-system [keyword](https://www.php.net/manual/en/language.generators.syntax.php) `yield`.
+system [keyword](https://www.php.net/manual/en/language.generators.syntax.php) `yield` on blocking operations.
 
 Yield keyword should be used to request the command execution by Temporal system. For the sake of simplify each command
 must be presented as typed object, though, end user API can encapsulate object construction using helper functions. 
@@ -186,14 +169,18 @@ use Temporal\Workflow;
 
 class UploadWorkflow
 {
-    public function run(Workflow\ContextInterface $ctx, string $input): string
+    public function run(string $input): string
     {
-        $promise = yield new Workflow\ExecuteActivy(
+        $promise = new Workflow\ExecuteActivy(
             'activityName',
             $input, 
-            100 // startToFinishTimeout, etc. 
+            [
+                ExecuteActivy::START_TO_FINISH_TIMEOUT   => 100,        
+                ExecuteActivy::SCHEDULE_TO_START_TIMEOUT => 10
+            ]       
         );        
     
+        // blocking operation to get the activity result
         $result = yield $promise->get(Obj::class);
 
         return $result->getValue();
@@ -201,26 +188,27 @@ class UploadWorkflow
 }
 ```
 
-Read more about proposed syntax approach and syntax sugar down below. The given example can be simplified into:
+> Activity Stub and builder is currently out of the scope, in first version of library parameters must be passed
+> explicitly. All following examples _assume_ existence some form of domain specific activity builder which wraps command
+> construction. 
+
+### Context
+In order to ensure easy and reliable access to workflow context (including library implementations) we introduce static
+methods via `Workflow` class. Since only one workflow can be executed at one moment of time we can safely change the
+context before passing control to the workflow:
 
 ```php
-use Temporal\Workflow;
+// explicit
 
-class UploadWorkflow extends Workflow\Workflow
-{
-    public function run(string $input): string
-    {
-        $result = yield $this->activities
-            ->withStartToFinish(100)
-            ->activityName($input)
-            ->get(Obj::class);
+// implicit 
+Workflow::ctx()->now();
+Workflow::ctx()->isReplying();
 
-        return $result->getValue();
-    }
-}
+// sugar
+Workflow::executeActivity();
 ```
 
-> No common interface required.
+> Every `yield` operation called withing in-explicitly set context.
 
 ### Registration
 Similar to activities each workflow type must be registered within worker context, since worklow might expose more that 
@@ -237,6 +225,8 @@ $workflow = (new WorkflowDeclaration('name'))
 
 $worker->addWorkflow($workflow);
 ```
+
+> Is it only possible to set one query and signal handler per channel per workflow.
 
 ### Using Annotations
 In more advanced frameworks it should be possible to register workflows using annotations or attributes.
@@ -281,11 +271,13 @@ command wrapped via dedicated class:
 ```php
 function run()
 {
-    yield new Activity('name', 'values', [/* options */]);
+    $activity = new Activity('name', 'values', [/* options */]);
+    
+    $result = yield $activity->get();
 }
 ```
 
-Some commands might automatically return sub-commands. For example blocking activity execution:
+Shorter syntaxt is possible as well.
 
 ```php
 $result = yield (new Activity('name', 'values', [/* options */]))->get();
@@ -294,10 +286,10 @@ $result = yield (new Activity('name', 'values', [/* options */]))->get();
 To wait for multiple activities at the same time we can introduce higher level promises such as:
 
 ```php
-$a = yield new Activity('a', 'values', [/* options */]);
-$b = yield new Activity('b', 'values', [/* options */]);
+$a = new Activity('a', 'values', [/* options */]);
+$b = new Activity('b', 'values', [/* options */]);
 
-yield new WaitAll($a, $b);
+yield Workflow::waitAll($a, $b);
 
 // or 
 yield new WaitAny($a, $b);
@@ -305,29 +297,14 @@ yield new WaitAny($a, $b);
 
 > More atomic blocks can be added down the road.
 
-#### Syntax Sugar
-It should be possible to mock `new Activity` and other commands with shorted methods from abstract workflow implementation:
-
-```php
-class MyWorkflow extends Workflow 
-{
-    public function run()
-    {
-        $result = yield $this->activities->doSomething()->get();
-        yield $this->sleep(1);
-
-        // ...
-    }
-}
-``` 
-
-Examples below will be given using sugared approach for simplicity (it is possible to fallback to commands as well). 
-
 #### Timers
 Workflow timers can operate as promise or blocking operation:
 
 ```php
-$timer = yield $this->timer(1 * Time::DAY);
+$timer = new Timer(1 * Timer::DAY);
+
+// or
+$timer = $this->timer(1 * Timer::DAY);
 
 yield $timer->wait();
 ```
@@ -337,15 +314,15 @@ Blocking:
 ```php
 yield $this->timer(1 * Time::DAY)->wait();
 
-// or
+// or (direct equivalent)
 yield $this->sleep(1 * Time::DAY);
 ```
 
-Can be comfined with Promises:
+Can be combined with Promises:
 
 ```php
-$a = yield $this->activities->doSomething(...);
-$t = yield $this->timer(1 * Time::MINUTE);
+$a = $this->activities->doSomething(...);
+$t = $this->timer(1 * Time::MINUTE);
 
 yield $this->waitAny($a, $t);
 
@@ -353,6 +330,8 @@ if ($t->isFired()) {
     // ...
 }
 ```
+
+> `$this->activitie` simply mocks activity object creation for simplicity of this proposal. 
 
 ### Queries
 Workflow queries can be easily implemented using dedicated query method of workflow. The state of the workflow can be 
@@ -372,7 +351,7 @@ class DemoWorkflow extends Workflow\Workflow
 
     public function run(string $input): string
     {
-        yield $this->activities->doSomething($input);
+        yield $this->activities->doSomething($input)->get();
         $this->step++;
 
         // ...
@@ -385,7 +364,7 @@ class DemoWorkflow extends Workflow\Workflow
 An alternative approach can be based on registering the callback function during the workflow execution:
 
 ```php
-yield new QueryHandler('something', function() use (&$step) {
+Workflow::addQueryHandler('something', function() use (&$step) {
     return $step;
 });
 ```
@@ -433,9 +412,11 @@ Or at runtime:
 ```php
 public function run(string $input): string
 {
-    yield new SignalHandler('name', function($input){
+    Workflow::addSignalHandler('name', function($input){
     
     });       
+
+    // ...
 }
 ```
 
@@ -447,12 +428,20 @@ Incoming signals can be handled during any workflow `yield` call. Workflow shoul
 ```php
 public function run(string $input): string
 {
-    yield new SignalHandler('name', function($input){
+    Workflow::addSignalHandler('name', function($input){
         // do something
     });       
 
     yield new WaitSignal('name');
 }
+```
+
+### Logging
+The workflow logging does not differ from any other parts of the application, the only exception is the need to exclude
+logs triggered while workflow is replaying. We propose to use mocked PSR-3 logger for this purposes:
+
+```php
+$logger = new NonReplayingLogger(Workflow::ctx(), $parentLogger); // it is possible to omit ::ctx()
 ```
 
 ### Sessions
@@ -462,12 +451,19 @@ the explicit yield required.
 ```php
 public function run(string $input): string
 {
-    $session = yield $this->activities->createSession(100, 100); // timeouts
+    $session = new Session([
+        Session::START_TO_FINISH_TIMEOUT => 300,
+        // ... 
+    ]);
     
-    $result = yield $session->doSomething($input)->get();
-    $result = yield $session->somethingElse($result)->get();
+    $a1 = $session->executeActivity(new ExecuteActivity('activity1'));
+    $a2 = $session->executeActivity(new ExecuteActivity('activity2'));
     
-    yield $session->complete();
+    $result1 = yield $a1->get();
+    $result2 = yield $a2->get(); 
+
+    // required    
+    yield $session->close();
     
     return $result;
 }
@@ -477,22 +473,14 @@ public function run(string $input): string
 Workflows must avoid calling SPL functions `time()` and `date()`. Context method must be used instead:
 
 ```php
-$ctx->getNow(); //DateTimeImmutable object.
+Workflow::ctx()->now(); //DateTimeImmutable object.
 ```
 
 ### Side Effects
 Similar to Golang SDK the side effects can be registered using yield call:
 
 ```php
-$result = yield new SideEffect(function(){
-    return mt_rand(0, 1000);
-});
-```
-
-Using syntax sugar (point of discussion):
-
-```php
-$result = yield $this->sideEffect(function(){
+$result = Workflow::sideEffect(function(){
     return mt_rand(0, 1000);
 });
 ```
@@ -518,22 +506,10 @@ public function run(string $input): string
 }
 ``` 
 
-Other errors can be triggered on workflow engine level, protocol error, etc. Exceptions must be diveded into following groups:
-
-Exception Type | Parent | Comment 
---- | --- | ---
-EngineException | - | Low level exception, usually local.
-StalledException | EngineException | Triggered to indicate the workflow processing should stop (see below).
-WorkflowException | EngineException | Generic workflow error (like activity can not be created and etc)
-TimeoutException | WorkflowException | Workflow timed out (must contain information about actual timeout type). 
-TerminateException | WorkflowException | Workflow needs to be terminated.
-ActivityException | WorkflowException | Processing errors.
-ActivityTimeoutException | ActivityException | Activity processing timeouted (must contain information about actual timeout type). 
-
-> The exception tree is a subject of discussion. 
+> The exception tree must follow similar design as Go and Java SDK.
 
 ### Termination and Cancel Requests
-The termination, cancel and stalled requested will be supplied to the workflow in a form of exceptions on `yield` call.
+The cancel requests will be supplied to the workflow in a form of exceptions on `yield` call.
 Similar to activity errors workflow can handle these exceptions and perform a proper rollback.
 
 ```php
@@ -561,9 +537,6 @@ public function run(string $input): string
     }
 }
 ```
-
-> The `StalledException` or `PauseException` (TBD) used to notify the workflow that code must be offloaded from memory
-> (cache) without cancelling any activity.
 
 ## Examples
 Following examples demonstrates features described above in a more realistic scenarios.
