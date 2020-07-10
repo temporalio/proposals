@@ -171,17 +171,18 @@ class UploadWorkflow
 {
     public function run(string $input): string
     {
-        $promise = new Workflow\ExecuteActivy(
+        $promise = Workflow::executeActivity(
             'activityName',
             $input, 
+            Object::class,     // return type, keep null for scalar values
             [
-                ExecuteActivy::START_TO_FINISH_TIMEOUT   => 100,        
-                ExecuteActivy::SCHEDULE_TO_START_TIMEOUT => 10
+                ExecuteActivy::SCHEDULE_TO_START => 100,        
+                ExecuteActivy::START_TO_CLOSE    => 10
             ]       
         );        
     
         // blocking operation to get the activity result
-        $result = yield $promise->get(Obj::class);
+        $result = yield $promise;
 
         return $result->getValue();
     }
@@ -198,14 +199,30 @@ methods via `Workflow` class. Since only one workflow can be executed at one mom
 context before passing control to the workflow:
 
 ```php
-// explicit
+Workflow::now();
+Workflow::isReplying();
 
-// implicit 
-Workflow::ctx()->now();
-Workflow::ctx()->isReplying();
+// implicit (mapped to context in coordinator) - hidden in implementation
+$promise = new Workflow\ExecuteActivy(
+    'activityName',
+    $input, 
+    Object::class,     // return type, keep null for scalar values
+    [
+        ExecuteActivy::SCHEDULE_TO_START => 100,        
+        ExecuteActivy::START_TO_CLOSE    => 10
+    ]       
+); 
 
-// sugar
-Workflow::executeActivity();
+// explicit (similar to above)
+$promise = Workflow::executeActivity(
+    'activityName',
+    $input, 
+    Object::class,     // return type, keep null for scalar values
+    [
+        ExecuteActivy::SCHEDULE_TO_START => 100,        
+        ExecuteActivy::START_TO_CLOSE    => 10
+    ]   
+);
 ```
 
 > Every `yield` operation called withing in-explicitly set context.
@@ -271,23 +288,17 @@ command wrapped via dedicated class:
 ```php
 function run()
 {
-    $activity = new Activity('name', 'values', [/* options */]);
+    $activity = Workflow::executeActivity('name', 'values', Activity::RETURNS_STRING, [/* options */]);
     
-    $result = yield $activity->get();
+    $result = yield $activity;
 }
-```
-
-Shorter syntaxt is possible as well.
-
-```php
-$result = yield (new Activity('name', 'values', [/* options */]))->get();
 ```
 
 To wait for multiple activities at the same time we can introduce higher level promises such as:
 
 ```php
-$a = new Activity('a', 'values', [/* options */]);
-$b = new Activity('b', 'values', [/* options */]);
+$a = Workflow::executeActivity('a', 'values', A::class, [/* options */]);
+$b = Workflow::executeActivity('b', 'values', B::class, [/* options */]);
 
 yield Workflow::waitAll($a, $b);
 
@@ -306,7 +317,11 @@ $timer = new Timer(1 * Timer::DAY);
 // or
 $timer = $this->timer(1 * Timer::DAY);
 
-yield $timer->wait();
+yield $timer;
+
+// alternative
+
+$timer = Workflow::timer(1 * Timer::DAY);
 ```
 
 Blocking:
@@ -321,10 +336,10 @@ yield $this->sleep(1 * Time::DAY);
 Can be combined with Promises:
 
 ```php
-$a = $this->activities->doSomething(...);
-$t = $this->timer(1 * Time::MINUTE);
+$a = Workflow::executeActivity(...);
+$t = Workflow::timer(1 * Time::MINUTE);
 
-yield $this->waitAny($a, $t);
+yield Workflow::waitAny($a, $t);
 
 if ($t->isFired()) {
     // ...
@@ -351,7 +366,7 @@ class DemoWorkflow extends Workflow\Workflow
 
     public function run(string $input): string
     {
-        yield $this->activities->doSomething($input)->get();
+        yield $this->activities->doSomething($input);
         $this->step++;
 
         // ...
@@ -459,8 +474,8 @@ public function run(string $input): string
     $a1 = $session->executeActivity(new ExecuteActivity('activity1'));
     $a2 = $session->executeActivity(new ExecuteActivity('activity2'));
     
-    $result1 = yield $a1->get();
-    $result2 = yield $a2->get(); 
+    $result1 = yield $a1;
+    $result2 = yield $a2; 
 
     // required    
     yield $session->close();
@@ -473,7 +488,7 @@ public function run(string $input): string
 Workflows must avoid calling SPL functions `time()` and `date()`. Context method must be used instead:
 
 ```php
-Workflow::ctx()->now(); //DateTimeImmutable object.
+Workflow::now(); //DateTimeImmutable object.
 ```
 
 ### Side Effects
@@ -494,7 +509,7 @@ Like in Java version of Temporal SDK the workflow errors can be delivered in for
 public function run(string $input): string
 {
     try {
-        return yield $this->activities->doSomething($input)->get();
+        return yield $this->activities->doSomething($input);
     } catch (ActivityException $e) {
         // get related activity ID
         $this->logger->warning(
@@ -517,13 +532,13 @@ public function run(string $input): string
 {
     $step = 0;
     try {
-        $resultA = yield $this->activities->doA($input)->get();
+        $resultA = yield $this->activities->doA($input);
         $step++;
         
-        $resultB = yield $this->activities->doB($resultA)->get();
+        $resultB = yield $this->activities->doB($resultA);
         $step++;
 
-        return yield $this->activities->doC($resultB)->get();
+        return yield $this->activities->doC($resultB);
     } catch (CancellationException $e) {
         switch ($step) {
             case 2:
@@ -550,11 +565,11 @@ class SubscriptionWorkflow extends Workflow
         yield $this->activities->onboardFreeTrial($customerID);
         
         try {
-            yield $this->sleep(60 * Time::DAY);
+            yield Wofkflow::sleep(60 * Time::DAY);
             yield $this->activities->upgradeFromTrialToPaid($customerID);
     
             while(true) {
-                yield $this->sleep(30 * Time::DAY);
+                yield Wofkflow::sleep(30 * Time::DAY);
                 yield $this->activities->chargeMonthlyFee($customerID);
             }       
         }
@@ -591,7 +606,7 @@ class ServiceUsageWorkflow extends Workflow
     {
         try {
             while(true) {            
-                 yield $this->sleep(Time::DAY); 
+                 yield Wofkflow::sleep(Time::DAY); 
                 
                 if ($this->points > 0) {
                     $this->points--;
