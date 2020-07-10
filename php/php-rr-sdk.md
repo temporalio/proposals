@@ -303,7 +303,7 @@ $b = Workflow::executeActivity('b', 'values', B::class, [/* options */]);
 yield Workflow::waitAll($a, $b);
 
 // or 
-yield new WaitAny($a, $b);
+yield Workflow::waitAny($a, $b);
 ```
 
 > More atomic blocks can be added down the road.
@@ -321,7 +321,7 @@ yield $timer;
 
 // alternative
 
-$timer = Workflow::timer(1 * Timer::DAY);
+$timer = Workflow::newTimer(1 * Timer::DAY);
 ```
 
 Blocking:
