@@ -447,7 +447,9 @@ the explicit yield required.
 public function run(string $input): string
 {
     $session = Workflow::newSession([
-        Session::START_TO_FINISH => 300,
+        Session::CREATION  => 100,
+        Session::EXECUTION => 300,
+        Session::HEARTBEAT => 30,
         // ... 
     ]);
     
