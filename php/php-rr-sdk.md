@@ -453,6 +453,8 @@ $logger = $worker->setOpions([
 Workflow::getLogger()->debug(...);
 ```
 
+> Note, default Temporal contexts will be added automatically unless overwritten.
+
 ### Sessions
 Sessions can be created as sub-activity group, using similar approach as `withTimeout` and other methods. However,
 the explicit yield required. 
