@@ -436,7 +436,21 @@ The workflow logging does not differ from any other parts of the application, th
 logs triggered while workflow is replaying. We propose to use mocked PSR-3 logger for this purposes:
 
 ```php
-$logger = Workflow::nonReplyingLogger($parentLogger);
+// TDB
+$logger = $worker->setOpions([
+    'logger' => new Monolog\Logger(),
+    'loggerContext' => function(WorkflowContextInterface $cxt): array { // overwrite
+        return [
+            'workflowID' => $ctx->getID()
+        ];
+    } 
+]);
+```
+
+// Workflow specific non replaying logger
+
+```php
+Workflow::getLogger()->debug(...);
 ```
 
 ### Sessions
