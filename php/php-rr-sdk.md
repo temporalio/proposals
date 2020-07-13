@@ -468,6 +468,32 @@ public function run(string $input): string
 
 > Session API is subject of change. Current version if base draft only. 
 
+### Cancellable Scopes
+Is it possible to define parts of the workflow in a form of cancellable scope:
+
+```php
+public function run(string $input): string
+{
+    $p1 = Workflow::newPromise();
+    $cs1 = Workflow::newCancellationScope(function() use ($p1) {
+        $p1->from(Workflow::executeActivity('a', ...));
+    });
+
+    $p2 = Workflow::newPromise();
+    $cs2 = Workflow::newCancellationScope(function() use ($p2) {
+        $p2->from(Workflow::executeActivity('b', ...));
+    });
+
+    $cs1->run();
+    $cs2->run();
+
+    yield Workflow::waitAny($p1, $p2);
+    
+    $cs1->cancel();
+    $cs2->cancel();    
+}
+```
+
 ### Deterministic Time
 Workflows must avoid calling SPL functions `time()` and `date()`. Context method must be used instead:
 
