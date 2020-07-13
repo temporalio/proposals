@@ -79,7 +79,7 @@ function waitForUser(ActivityContextInterface $ctx, string $userID)
 {
     $this->sendEmailToUser($userID, $ctx->taskToken());
 
-    return $ctx->waitExternalCompletion();
+    return $ctx->donNotCompleteOnReturn();
 }
 ```
 
@@ -184,7 +184,7 @@ class UploadWorkflow
         // blocking operation to get the activity result
         $result = yield $promise;
 
-        return $result->getValue();
+        return $result;
     }
 }
 ```
@@ -312,36 +312,18 @@ yield Workflow::waitAny($a, $b);
 Workflow timers can operate as promise or blocking operation:
 
 ```php
-$timer = new Timer(1 * Timer::DAY);
-
-// or
-$timer = $this->timer(1 * Timer::DAY);
-
-yield $timer;
-
-// alternative
-
 $timer = Workflow::newTimer(1 * Timer::DAY);
-```
-
-Blocking:
-
-```php
-yield $this->timer(1 * Time::DAY)->wait();
-
-// or (direct equivalent)
-yield $this->sleep(1 * Time::DAY);
 ```
 
 Can be combined with Promises:
 
 ```php
 $a = Workflow::executeActivity(...);
-$t = Workflow::timer(1 * Time::MINUTE);
+$t = Workflow::newTimer(1 * Time::MINUTE);
 
 yield Workflow::waitAny($a, $t);
 
-if ($t->isFired()) {
+if ($t->isReady()) {
     // ...
 }
 ```
@@ -435,8 +417,6 @@ public function run(string $input): string
 }
 ```
 
-> Need Temporal authors feedback.
-
 #### Handle Signals
 Incoming signals can be handled during any workflow `yield` call. Workflow should allow to explicitly wait for signal:
 
@@ -456,7 +436,7 @@ The workflow logging does not differ from any other parts of the application, th
 logs triggered while workflow is replaying. We propose to use mocked PSR-3 logger for this purposes:
 
 ```php
-$logger = new NonReplayingLogger(Workflow::ctx(), $parentLogger); // it is possible to omit ::ctx()
+$logger = Workflow::nonReplyingLogger($parentLogger);
 ```
 
 ### Sessions
@@ -466,13 +446,13 @@ the explicit yield required.
 ```php
 public function run(string $input): string
 {
-    $session = new Session([
-        Session::START_TO_FINISH_TIMEOUT => 300,
+    $session = Workflow::newSession([
+        Session::START_TO_FINISH => 300,
         // ... 
     ]);
     
-    $a1 = $session->executeActivity(new ExecuteActivity('activity1'));
-    $a2 = $session->executeActivity(new ExecuteActivity('activity2'));
+    $a1 = $session->executeActivity(Workflow::executeActivity('activity1', ...));
+    $a2 = $session->executeActivity(Workflow::executeActivity('activity2', ...));
     
     $result1 = yield $a1;
     $result2 = yield $a2; 
@@ -483,6 +463,8 @@ public function run(string $input): string
     return $result;
 }
 ```
+
+> Session API is subject of change. Current version if base draft only. 
 
 ### Deterministic Time
 Workflows must avoid calling SPL functions `time()` and `date()`. Context method must be used instead:
@@ -556,6 +538,25 @@ public function run(string $input): string
 ## Examples
 Following examples demonstrates features described above in a more realistic scenarios.
 
+### About Activities Stub
+Stable versions of SDK expected to have the default activity building stub to simplify developer life. While it is not
+totally clear how this stub will look like (until the API finalized) it can be constructed in workflow `__construct`
+method using (no context binding required).
+
+```php
+class SubscriptionWorkflow extends Workflow
+{
+    private ActivitiesInterface $activities;
+
+    public function __construct() 
+    {
+        $this->activities = new ActivityBuilder();    
+    }
+}
+``` 
+
+> The activity stub must be extendable, to allow domain specific building sequences.
+
 ### Simple Subscription Workflow
 ```php
 class SubscriptionWorkflow extends Workflow
@@ -565,11 +566,11 @@ class SubscriptionWorkflow extends Workflow
         yield $this->activities->onboardFreeTrial($customerID);
         
         try {
-            yield Wofkflow::sleep(60 * Time::DAY);
+            yield Wofkflow::newTimer(60 * Time::DAY);
             yield $this->activities->upgradeFromTrialToPaid($customerID);
     
             while(true) {
-                yield Wofkflow::sleep(30 * Time::DAY);
+                yield Wofkflow::newTimer(30 * Time::DAY);
                 yield $this->activities->chargeMonthlyFee($customerID);
             }       
         }
@@ -606,7 +607,7 @@ class ServiceUsageWorkflow extends Workflow
     {
         try {
             while(true) {            
-                 yield Wofkflow::sleep(Time::DAY); 
+                 yield Wofkflow::newTimer(Time::DAY); 
                 
                 if ($this->points > 0) {
                     $this->points--;
