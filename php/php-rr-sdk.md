@@ -451,8 +451,8 @@ public function run(string $input): string
         // ... 
     ]);
     
-    $a1 = $session->executeActivity(Workflow::executeActivity('activity1', ...));
-    $a2 = $session->executeActivity(Workflow::executeActivity('activity2', ...));
+    $a1 = $session->executeActivity($session->executeActivity('activity1', ...));
+    $a2 = $session->executeActivity($session->executeActivity('activity2', ...));
     
     $result1 = yield $a1;
     $result2 = yield $a2; 
@@ -550,7 +550,7 @@ class SubscriptionWorkflow extends Workflow
 
     public function __construct() 
     {
-        $this->activities = new ActivityBuilder();    
+        $this->activities = Workflow::newActivityStub([/* options */]);    
     }
 }
 ``` 
