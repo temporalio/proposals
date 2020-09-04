@@ -22,7 +22,7 @@ If you're struggling to understand what a basic issue proposal will look like, [
 
 | Proposal  | Author | <sub>Last Presented</sub> |
 |-----------|--------|---------------------------|
-|           |        |                           |
+| [PHP SDK](./php/php-rr-sdk.md)   | SpiralScout |  08/01/20            |
 
 ### Accepted proposals (Stage 2)
 
