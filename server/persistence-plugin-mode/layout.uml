@@ -1,0 +1,46 @@
+@startuml
+
+package "business logic layer" {
+    [business logic]
+}
+
+package "persistence layer" {
+    (persistence interface)
+    [persistence test]
+}
+
+package "SQL persistence" {
+    [SQL persistence: common logic]
+    [SQL persistence: MySQL driver]
+    [SQL persistence: Postgres driver]
+    [SQL persistence: test]
+}
+
+package "NoSQL persistence" {
+    [NoSQL persistence: common logic]
+    [NoSQL persistence: Cassandra driver]
+    [NoSQL persistence: test]
+}
+
+database MySQL
+database Postgres
+database Cassandra
+
+[business logic] --> (persistence interface)
+[persistence test] --> (persistence interface)
+
+(persistence interface) --> [SQL persistence: common logic]
+(persistence interface) --> [NoSQL persistence: common logic]
+
+[SQL persistence: test] --> [SQL persistence: common logic]
+[SQL persistence: common logic] --> [SQL persistence: MySQL driver]
+[SQL persistence: common logic] --> [SQL persistence: Postgres driver]
+
+[NoSQL persistence: test] --> [NoSQL persistence: common logic]
+[NoSQL persistence: common logic] --> [NoSQL persistence: Cassandra driver]
+
+[SQL persistence: MySQL driver] --> MySQL
+[SQL persistence: Postgres driver] --> Postgres
+[NoSQL persistence: Cassandra driver] --> Cassandra
+
+@enduml
