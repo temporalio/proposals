@@ -12,7 +12,7 @@ package "persistence layer" {
 package "SQL persistence" {
     [SQL persistence: common logic]
     [SQL persistence: MySQL driver]
-    [SQL persistence: Postgres driver]
+    [SQL persistence: PostgreSQL driver]
     [SQL persistence: test]
 }
 
@@ -23,7 +23,7 @@ package "NoSQL persistence" {
 }
 
 database MySQL
-database Postgres
+database PostgreSQL
 database Cassandra
 
 [business logic] --> (persistence interface)
@@ -34,13 +34,13 @@ database Cassandra
 
 [SQL persistence: test] --> [SQL persistence: common logic]
 [SQL persistence: common logic] --> [SQL persistence: MySQL driver]
-[SQL persistence: common logic] --> [SQL persistence: Postgres driver]
+[SQL persistence: common logic] --> [SQL persistence: PostgreSQL driver]
 
 [NoSQL persistence: test] --> [NoSQL persistence: common logic]
 [NoSQL persistence: common logic] --> [NoSQL persistence: Cassandra driver]
 
 [SQL persistence: MySQL driver] --> MySQL
-[SQL persistence: Postgres driver] --> Postgres
+[SQL persistence: PostgreSQL driver] --> PostgreSQL
 [NoSQL persistence: Cassandra driver] --> Cassandra
 
 @enduml

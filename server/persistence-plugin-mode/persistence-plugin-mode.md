@@ -36,7 +36,7 @@ Definition:
 * SQL persistence: generic SQL style persistence
   * SQL persistence test: SQL specific tests.
   * SQL persistence common logic: common logic which operates on top of SQL persistence drivers.
-  * SQL persistence driver: MySQL; Postgres.
+  * SQL persistence driver: MySQL; PostgreSQL.
 * NoSQL persistence: generic NoSQL style persistence
   * NoSQL persistence test: NoSQL specific tests.
   * NoSQL persistence common logic: common logic which operates on top of NoSQL persistence drivers.
@@ -46,7 +46,7 @@ Definition:
 
 On NoSQL side, Cassandra is the only supported storage and Cassandra storage layer is *not* onboarded to the desired plugin model. Cassandra storage layer is production ready.
 
-On SQL side, MySQL & Postgres storage layer are implemented. MySQL storage layer is production ready. Postgres storage layer is *not* production ready due to lack of proper testing.
+On SQL side, MySQL & PostgreSQL storage layer are implemented. MySQL storage layer is production ready. PostgreSQL storage layer is *not* production ready due to lack of proper testing.
 
 On both sides, existing persistence tests are too generic, and unable to cover necessary test cases.
 
@@ -75,7 +75,7 @@ However, when handling complex cases, developer need to have deep understanding 
 
 Temporal server persistence layer aims to provide high performance storage capabilities, thus manual management of database queries as well as database specific driver logic provides more benefits.
 
-It is worth pointing out that the number of databases to be supported is limited, currently there are 3 supported databases (Cassandra, MySQL and Postgres). Other databases (Cockroach DB, TiDB) usually provides good compatibilities with either Postgres or MySQL.
+It is worth pointing out that the number of databases to be supported is limited, currently there are 3 supported databases (Cassandra, MySQL and PostgreSQL). Other databases (Cockroach DB, TiDB) usually provides good compatibilities with either PostgreSQL or MySQL.
 
 References: famous Golang ORMs:
 
@@ -85,5 +85,5 @@ References: famous Golang ORMs:
 
 References: other databases:
 
-* [Cockroach DB compatibility with Postgres](https://www.cockroachlabs.com/docs/stable/postgresql-compatibility.html)
+* [Cockroach DB compatibility with PostgreSQL](https://www.cockroachlabs.com/docs/stable/postgresql-compatibility.html)
 * [TiDB compatibility with MySQL](https://docs.pingcap.com/tidb/dev/mysql-compatibility)
