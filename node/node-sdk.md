@@ -62,7 +62,7 @@ export async function httpGet(ctx: ActivityContext, url: string) {
       const total = parseFloat(progressEvent.currentTarget.responseHeaders['Content-Length']);
       const current = progressEvent.currentTarget.response.length;
       const progress = Math.floor(current / total * 100);
-      ctx.heatbeat(progress);
+      ctx.heartbeat(progress);
     },
   });
   return response.data;
