@@ -29,7 +29,10 @@ All examples in this proposal are written in TypeScript.
 
 ## Activities
 Activity implementations are just JS functions, they run on the default NodeJS runtime, along with the Temporal SDK, and can import arbitrary npm packages.
-Activity functions may optionally accept an `ActivityContext` as the first parameter.
+
+Activities can get their `ActivityContext` by using `ActivityContext.current()`.
+This is implemented using [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html#async_hooks_class_asynclocalstorage) which was introduced in `nodejs v13.10.0, v12.17.0`.
+(We can support earlier node versions by using the building blocks in [`async_hooks`](https://nodejs.org/api/async_hooks.html)).
 
 ### Examples
 #### Synchronous function
@@ -56,13 +59,13 @@ export async function httpGet(url: string) {
 import { ActivityContext } from 'temporal-sdk';
 import axios from 'axios';
 
-export async function httpGet(ctx: ActivityContext, url: string) {
+export async function httpGet(url: string) {
   const response = await axios.get(url, {
     onDownloadProgress: (progressEvent) => {
       const total = parseFloat(progressEvent.currentTarget.responseHeaders['Content-Length']);
       const current = progressEvent.currentTarget.response.length;
       const progress = Math.floor(current / total * 100);
-      ctx.heartbeat(progress);
+      ActivityContext.current().heartbeat(progress);
     },
   });
   return response.data;
@@ -73,7 +76,7 @@ export async function httpGet(ctx: ActivityContext, url: string) {
 Activities should be registered in their corresponding workers.
 
 ```typescript
-worker.registerActivity('httpGet', httpGet, { passContext: true });
+worker.registerActivity('httpGet', httpGet);
 ```
 
 ### Payloads
