@@ -80,9 +80,7 @@ worker.registerActivity('httpGet', httpGet);
 ```
 
 ### Payloads
-Initially we'll support any JSON serializable object as payload, binary data support can be added if required.
-
-TBD: consider supporting [typed arrays][typed-arrays].
+We support the `DataConverter` interface as in [Java][java-data-converter].
 
 ## Workflows
 Worflow code looks like vanilla TypeScript.
@@ -142,9 +140,9 @@ async function main() {
 
 ### Limitations
 * The [NodeJS API][nodejs-api] is not available in workflow code as it breaks determinism.
-* Only ES modules can be imported out of the box with V8 isolates, npm uses the CommonJS module implementation.
-    * There are workarounds for this issue - solution TBD.
-    * We might need to implement CommonJS module support: https://nodejs.org/api/modules.html#modules_all_together
+* Only ES modules can be imported out of the box with V8 isolates while most npm package use the CommonJS module implementation.
+    * We can bypass this by implementing `CommonJS` `require` ([reference](https://nodejs.org/api/modules.html#modules_all_together)).
+    * 3rd party imported modules may contain async / await keywords - this can be overcome by transpiling each required file at runtime.
 * Submitted workflow code must not use async / await syntax.
     Using async / await bypasses the injected Promise object in the workflow context and hinders our ability to gain full control over scheduling.
     To get around this we recommend setting the `tsconfig.json` target to `<=es6` which transforms all async await calls into generators and Promises.
@@ -161,7 +159,8 @@ TBD
 TBD
 
 ### Logging
-Logging from the workflow can be implemented with `console.log`.
+Logging from the workflow can be implemented by injecting a custom `console.log` function.
+
 TBD log format and context
 
 ### Sessions
@@ -174,12 +173,76 @@ In a worflow isolate, all date and time methods, e.g `new Date()` and `Date.now`
 In workflows, errors are handled by catching exceptions and `Promise.catch` handlers.
 
 ### Cancellation
-In a workflow, it's possible to handle an activity cancallation by catching a `CancellationError`.
-Activities cannot be cancelled at the moment.
+In a workflow, handle activity cancallation by catching a `CancellationError` or cancel activities using a `CancellationScope`.
+
+#### Example
+```typescript
+export async function main(urls: string[]) {
+  const scope = new CancellationScope();
+
+  const promises = urls.map((url) => activities.httpGet.withOptions({ scope }).run(url));
+
+  const result = await Promise.race(promises);
+  scope.cancel();
+
+  for (const promise of promises) {
+    try {
+      await promise;
+    } catch (err) {
+      if (!(err instanceof CancellationError)) {
+        throw err;
+      }
+    }
+  }
+}
+```
+
+#### Or with `CancellationScope.run()`
+```typescript
+export async function main(urls: string[]) {
+  let promises: Array<Promise<string>>;
+  const scope = CancellationScope.run(() => {
+    promises = urls.map(activities.httpGet);
+  });
+  // Continue like above
+}
+```
+
+On the activities side we want to use async functions which means activity authors will have to manually handle cancellation.
+The `ActivityContext` exposes 2 ways of subscribing to cancellations.
+
+1. A `cancelled` (Promise) property which can be awaited.
+  ```typescript
+  async function httpGetJson(url: string) {
+    try {
+      const request = await Promise.all(ActivityContext.current().cancelled, nonCancellableRequest(url));
+    } catch (err) {
+      if (err instanceof CancellationError) {
+        // cleanup
+      } 
+      throw err;
+    }
+    return request.json();
+  }
+  ```
+1. A `cancellationSignal`([`AbortController signal`][abort-controller-signal]) which can be used i.e with `fetch`.
+  ```typescript
+  async function httpGetJson(url: string) {
+    const request = await fetch(url, { signal: ActivityContext.current().cancellationSignal });
+    return request.json();
+  }
+  ```
 
 ### Long Histories
-The size of a workflow history is limited, in the other SDKs there's a workaround by using `ContinueAsNew`.
-We might be able to leverage [V8 heap snapshots][v8-heap-snaphots] (more research required).
+The size of a workflow history is limited, we will workaround this like in the other SDKs by using `ContinueAsNew`.
+
+```typescript
+export async function main(x: int) {
+  console.log(`Iteration: ${x}`);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  return ContinueAsNew(x + 1);
+}
+```
 
 [mdn-weakmap]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap
 [mdn-weakset]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet
@@ -188,3 +251,5 @@ We might be able to leverage [V8 heap snapshots][v8-heap-snaphots] (more researc
 [typed-arrays]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray
 [v8-isolate]: https://v8docs.nodesource.com/node-0.8/d5/dda/classv8_1_1_isolate.html
 [v8-heap-snaphots]: https://v8.dev/blog/custom-startup-snapshots
+[java-data-converter]: https://github.com/temporalio/sdk-java/tree/master/temporal-sdk/src/main/java/io/temporal/common/converter
+[abort-controller-signal]: https://developer.mozilla.org/en-US/docs/Web/API/AbortController/signal
