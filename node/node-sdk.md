@@ -153,10 +153,45 @@ async function main() {
     `WeakRef`, `WeakMap` and `WeakSet` are all deleted from the global scope.
 
 ### Signals
-TBD
+Workflows can provide signal hooks by exporting a `signals` object.
+
+```typescript
+const scope = new CancellationScope();
+
+export const signals = {
+  abandon(reason: string) {
+    console.log('Abandon requested, reason:', reason);
+    scope.cancel();
+  }
+}
+
+export async function main() {
+  // ...
+}
+```
 
 ### Queries
-TBD
+Workflows can provide query hooks by exporting a `queries` object.
+
+```typescript
+let step = 0;
+const state = {
+  a: 1,
+  b: 2,
+};
+
+export const queries = {
+  step: () => step,
+  state: (key) => state[key],
+}
+
+export async function main() {
+  // ...
+  ++step;
+  state.b = 3;
+  // ...
+}
+```
 
 ### Logging
 Logging from the workflow can be implemented by injecting a custom `console.log` function.
