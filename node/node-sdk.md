@@ -7,14 +7,18 @@ The SDK steers developers to write their workflows and activities in TypeScript 
 All examples in this proposal are written in TypeScript.
 
 ## Table Of Contents
+- [Project Structure](#project-structure)
+    - [References](#references)
 - [Activities](#activities)
-    - [Examples](#examples)
+    - [Interfaces](#interfaces)
+    - [Implementations](#implementations)
+    - [Example](#example)
+    - [ActivityContext](#activitycontext)
     - [Registration](#registration)
     - [Payloads](#payloads)
 - [Workflows](#workflows)
-    - [Example](#example)
+    - [Example](#example-1)
     - [Activity Options](#activity-options)
-    - [Activity Type Declarations](#activity-type-declarations)
     - [Registration](#registration-1)
     - [Limitations](#limitations)
     - [Signals](#signals)
@@ -27,48 +31,87 @@ All examples in this proposal are written in TypeScript.
     - [Long Histories](#long-histories)
 
 
+## Project Structure
+A typical project consists of 4 sub-projects with typescript [project references][ts-project-references].
+
+```
+src -> worker code
+activities/src -> activities implementations
+workflows/src -> workflows implementations
+interfaces/src -> shared types for use in workflow and activity code
+```
+
+The reason for this separation is to enable workflows - which run in an [isolated environment](#workflows) - to specify a custom `tsconfig.json` and dependencies than the rest of the project.
+
+Since the project skeleton is complex we'll provide an initializer package to be used with [npm init][npm-init].
+
+### References
+- `.` references `activities`, `workflows`,  and `interfaces`.
+- `workflows` references `interfaces`.
+- `activities` references `interfaces`.
+
+This helps ensure that we don't mix isolated workflow code with activity code.
+Each of the referenced projects can be imported using [typescript path aliases][tsconfig-paths].
+
+The following aliases are included in the initializer package:
+- `@activities`
+- `@workflows`
+- `@interfaces`
+
 ## Activities
-Activity implementations are just JS functions, they run on the default NodeJS runtime, along with the Temporal SDK, and can import arbitrary npm packages.
+
+### Interfaces
+To help users of your activities, it is recommended to define the activity interfaces in the `interfaces` sub-project.
+
+```typescript
+// interfaces/src/activities.ts
+
+export interface GreeterService {
+  greet(name: string): Promise<string>;
+}
+```
+
+### Implementations
+Activity implementations are just JS objects and functions, they run on the default NodeJS runtime, along with the Temporal SDK, and can import arbitrary npm packages.
+
+### Example
+```typescript
+// activities/src/greeter.ts
+
+import { GreeterService } from '@interfaces/activities';
+
+export const greeter: GreeterService = {
+  async greet(name: string) {
+    return `Hello, ${name}!`;
+  }
+}
+```
+
+### `ActivityContext`
 
 Activities can get their `ActivityContext` by using `ActivityContext.current()`.
 This is implemented using [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html#async_hooks_class_asynclocalstorage) which was introduced in `nodejs v13.10.0, v12.17.0`.
 (We can support earlier node versions by using the building blocks in [`async_hooks`](https://nodejs.org/api/async_hooks.html)).
 
-### Examples
-#### Synchronous function
 ```typescript
-import crypto from 'crypto';
+// activities/src/http.ts
 
-export function sha256(txt: string) {
-  return crypto.createHash('sha256').update(txt).digest('hex');
-}
-```
-
-#### Asynchronous function
-```typescript
-import axios from 'axios';
-
-export async function httpGet(url: string) {
-  const response = await axios.get(url);
-  return response.data;
-}
-```
-
-#### With `ActivityContext`
-```typescript
+import { HTTPService } from '@interfaces/activities'; // Definition omitted for brevity
 import { ActivityContext } from 'temporal-sdk';
 import axios from 'axios';
 
-export async function httpGet(url: string) {
-  const response = await axios.get(url, {
-    onDownloadProgress: (progressEvent) => {
-      const total = parseFloat(progressEvent.currentTarget.responseHeaders['Content-Length']);
-      const current = progressEvent.currentTarget.response.length;
-      const progress = Math.floor(current / total * 100);
-      ActivityContext.current().heartbeat(progress);
-    },
-  });
-  return response.data;
+export const http: HTTPService = {
+  async httpGet(url: string) {
+    const response = await axios.get(url, {
+      onDownloadProgress: (progressEvent) => {
+        const total = parseFloat(progressEvent.currentTarget.responseHeaders['Content-Length']);
+        const current = progressEvent.currentTarget.response.length;
+        const progress = Math.floor(current / total * 100);
+        ActivityContext.current().heartbeat(progress);
+      },
+    });
+    return response.data;
+  }
 }
 ```
 
@@ -76,29 +119,38 @@ export async function httpGet(url: string) {
 Activities should be registered in their corresponding workers.
 
 ```typescript
-worker.registerActivity('httpGet', httpGet);
+import { greeter } from '@activities/greeter'; 
+
+worker.registerActivities('GreeterService', greeter);
 ```
 
 ### Payloads
 We support the `DataConverter` interface as in [Java][java-data-converter].
 
 ## Workflows
-Worflow code looks like vanilla TypeScript.
+Workflow code looks like vanilla TypeScript.
 Workflows run in the same NodeJS process as the Temporal SDK and the activities.
 Workflow code must export a `main` function which will be used as the handler method for workflow invocations.
-
-TODO: signal and query handlers.
 
 Each workflow instance runs in a separate [V8 isolate][v8-isolate], which means it has a completely isolated execution context including global variables.
 The Temporal SDK injects and removes references from the global object to ensure that code running in the isolate is fully deterministic.
 
-Activities are invoked by calling `activities.$activityName` as a method or with options (see below).
+Activities can be referenced by using `Workflow.newActivityStub` and invoked as a method or with options (see below).
 
 ### Example
 ```typescript
-export async function main(x: number, y: number) {
-  const msToSleep = await activities.httpGet(`https://calculator.com/add?x=${x}&y={y}`);
-  await new Promise((resolve) => setTimeout(resolve, msToSleep * Math.random()));
+import ms from 'ms';
+import { Workflow } from '@temporal-sdk/workflow';
+import { GreeterService } from '@interfaces/activities';
+
+const greeter = Workflow.newActivityStub<GreeterService>('GreeterService', {
+  startToCloseTimeoutMillis: ms('1 hour'),
+});
+
+export async function main(name: string) {
+  const greeting = await greeter.greet(name);
+  await new Promise((resolve) => setTimeout(resolve, Math.random()));
+  console.log(greeting);
 }
 ```
 
@@ -106,27 +158,13 @@ export async function main(x: number, y: number) {
 Activity options are passed in using the `withOptions` method.
 
 ```typescript
-export async function main() {
-  const body = await activities.httpGet.withOptions({ retries: 3 }).invoke('http://example.com');
+export async function main(name: string) {
+  const greeting = await greeter.greet.withOptions({ retries: 3 }).invoke(name);
+  // Or
+  const greetWith3Retries = greeter.greet.withOptions({ retries: 3 });
+  const greeting = await greetWith3Retries(name);
+
   console.log(body);
-}
-```
-
-### Activity Type Declarations
-To define type declarations for your workflow's activities, add each activity to your `global.d.ts`.
-```typescript
-/// <reference types="@temporal-sdk/workflow-global" />
-
-import * as declarations from '../../activities';
-
-declare global {
-  namespace activities {
-    // Use the signature of an activity function
-    export var httpGet: Activity<typeof declarations.httpGet>;
-    // In case you can't import you function definition (implmented in another language or simply unavailable in this context),
-    // define the signature manually
-    export var add: Activity<Fn<[number, number], number>>;
-  }
 }
 ```
 
@@ -269,16 +307,19 @@ The `ActivityContext` exposes 2 ways of subscribing to cancellations.
   ```
 
 ### Long Histories
-The size of a workflow history is limited, we will workaround this like in the other SDKs by using `ContinueAsNew`.
+The size of a workflow execution' history is limited, we will workaround this like in the other SDKs by using `ContinueAsNew`.
 
 ```typescript
 export async function main(x: int) {
   console.log(`Iteration: ${x}`);
   await new Promise((resolve) => setTimeout(resolve, 100));
-  return ContinueAsNew(x + 1);
+  return Workflow.ContinueAsNew(x + 1);
 }
 ```
 
+[ts-project-references]: https://www.typescriptlang.org/tsconfig#references
+[npm-init]: https://docs.npmjs.com/cli/v6/commands/npm-init
+[tsconfig-paths]: https://www.typescriptlang.org/tsconfig#paths
 [mdn-weakmap]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap
 [mdn-weakset]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet
 [v8-weakref]: https://v8.dev/blog/v8-release-84#javascript
