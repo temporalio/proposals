@@ -1,0 +1,5 @@
+- [ ] Worker API
+- [ ] WorkflowClient API
+- [ ] ChildWorkflow API
+- [ ] `@temporal-sdk/workflow` `Context` interface
+- [ ] `@temporal-sdk/activity` `Context` API
