@@ -368,7 +368,7 @@ A typical project consists of 4 sub-projects with typescript [project references
 
 ```
 worker/ -> worker code
-intefaces/ -> intefaces (mostly for workflows)
+interfaces/ -> interfaces (mostly for workflows)
 workflows/ -> workflows implementations
 activities/ -> activities implementations
 ```
@@ -383,7 +383,7 @@ Since the project skeleton is complex we'll provide an initializer package to be
 Each of the referenced projects can be imported using [typescript path aliases][tsconfig-paths].
 
 The following aliases are included in the initializer package:
-- `@intefaces`
+- `@interfaces`
 - `@workflows`
 - `@activities`
 
