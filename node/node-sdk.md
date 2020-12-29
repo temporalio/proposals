@@ -6,12 +6,63 @@ we can create a JS runtime that's completely deterministic.
 The SDK steers developers to write their workflows and activities in TypeScript but vanilla JS is also supported.
 All examples in this proposal are written in TypeScript.
 
+## Minimal Example
+#### `activities/greeter.ts`
+```ts
+export async function greet(name: string) {
+  return `Hello, ${name}!`;
+}
+```
+
+#### `interfaces/workflows.ts`
+```ts
+import { Workflow } from '@temporal-sdk/interfaces';
+
+export interface Example extends Workflow {
+  greet(name: string): Promise<void>;
+}
+```
+
+#### `workflows/example.ts`
+```ts
+import { Example } from '@interfaces/workflows';
+import { greet } from '@activities/greeter';
+
+async function main(name: string): Promise<void> {
+  const greeting = await greet(name);
+  console.log(greeting);
+}
+export const workflow: Example = { main };
+```
+
+#### `worker/index.ts`
+```ts
+import { Worker } from '@temporal-sdk/worker';
+
+(async () => {
+  const worker = new Worker();
+  await worker.run();
+})();
+```
+
+### Workflow Invocation
+#### `test.ts`
+```ts
+import { Example } from '@interfaces/workflows';
+import { WorkflowClient } from '@temporal-sdk/workflow-client';
+
+(async () => {
+  const example = new WorkflowClient<Example>();
+  await example("Temporal");
+})();
+```
+
 ## Table Of Contents
 <!-- vim-markdown-toc GFM -->
 
 * [Activities](#activities)
   * [Example](#example)
-  * [`ActivityContext`](#activitycontext)
+  * [activity `Context`](#activity-context)
   * [Registration](#registration)
   * [Payloads](#payloads)
 * [Workflows](#workflows)
@@ -22,6 +73,7 @@ All examples in this proposal are written in TypeScript.
       * [Global Activity Configuration](#global-activity-configuration)
       * [Per activity override](#per-activity-override)
       * [Activites with no type definitions](#activites-with-no-type-definitions)
+    * [`ActivityOptions`](#activityoptions)
   * [Signals](#signals)
   * [Queries](#queries)
   * [Limitations](#limitations)
@@ -29,8 +81,20 @@ All examples in this proposal are written in TypeScript.
   * [Sessions](#sessions)
   * [Deterministic Time and Random](#deterministic-time-and-random)
   * [Error Handling](#error-handling)
-  * [Cancellation](#cancellation)
+  * [Worker](#worker)
+    * [`constructor(queue: string, options?: WorkerOptions)`](#constructorqueue-string-options-workeroptions)
+    * [`registerWorkflows(nameToPath: Record<string, string>): Promise<void>`](#registerworkflowsnametopath-recordstring-string-promisevoid)
+    * [`registerActivities(importPathToImplementation: Record<string, Record<string, Function>>): Promise<void>`](#registeractivitiesimportpathtoimplementation-recordstring-recordstring-function-promisevoid)
+    * [`run(): Promise<never>`](#run-promisenever)
+    * [`suspendPolling(): Promise<void>`](#suspendpolling-promisevoid)
+    * [`resumePolling(): Promise<void>`](#resumepolling-promisevoid)
+    * [`isSuspended(): boolean`](#issuspended-boolean)
+    * [`options: Readonly<WorkerOptions>`](#options-readonlyworkeroptions)
+  * [WorkflowClient](#workflowclient)
     * [Example](#example-1)
+  * [ChildWorkflow](#childworkflow)
+  * [Cancellation](#cancellation)
+    * [Example](#example-2)
     * [`CancellationScope.run()`](#cancellationscoperun)
   * [Long Histories](#long-histories)
 * [Project Structure](#project-structure)
@@ -51,9 +115,9 @@ export async function greet(name: string) {
 }
 ```
 
-### `ActivityContext`
+### activity `Context`
 
-Activities can get their `ActivityContext` by using `ActivityContext.current()`.
+Activities can get their `Context` by using `Context.current()`.
 
 This is implemented using [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html#async_hooks_class_asynclocalstorage) which was introduced in `nodejs v13.10.0, v12.17.0`.
 (We can support earlier node versions by using the building blocks in [`async_hooks`](https://nodejs.org/api/async_hooks.html)).
@@ -61,7 +125,7 @@ This is implemented using [`AsyncLocalStorage`](https://nodejs.org/api/async_hoo
 ```ts
 // activities/http.ts
 
-import { ActivityContext } from 'temporal-sdk';
+import { Context } from '@temporal-sdk/activity';
 import axios from 'axios';
 
 export async httpGet(url: string): Promise<string> {
@@ -70,7 +134,7 @@ export async httpGet(url: string): Promise<string> {
       const total = parseFloat(progressEvent.currentTarget.responseHeaders['Content-Length']);
       const current = progressEvent.currentTarget.response.length;
       const progress = Math.floor(current / total * 100);
-      ActivityContext.current().heartbeat(progress);
+      Context.current().heartbeat(progress);
     },
   });
   return response.data;
@@ -83,7 +147,7 @@ Activities are automatically registered by path when using the project initializ
 If for any reason you need custom registration, you may do so using `worker.registerActivities`:
 
 ```ts
-// worker/run.ts
+// worker/index.ts
 import * as impl from './implementation/greeter'; // Non-standard path
 
 worker.registerActivities({ '@activities/greeter': impl });
@@ -112,11 +176,11 @@ It is considered good practice to declare an interface for each workflow.
 
 ```ts
 // interfaces/workflows.ts
-import { WorkflowReturnType, WorkflowForClient } from '@temporal-sdk/interfaces';
+import { WorkflowForClient } from '@temporal-sdk/interfaces';
 
 // This interface will need to be implemented
 export interface Example {
-  main(name: string): WorkflowReturnType;
+  main(name: string): Promise<void>;
   // more on these later
   signals: {
     abandon(reason: string): void; // or Promise<void>; 
@@ -169,13 +233,14 @@ export const workflow: Example = { main };
 ```
 
 #### Activity Options
-Activity options can be provided as global configuration on workflow registration and customized per activity function.
+Activity options can be provided as global configuration on worker creation and customized per activity function.
 
 ##### Global Activity Configuration
 ```ts
-// worker/run.ts
-worker.registerWorkflows({ example }, {
-  activityDefaults: {
+// worker/index.ts
+
+new Worker({
+  activityDefaults: { // ActivityOptions
     type: 'local',
     startToCloseTimeout: '5 minutes',
   },
@@ -190,8 +255,9 @@ import { Context } from '@temporal-sdk/workflow';
 import { Example } from '@interfaces/workflows';
 import { greet } from '@activites/greeter';
 
-const greetWithCustomTimeout = Context.configure({ greet }, {
+const greetWithCustomTimeout = Context.configure({ greet }, { // ActivityOptions
   type: 'remote', // 'local' is also valid
+  taskQueue: 'greeter',
   startToCloseTimeout: '1 hour',
 }); // returns a copy, `greet`'s options are unchanged
 
@@ -207,11 +273,50 @@ export const workflow: Example = { main };
 ```ts
 const Greet = (name: string) => string;
 
-const greet = Context.configure<Greet>('greet', {
+const greet = Context.configure<Greet>('greet', { // ActivityOptions
   type: 'remote', // 'local' is also valid
+  taskQueue: 'greeter',
   startToCloseTimeout: '1 hour',
 });
 ```
+
+#### `ActivityOptions`
+```ts
+// All timeouts and intervals accept ms format strings (see: https://www.npmjs.com/package/ms).
+
+// See: https://www.javadoc.io/doc/io.temporal/temporal-sdk/latest/io/temporal/activity/ActivityOptions.Builder.html
+interface CommonActivityOptions {
+  scheduleToCloseTimeout?: string,
+  startToCloseTimeout?: string,
+  scheduleToStartTimeout?: string,
+  heartbeatTimeout?: string,
+  /**
+   * If not defined, will not retry, otherwise retry with given options
+   */
+  retry?: RetryOptions,
+}
+
+interface LocalActivityOptions extends CommonActivityOptions {
+  type: 'local',
+}
+
+// 
+interface RemoteActivityOptions extends CommonActivityOptions {
+  type: 'remote',
+  taskQueue: string,
+}
+
+// See: https://www.javadoc.io/doc/io.temporal/temporal-sdk/latest/io/temporal/common/RetryOptions.Builder.html
+interface RetryOptions {
+  backoffCoefficient?: number,
+  initialInterval?: string,
+  maximumAttempts?: number,
+  maximumInterval?: string,
+}
+
+type ActivityOptions = RemoteActivityOptions | LocalActivityOptions;
+```
+
 
 ### Signals
 Workflows can register signal hooks by via the exported `workflow`'s `signals` property.
@@ -281,11 +386,115 @@ TBD log format and context
 Not supported at the moment
 
 ### Deterministic Time and Random
-In a worflow isolate, all date and time methods, e.g `new Date()` and `Date.now`, are overridden by the SDK and replaced by deterministic versions.
+In a workflow isolate, all date and time methods, e.g `new Date()` and `Date.now`, are overridden by the SDK and replaced by deterministic versions.
 This is also true for `Math.random()`.
 
 ### Error Handling
 In workflows, errors are handled by catching exceptions and `Promise.catch` handlers.
+
+### Worker
+A worker is needed in order to register and run activities and workflows with the Temporal server.
+
+See [Java SDK](https://www.javadoc.io/static/io.temporal/temporal-sdk/1.0.4/io/temporal/worker/WorkerOptions.Builder.html) for an explanation of the various options.
+```ts
+interface WorkerOptions {
+  activityDefaults: ActivityOptions,
+  activitiesPath?: string, // defaults to '../activities'
+  workflowsPath?: string,  // defaults to '../workflows'
+  autoRegisterActivities?: boolean, // defaults to true
+  autoRegisterWorkflows?: boolean,  // defaults to true
+
+  maxConcurrentActivityExecutionSize?: number, // defaults to 200
+  maxConcurrentLocalActivityExecutionSize?: number, // defaults to 200
+  getMaxConcurrentWorkflowTaskExecutionSize?: number, // defaults to 200
+  getMaxTaskQueueActivitiesPerSecond?: number,
+  getMaxWorkerActivitiesPerSecond?: number,
+  isLocalActivityWorkerOnly?: boolean, // defaults to false
+}
+
+interface WorkflowRegistrationOptions {
+  activityDefaults: ActivityOptions,
+}
+```
+
+#### `constructor(queue: string, options?: WorkerOptions)`
+Create a `Worker` and bind it to `queue`, optionally automatically register workflows and activities.
+
+#### `registerWorkflows(nameToPath: Record<string, string>): Promise<void>`
+Manually register workflows, e.g. for when using a non-standard directory structure.
+
+#### `registerActivities(importPathToImplementation: Record<string, Record<string, Function>>): Promise<void>`
+Manually register activities, e.g. for when using a non-standard directory structure ([example](#registration)).
+
+#### `run(): Promise<never>`
+Start polling, throws on unhandled error.
+
+#### `suspendPolling(): Promise<void>`
+Do not make new poll requests.
+
+#### `resumePolling(): Promise<void>`
+Allow new poll requests.
+
+#### `isSuspended(): boolean`
+
+#### `options: Readonly<WorkerOptions>`
+Getter for the worker's options.
+
+### WorkflowClient
+A workflow client can be used to invoke workflow methods, signals, and queries.
+`WorkflowClient` may not be used from workflows.
+
+```ts
+interface WorkflowClientOptions {
+  // Host of the temporal service
+  host?: string, // defaults to localhost
+  // Port of the temporal service
+  port?: number // defaults to 7233
+  namespace?: string // default TBD
+  identity?: string // defaults to `${process.pid}@${os.hostname()}`
+}
+
+type Promisify<T> = T extends Promise<any> ? T : Promise<T>;
+
+type Asyncify<F extends (...args: any[]) => any> = (...args: Parameters<F>) => Promisify<ReturnType<F>>;
+
+type WorkflowClient<T extends Workflow> = {
+  new (options?: WorkflowClientOptions): WorkflowClient<T>,
+  (...args: Parameters<T['main']>): Promisify<ReturnType<T['main']>>,
+  signal: T['signals'] extends Record<string, WorkflowSignalType> ? {
+      [P in keyof T['signals']]: Asyncify<T['signals'][P]>
+  } : undefined,
+  query: T['queries'] extends Record<string, WorkflowQueryType> ? {
+      [P in keyof T['queries']]: Asyncify<T['queries'][P]>
+  } : undefined,
+}
+```
+
+#### Example
+```ts
+const example = new WorkflowClient<Example>();
+await example(process.env.USER); // Call workflow main
+await example.signal.abort();
+const state = await example.query.state("a");
+```
+
+### ChildWorkflow
+`ChildWorkflow` is used for calling workflow from other workflows.
+It is similar to `WorkflowClient` but it cannot call queries, only main and signals.
+
+```ts
+import { Context } from '@temporal-sdk/workflow';
+
+interface Add {
+  main(a: number, b: number): number;
+}
+const add = Context.child<Add>();
+
+async function main() {
+  const res = await add(1, 1);
+  console.log(res);
+}
+```
 
 ### Cancellation
 In a workflow, handle activity cancallation by catching a `CancellationError` or cancel activities using a `CancellationScope`.
@@ -295,7 +504,7 @@ In a workflow, handle activity cancallation by catching a `CancellationError` or
 // workflow/example.ts
 async function main(urls: string[]) {
   const scope = new CancellationScope();
-  const cancelableHttpGet = Context.activity(httpGet, { scope });
+  const cancelableHttpGet = Context.configure(httpGet, { scope });
 
   const promises = urls.map((url) => cancelableHttpGet(url);
 
@@ -333,7 +542,7 @@ The `ActivityContext` exposes 2 ways of subscribing to cancellations.
   ```ts
   async function httpGetJson(url: string) {
     try {
-      const request = await Promise.all(ActivityContext.current().cancelled, nonCancellableRequest(url));
+      const request = await Promise.all(Context.current().cancelled, nonCancellableRequest(url));
     } catch (err) {
       if (err instanceof CancellationError) {
         // cleanup
@@ -346,20 +555,20 @@ The `ActivityContext` exposes 2 ways of subscribing to cancellations.
 1. A `cancellationSignal`([`AbortController signal`][abort-controller-signal]) which can be used i.e with `fetch`.
   ```ts
   async function httpGetJson(url: string) {
-    const request = await fetch(url, { signal: ActivityContext.current().cancellationSignal });
+    const request = await fetch(url, { signal: Context.current().cancellationSignal });
     return request.json();
   }
   ```
 
 ### Long Histories
-The size of a workflow execution's history is limited, we workaround this like in the other SDKs by using `ContinueAsNew`.
+The size of a workflow execution's history is limited, we workaround this like in the other SDKs by using `continueAsNew`.
 
 ```ts
 // workflows/tail-recursion.ts
 async function main(x: int) {
   console.log(`Iteration: ${x}`);
   await new Promise((resolve) => setTimeout(resolve, 100));
-  return Context.ContinueAsNew(x + 1);
+  return Context.continueAsNew(x + 1);
 }
 ```
 
