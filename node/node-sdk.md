@@ -19,7 +19,7 @@ export async function greet(name: string) {
 import { Workflow } from '@temporal-sdk/interfaces';
 
 export interface Example extends Workflow {
-  greet(name: string): Promise<void>;
+  main(name: string): Promise<void>;
 }
 ```
 
