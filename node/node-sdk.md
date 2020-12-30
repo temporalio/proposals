@@ -167,7 +167,7 @@ The Temporal SDK injects and removes references from the global object to ensure
 ### Interface
 A workflow's interface is used for validating the implementation and generating a type safe `WorkflowClient` and `ChildWorkflow`.
 
-Workflow interfaces are inteded for the implementation and are written in sync or async form
+Workflow interfaces are intended for the implementation and are written in sync or async form
 meaning a method could return `number` or it could return `Promise<number>` or their union.
 We provide a `WorkflowForClient` type which transforms the interface to an async only interface for `WorkflowClient` and `ChildWorkflow`.
 
