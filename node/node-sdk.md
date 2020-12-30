@@ -502,6 +502,8 @@ In a workflow, handle activity cancallation by catching a `CancellationError` or
 #### Example
 ```ts
 // workflow/example.ts
+import { httpGet } from '@activities/http';
+
 async function main(urls: string[]) {
   const scope = new CancellationScope();
   const cancelableHttpGet = Context.configure(httpGet, { scope });
@@ -526,6 +528,8 @@ async function main(urls: string[]) {
 #### `CancellationScope.run()`
 ```ts
 // workflow/example.ts
+import { httpGet } from '@activities/http';
+
 async function main(urls: string[]) {
   let promises: Array<Promise<string>>;
   const scope = CancellationScope.run(() => {
