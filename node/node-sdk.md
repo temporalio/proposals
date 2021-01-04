@@ -40,8 +40,10 @@ export const workflow: Example = { main };
 import { Worker } from '@temporal-sdk/worker';
 
 (async () => {
-  const worker = new Worker();
-  await worker.run();
+  // Automatically locate and register activities and workflows
+  const worker = new Worker(__dirname);
+  // Bind to the `example` queue and start accepting tasks
+  await worker.run('example');
 })();
 ```
 
@@ -82,14 +84,6 @@ import { WorkflowClient } from '@temporal-sdk/workflow-client';
   * [Deterministic Time and Random](#deterministic-time-and-random)
   * [Error Handling](#error-handling)
   * [Worker](#worker)
-    * [`constructor(queue: string, options?: WorkerOptions)`](#constructorqueue-string-options-workeroptions)
-    * [`registerWorkflows(nameToPath: Record<string, string>): Promise<void>`](#registerworkflowsnametopath-recordstring-string-promisevoid)
-    * [`registerActivities(importPathToImplementation: Record<string, Record<string, Function>>): Promise<void>`](#registeractivitiesimportpathtoimplementation-recordstring-recordstring-function-promisevoid)
-    * [`run(): Promise<never>`](#run-promisenever)
-    * [`suspendPolling(): Promise<void>`](#suspendpolling-promisevoid)
-    * [`resumePolling(): Promise<void>`](#resumepolling-promisevoid)
-    * [`isSuspended(): boolean`](#issuspended-boolean)
-    * [`options: Readonly<WorkerOptions>`](#options-readonlyworkeroptions)
   * [WorkflowClient](#workflowclient)
     * [Example](#example-1)
   * [ChildWorkflow](#childworkflow)
@@ -119,9 +113,6 @@ export async function greet(name: string) {
 
 Activities can get their `Context` by using `Context.current()`.
 
-This is implemented using [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html#async_hooks_class_asynclocalstorage) which was introduced in `nodejs v13.10.0, v12.17.0`.
-(We can support earlier node versions by using the building blocks in [`async_hooks`](https://nodejs.org/api/async_hooks.html)).
-
 ```ts
 // activities/http.ts
 
@@ -141,16 +132,21 @@ export async httpGet(url: string): Promise<string> {
 }
 ```
 
+* This is implemented using [`AsyncLocalStorage`](https://nodejs.org/api/async_hooks.html#async_hooks_class_asynclocalstorage) which was introduced in `nodejs v13.10.0, v12.17.0`.
+  (We can support earlier node versions by using the building blocks in [`async_hooks`](https://nodejs.org/api/async_hooks.html)).
+
 ### Registration
 Activities are automatically registered by path when using the project initializer.
 
+When you import a module from workflow code, the runtime will check if there's a registered activities implementation with the import specifier an return a stubs in place of all exported activity functions.
 If for any reason you need custom registration, you may do so using `worker.registerActivities`:
 
 ```ts
 // worker/index.ts
-import * as impl from './implementation/greeter'; // Non-standard path
+import * as greeter from './implementation/greeter'; // Non-standard path
+import * as custom from '/path/to/custom-activities';
 
-worker.registerActivities({ '@activities/greeter': impl });
+worker.registerActivities({ '@activities/greeter': greeter, 'custom-activities': custom });
 ```
 
 ### Payloads
@@ -167,19 +163,18 @@ The Temporal SDK injects and removes references from the global object to ensure
 ### Interface
 A workflow's interface is used for validating the implementation and generating a type safe `WorkflowClient` and `ChildWorkflow`.
 
-Workflow interfaces are intended for the implementation and are written in sync or async form
+Workflow interfaces are directly referenced by their implementation and maybe be written in sync or async form
 meaning a method could return `number` or it could return `Promise<number>` or their union.
-We provide a `WorkflowForClient` type which transforms the interface to an async only interface for `WorkflowClient` and `ChildWorkflow`.
 
 Workflow interface declarations are optional, they're only required for generating type safe clients.
 It is considered good practice to declare an interface for each workflow.
 
 ```ts
 // interfaces/workflows.ts
-import { WorkflowForClient } from '@temporal-sdk/interfaces';
+import { Workflow } from '@temporal-sdk/interfaces';
 
 // This interface will need to be implemented
-export interface Example {
+export interface Example extends Workflow {
   main(name: string): Promise<void>;
   // more on these later
   signals: {
@@ -190,14 +185,10 @@ export interface Example {
     state(key: string): unknown;
   };
 }
-
-// Optionally export the client interface too
-export type GreeterClient = WorkflowClient<Example>;
 ```
 
 ### Implementation
-The workflow implementation is limited to using deterministic code only.
-A workflow file must export a `workflow` object which can be type checked using a pre-defined inteface.
+A workflow implmentation module must export a `workflow` object which can be type checked using a pre-defined inteface.
 
 ```ts
 // workflows/example.ts
@@ -239,7 +230,7 @@ Activity options can be provided as global configuration on worker creation and 
 ```ts
 // worker/index.ts
 
-new Worker({
+new Worker(__dirname, {
   activityDefaults: { // ActivityOptions
     type: 'local',
     startToCloseTimeout: '5 minutes',
@@ -271,7 +262,7 @@ export const workflow: Example = { main };
 
 ##### Activites with no type definitions
 ```ts
-const Greet = (name: string) => string;
+const Greet = (name: string) => Promise<string>;
 
 const greet = Context.configure<Greet>('greet', { // ActivityOptions
   type: 'remote', // 'local' is also valid
@@ -339,7 +330,7 @@ export const workflow: Example = { main, signals };
 ```
 
 ### Queries
-Workflows can register signal hooks by via the exported `workflow`'s `queries` property.
+Workflows can register query hooks by via the exported `workflow`'s `queries` property.
 
 ```ts
 let step = 0;
@@ -360,18 +351,13 @@ async function main() {
   // ...
 }
 
-export const workflow: Example = { main, signals };
+export const workflow: Example = { main, queries };
 ```
 
 ### Limitations
-* The [NodeJS API][nodejs-api] is not available in workflow code as it breaks determinism.
+* The [NodeJS API][nodejs-api] is not available in workflow code as it might break determinism.
 * Only ES modules can be imported out of the box with V8 isolates while most npm package use the CommonJS module implementation.
     * We can bypass this by implementing `CommonJS` `require` ([reference](https://nodejs.org/api/modules.html#modules_all_together)).
-    * 3rd party imported modules may contain async / await keywords - this can be overcome by transpiling each required file at runtime.
-* Submitted workflow code must not use async / await syntax.
-    Using async / await bypasses the injected Promise object in the workflow context and hinders our ability to gain full control over scheduling.
-    To get around this we recommend setting the `tsconfig.json` target to `<=es6` which transforms all async await calls into generators and Promises.
-    Other solutions include using babel [transform regenerator](https://babeljs.io/docs/en/babel-plugin-transform-regenerator) for e.g. when using vanilla JS.
 * `es2015.collection` library should be excluded from `tsconfig.json` because it exports [`WeakMap`][mdn-weakmap] and [`WeakSet`][mdn-weakset].
     Weak references are non-deterministic since we can't programatically control the V8 garbage collector.
     [`WeakRef`][v8-weakref] (`v8 >= 8.4` -> `nodejs >= 14.6.0`) suffers from the same issue and should be avoided.
@@ -392,13 +378,15 @@ This is also true for `Math.random()`.
 ### Error Handling
 In workflows, errors are handled by catching exceptions and `Promise.catch` handlers.
 
+`Error`s thrown in activities are serialized. Error types are lost in that process unless the thrown error is defined in the shared `interfaces` package.
+
 ### Worker
 A worker is needed in order to register and run activities and workflows with the Temporal server.
 
 See [Java SDK](https://www.javadoc.io/static/io.temporal/temporal-sdk/1.0.4/io/temporal/worker/WorkerOptions.Builder.html) for an explanation of the various options.
 ```ts
 interface WorkerOptions {
-  activityDefaults: ActivityOptions,
+  activityDefaults?: ActivityOptions,
   activitiesPath?: string, // defaults to '../activities'
   workflowsPath?: string,  // defaults to '../workflows'
   autoRegisterActivities?: boolean, // defaults to true
@@ -415,30 +403,45 @@ interface WorkerOptions {
 interface WorkflowRegistrationOptions {
   activityDefaults: ActivityOptions,
 }
+
+interface Worker(
+  /**
+   * Create a new `Worker`, `pwd` is used to resolve relative paths for locating and importing activities and workflows.
+   */
+  new (pwd: string, options?: WorkerOptions): this
+
+  /**
+   * Manually register workflows, e.g. for when using a non-standard directory structure.
+   */
+  registerWorkflows(nameToPath: Record<string, string>): Promise<void>
+
+  /**
+   * Manually register activities, e.g. for when using a non-standard directory structure ([example](#registration)).
+   */
+  registerActivities(importPathToImplementation: Record<string, Record<string, Function>>): Promise<void>
+
+  /**
+   * Start polling on queue, throws on unhandled error.
+   */
+  run(queue: string): Promise<never>
+
+  /**
+   * Do not make new poll requests.
+   */
+  suspendPolling(): Promise<void>
+
+  /**
+   * Allow new poll requests.
+   */
+  resumePolling(): Promise<void>
+
+  isSuspended(): boolean
+
+  /**
+   * Getter for the worker's options.
+   */
+  options: Readonly<WorkerOptions>
 ```
-
-#### `constructor(queue: string, options?: WorkerOptions)`
-Create a `Worker` and bind it to `queue`, optionally automatically register workflows and activities.
-
-#### `registerWorkflows(nameToPath: Record<string, string>): Promise<void>`
-Manually register workflows, e.g. for when using a non-standard directory structure.
-
-#### `registerActivities(importPathToImplementation: Record<string, Record<string, Function>>): Promise<void>`
-Manually register activities, e.g. for when using a non-standard directory structure ([example](#registration)).
-
-#### `run(): Promise<never>`
-Start polling, throws on unhandled error.
-
-#### `suspendPolling(): Promise<void>`
-Do not make new poll requests.
-
-#### `resumePolling(): Promise<void>`
-Allow new poll requests.
-
-#### `isSuspended(): boolean`
-
-#### `options: Readonly<WorkerOptions>`
-Getter for the worker's options.
 
 ### WorkflowClient
 A workflow client can be used to invoke workflow methods, signals, and queries.
@@ -472,6 +475,9 @@ type WorkflowClient<T extends Workflow> = {
 
 #### Example
 ```ts
+// client.ts
+import { Example } from '@interfaces/workflows';
+
 const example = new WorkflowClient<Example>();
 await example(process.env.USER); // Call workflow main
 await example.signal.abort();
@@ -483,6 +489,7 @@ const state = await example.query.state("a");
 It is similar to `WorkflowClient` but it cannot call queries, only main and signals.
 
 ```ts
+// workflows/example.ts
 import { Context } from '@temporal-sdk/workflow';
 
 interface Add {
@@ -501,7 +508,7 @@ In a workflow, handle activity cancallation by catching a `CancellationError` or
 
 #### Example
 ```ts
-// workflow/example.ts
+// workflows/example.ts
 import { httpGet } from '@activities/http';
 
 async function main(urls: string[]) {
@@ -527,7 +534,7 @@ async function main(urls: string[]) {
 
 #### `CancellationScope.run()`
 ```ts
-// workflow/example.ts
+// workflows/example.ts
 import { httpGet } from '@activities/http';
 
 async function main(urls: string[]) {
@@ -540,7 +547,7 @@ async function main(urls: string[]) {
 ```
 
 On the activities side we want to use async functions which means activity authors will have to manually handle cancellation.
-The `ActivityContext` exposes 2 ways of subscribing to cancellations.
+The activity `Context` exposes 2 ways of subscribing to cancellations.
 
 1. A `cancelled` (Promise) property which can be awaited.
   ```ts
