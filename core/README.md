@@ -11,7 +11,7 @@ Unlike many clientside sdks/libraries, Temporal requires quite a bit of complex 
 
 The below diagram depicts how future SDKs are split into two parts. The `sdk-core` common code, which is written in Rust, and a `sdk-lang` package specific to the language the user is writing their workflow/activity in. For example a user writing workflows in Rust would be pulling in (at least) two crates - `temporal-sdk-core` and `temporal-sdk-rust`.
 
-[![](https://lucid.app/publicSegments/view/7872bb33-d2b9-4b90-8aa1-bac111136aa5/image.png)][]
+![Arch Diagram](https://lucid.app/publicSegments/view/7872bb33-d2b9-4b90-8aa1-bac111136aa5/image.png)
 
 The `core` communicates with the Temporal service in the same way that existing SDKs today do, via gRPC. It's responsible for polling for tasks, processing those tasks according to our state machine logic, and then driving the language-specific code and shuttling events to it and commands back.
 
