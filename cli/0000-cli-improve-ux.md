@@ -20,7 +20,7 @@ The UX lacks in the number of areas such as consistency, semantics, commands dis
 
 ### Non-goals
 
-- Creating any kind of new CLI business logic
+- Creating new CLI business logic
 
 # Detailed design
 
