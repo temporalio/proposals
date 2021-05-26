@@ -20,20 +20,19 @@ There's currently not a way to log from Workflow internals (inside the isolate).
 - Core logs should integrate with the Worker logger
 - Support logging from Workflow internals
 - Support logging in Worker either within an otel span or without context (e.g. Worker state changed)
-- Metrics should only be used when no trace context is available
+- Tracing is often preferrable to plain metrics and should be used wherever possible ([this example](https://github.com/temporalio/samples-go/blob/master/metrics/metrics.go) shows an example of use of metrics that could have been implemented with tracing)
 
 #### Metrics
 
-- Gauge of cached WFs - should this be exported from both Core and Lang to find discrepencies?
+- Gauge of cached WFs - exported from both Core and Lang to find discrepencies
 - Gauge of cached WF memory stats - Lang
 - Counter of WF cache insertions - Lang
 - Counter of WF cache evictions - Lang
 - Gauge of in-flight Activities - Lang
 - Gauge of in-flight WF activations - Lang
-- GRPC call latency and count per status for each route - Core only (can we just use otel spans?)
+- GRPC call latency and count per status for each route - Core only - using otel spans (can be exported as metrics if needed)
 
-> PS: More metrics should be considered here, this is just a list off the top of my head.<br/>
-> PPS: We might not need metrics from Core if we can rely on otel spans since those can be converted into metrics using a custom propagator.
+> PS: More metrics should be considered here, this is just a list off the top of my head.
 
 #### Tracing
 
@@ -67,22 +66,19 @@ There's currently not a way to log from Workflow internals (inside the isolate).
 
 - Add context to logs emitted from Worker where applicable
 - Pass span context as from Lang to Core in the `poll_activity_task` and `poll_workflow_activation` APIs
-- Add methods to the Core API for exporting logs, metrics and traces
-  - Special care should be taken when defining the types here, logs should be structured to support custom formatting on the Lang side
-  - Hook up instrumentation into Lang opentelemetry tracer and Worker logger
+- Write a custom exporter or propagator that runs in the Bridge (Rust) to push everything to Lang
+  - Spans created in Core should respect [sampling flags](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md#sampling) passed in by Lang to reduce the amount of traces the bridge has to export.
 - Inject the Worker logger interface into the isolate for internal use - make sure activation context is baked into the WF logger
-- Worker logger should add a `component` attribute (e.g. `worker | core | workflow`) in the log context so we know each log's origin
+- Worker logger should add a `component` attribute (e.g. `worker | core | workflow`) in the log context so we know each log's origin. (`workflow` refers to the WF isolate runtime library, for which logs should collected by the worker).
+- Worker is now responsible for propagating 3 async log streams, events will be out-of-order
+  - In production this does not matter because the user's logging solution can sort based on timestamps
+  - In development, we will stall log output in order to merge and chronologically sort the different logs sources
 
 ### Issues
 
-- Propagating traces, logs and metrics from Core to Lang implies buffering since they run in different threads and communicate using a queue
-  - Could result in event loss
-    - Is this tollerable?
-    - Should we also support logging directly to console from Core to mitigate this issue?
-  - Logs from different sources are received out of order
-    - This might not be that big of an issue in production where log aggregators can reorder based on timestamp
-    - During development, we can stall log output in order to merge and chronologically sort the different logs sources
-- Propagating logs from the WF isolate has similar implications
+Propagating traces, logs and metrics from Core and WF isolates to Lang implies buffering since they run in different threads and communicate using a queue which could lead to event loss.
+For the WF isolate there's no way around it, we should use one of the more reliable approaches discussed in [#22](https://github.com/temporalio/proposals/pull/22).
+For Core the only way around it is to emit directly from Rust but in practice we'd have to propagate events via opentelemetry regardless so the extra step to push to Lang is the only extra risk taken.
 
 ### Alternatives
 
