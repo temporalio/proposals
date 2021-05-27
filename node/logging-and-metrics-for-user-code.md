@@ -1,7 +1,7 @@
 ## Logging and Metrics in user Workflow code
 
 A hard requirement for our logging and metrics solution for user code is that we do not enforce a specific tool or convention and instead let our users use their existing tools.<br/>
-For Activities, there is not an issue because users can run anything in an Activity. In Workflows OTOH, only deterministic code can run and metrics and logs should usually be dropped when a Workflow is replaying. Additionally the fact that the Node SDK runs Workflows in v8 isolates, mean that there's no way to do IO or anything that interacts with the world without explicit support from the SDK.
+For Activities, there is not an issue because users can run anything in an Activity. In Workflows OTOH, only deterministic code can run and metrics and logs should usually be dropped when a Workflow is replaying. Additionally the fact that the Node SDK runs Workflows in v8 isolates, means that there's no way to do IO or anything that interacts with the world without explicit support from the SDK.
 
 ### IO in Workflow code
 
@@ -18,17 +18,28 @@ There are a few options for doing IO inside a Workflow's isolate:
 > ... <br/>
 > Additionally, some methods will provide an "ignored" version which runs asynchronously but returns no promise. This can be a good option when the calling isolate would ignore the promise anyway, since the ignored versions can skip an extra thread synchronization. Just be careful because this swallows any thrown exceptions which might make problems hard to track down.
 
-If we go for (2) we will probably recommend using the "ignored" version to reduce the extra overhead and avoid non-deterministic code from interfering with Workflow code.<br/>
-(3) has the lowest overhead but also means there's an inherent delay from logs and metrics generation to processing.
+(2) is limited to either synchronous and ignored functions as async functions conflict with the way we run isolated Workflow code since we assume that there are never any outstanding promises at the end of Workflow activation.
+
+(3) raises the following reliablility concerns:
+
+- When isolate runs out of memory but in that case logs will probably not work anyways.
+- When WF code gets stuck e.g goes into an infinite loop but we can mitigate this problem by enforcing a time limit of execution in the isolate, in case execution times out we will be able to extract the logs.
+
+(3) has the lowest overhead but also means there's an inherent delay from logs and metrics generation to processing - should be reliablility minimal assuming Workflow code is not CPU bound.<br/>
+(3) is limited to either ignored and asynchronous functions since because it does **not** block the isolate.
 
 ### Proposed solution
 
 Allow users to expose their logging and metrics interfaces to Workflow code as external dependencies.
-We'll use either technique (2) or (3) stated above after receiving more input and running a benchmark.
+We'll support techniques (2) and (3) stated above depending on the type of injected function.
+
+**Extra care should be taken when using values returned from external dependencies because it can easily break deterministic Workflow execution**
 
 #### Definitions
 
-Logging and metrics require Workflow execution context to have any meaning.
+#### `WorkflowInfo`
+
+Logging and metrics require the Workflow's execution context information to have any meaning.
 We define the `WorkflowInfo` interface which is accessible in Workflow code via `Context.info` and passed into users' "external dependency" functions.
 
 `@temporalio/workflow`
@@ -42,118 +53,166 @@ export interface WorkflowInfo {
 }
 ```
 
-### Logger injection example
+#### `ApplyMode`
 
-#### Variant A - `Context.dependency` + `Worker.inject`
+We define an `ApplyMode` enum for specifying how a dependency function is executed
+
+`@temporalio/workflow`
+
+```ts
+/**
+ * Controls how an external dependency function is executed.
+ * - `ASYNC*` variants run at the end of an activation and do **not** block the isolate.
+ * - `SYNC*` variants run during Workflow activation and block the isolate,
+ *   they're passed into the isolate using an {@link https://github.com/laverdet/isolated-vm#referenceapplyreceiver-arguments-options-promise | isolated-vm Reference}
+ * The Worker will log if an error occurs in one of ignored variants.
+ */
+export enum ApplyMode {
+  /**
+   * Injected function will be called at the end of an activation.
+   * Isolate enqueues function to be called during activation and registers a callback to await its completion.
+   * Use if exposing an async function to the isolate for which the result should be returned to the isolate.
+   */
+  ASYNC = 'async',
+  /**
+   * Injected function will be called at the end of an activation.
+   * Isolate enqueues function to be called during activation and does not register a callback to await its completion.
+   * This is the safest async `ApplyMode` because it can not break Workflow core determinism.
+   * Can only be used when exposing an async function that returns Promise<void> to the isolate.
+   */
+  ASYNC_IGNORED = 'asyncIgnored',
+  /**
+   * Injected function is called synchronously, implementation must be a synchronous function.
+   * Injection is done using an `isolated-vm` reference, function called with `applySync`.
+   */
+  SYNC = 'applySync',
+  /**
+   * Injected function is called in the background not blocking the isolate.
+   * Implementation can be either synchronous or asynchronous.
+   * Injection is done using an `isolated-vm` reference, function called with `applyIgnored`.
+   */
+  SYNC_IGNORED = 'applyIgnored',
+  /**
+   * Injected function is called synchronously, implementation must an asynchronous function.
+   * Injection is done using an `isolated-vm` reference, function called with `applySyncPromise`.
+   * This is the safest sync `ApplyMode` because it can not break Workflow core determinism.
+   */
+  SYNC_PROMISE = 'applySyncPromise',
+}
+```
+
+#### `InjectedDependencyFunction<F>`
+
+We define an `InjectedDependencyFunction<F>` interface that takes a `DependencyFunction` (any function) and turns it
+into a type safe specification consisting of the function implementation type and configuration.
+
+> NOTE: The actual definition of this interface is much more complex because it constraints which apply modes can be used depdending on the interface and implementation.
+
+```ts
+/** Any function can be a dependency function (as long as it uses transferrable arguments and return type) */
+export type DependencyFunction = (...args: any[]) => any;
+
+export interface InjectedDependencyFunction<F extends DependencyFunction> {
+  /**
+   * Type of the implementation function for dependency `F`.
+   */
+  fn(info: WorkflowInfo, ...args: Parameters<F>): ReturnType<F>;
+  /**
+   * Whether or not a dependency's functions will be called during Workflow replay
+   * @default false
+   */
+  callDuringReplay?: boolean;
+  /**
+   * Defines how a dependency's functions are called from the Workflow isolate
+   * @default IGNORED
+   */
+  applyMode: ApplyMode;
+  /**
+   * By default function arguments and result are copied on invocation.
+   * That can be customized per isolated-vm docs with these options.
+   * Only applicable to `SYNC_*` apply modes.
+   */
+  transferOptions?: isolatedVM.TransferOptionsBidirectional;
+}
+```
+
+### Logger injection example
 
 `interfaces/logger.ts`
 
 ```ts
+/** Simplest logger interface for the sake of this example */
 export interface Logger {
   info(message: string): void;
   error(message: string): void;
 }
 ```
 
-`workflows/logger-demo.ts`
+`interfaces/index.ts`
 
 ```ts
-import { Context } from "@temporalio/workflow";
-import { Logger } from "../interfaces/logger";
+import { Dependencies } from '@temporalio/workflow';
+import { Logger } from './logger';
 
-const log = Context.dependency<Logger>("logger");
-
-export async function main(): Promise<void> {
-  log.info("hey ho");
-  log.error("lets go");
+export interface MyDependencies extends Dependencies {
+  logger: Logger;
 }
 ```
 
-Register a logger for injection into the Worker's isolate context.
+Use dependencies from a Workflow.
+
+`workflows/logger-deps-demo.ts`
+
+```ts
+import { Context } from '@temporalio/workflow';
+import { MyDependencies } from '../interfaces';
+
+const { logger } = Context.dependencies<MyDependencies>();
+// NOTE: dependencies may not be called at the top level because they require the Workflow to be initialized.
+// You may reference them as demonstrated above.
+// If called here an `IllegalStateError` will be thrown.
+
+export function main(): void {
+  logger.info('hey ho');
+  logger.error('lets go');
+}
+```
+
+Register dependencies for injection into the Worker's isolate context.
 Each time a Workflow is initialized it gets a reference to the injected dependencies.
 
 `worker/index.ts`
 
 ```ts
-import { WorkflowInfo } from "@temporalio/workflow";
-import { Logger } from "../interfaces/logger";
+import { WorkflowInfo, ApplyMode } from '@temporalio/workflow';
+import { MyDependencies } from '../interfaces';
 
-// ...
-
-worker.inject<Logger /* optional for type checking */>(
-  "logger",
-  {
-    /* Your logger implementation goes here */
-    info(info: WorkflowInfo, message: string) {
-      console.log(info, message);
-    },
-    error(info: WorkflowInfo, message: string) {
-      console.error(info, message);
-    },
-  },
-  { ignoreReplay: false /* default is true  */ }
-);
-```
-
-#### Variant B - Using a single `Dependencies` interface
-
-`interfaces/index.ts`
-
-```ts
-import { Logger } from "./logger";
-
-export interface Dependencies {
-  logger: Logger;
-}
-```
-
-`workflows/logger-deps-demo.ts`
-
-```ts
-import { Context } from "@temporalio/workflow";
-import { Dependencies } from "../interfaces";
-
-const { logger } = Context.deps<Dependencies>();
-
-export function main(): void {
-  logger.info("hey ho");
-  logger.error("lets go");
-}
-```
-
-`worker/index.ts`
-
-```ts
-import { WorkflowInfo } from "@temporalio/workflow";
-import { Dependencies } from "../interfaces";
-
-await worker.create<Dependencies /* optional for type checking */>({
+await worker.create<{ dependencies: MyDependencies /* optional for type checking */ }>({
   workDir: __dirname,
   dependencies: {
     logger: {
-      implementation: {
-        /* Your logger implementation goes here */
-        info(info: WorkflowInfo, message: string) {
-          console.log(info, message);
+        // Your logger implementation goes here.
+        // NOTE: your implementation methods receive WorkflowInfo as an extra first argument.
+        info: {
+          fn(info: WorkflowInfo, message: string) {
+            console.log(info, message);
+          },
+          applyMode: ApplyMode.SYNC,
         },
-        error(info: WorkflowInfo, message: string) {
-          console.error(info, message);
+        error: {
+          fn(info: WorkflowInfo, message: string) {
+            console.error(info, message);
+          },
+          applyMode: ApplyMode.SYNC_IGNORED,
+          // Not really practical to have only error called during replay.
+          // We put it here just for the sake of the example.
+          callDuringReplay: true,
         },
       },
-      options: { ignoreReplay: false /* default is true  */ },
     },
   },
 });
 ```
-
-#### Comparison
-
-|                      | Variant A                                                        | Variant B                   |
-| -------------------- | ---------------------------------------------------------------- | --------------------------- |
-| Missing dependencies | ❌ Hard to enforce all dependencies are injected into the worker | ✅ Enforced by type checker |
-| Dependency naming    | ❌ Prone to typos                                                | ✅ Enforced by type checker |
-
-I'm strongly leaning towards variant B.
 
 ### Other considered solutions
 
@@ -181,4 +240,54 @@ We should modify `console.log`'s output to include the relevant context by defau
 
 ### Dependencies
 
-In order to implement this solution we need to add an `isReplay` flag to each activation in the core<>lang interface.
+In order to implement this solution we need to add an `isReplay` flag to each activation in the core⇔lang interface.
+
+### Alternative interface - NOT chosen
+
+#### `Context.dependency` + `Worker.inject`
+
+`workflows/logger-demo.ts`
+
+```ts
+import { Context } from '@temporalio/workflow';
+import { Logger } from '../interfaces/logger';
+
+const log = Context.dependency<Logger>('logger');
+
+export async function main(): Promise<void> {
+  log.info('hey ho');
+  log.error('lets go');
+}
+```
+
+`worker/index.ts`
+
+```ts
+import { WorkflowInfo } from '@temporalio/workflow';
+import { Logger } from '../interfaces/logger';
+
+// ...
+
+worker.inject<Logger /* optional for type checking */>(
+  'logger',
+  {
+    /* Your logger implementation goes here */
+    info(info: WorkflowInfo, message: string) {
+      console.log(info, message);
+    },
+    error(info: WorkflowInfo, message: string) {
+      console.error(info, message);
+    },
+  },
+  { callDuringReplay: true /* default is false  */ }
+);
+```
+
+#### Comparison
+
+|                      | Alternative                                                      | Single `Dependencies` interface |
+| -------------------- | ---------------------------------------------------------------- | ------------------------------- |
+| Missing dependencies | ❌ Hard to enforce all dependencies are injected into the worker | ✅ Enforced by type checker     |
+| Dependency naming    | ❌ Prone to typos                                                | ✅ Enforced by type checker     |
+
+Single `Dependencies` interface was chosen for improved type safety.
