@@ -63,7 +63,7 @@ Temporal Workflows have different types that can be cancelled:
 
 Workflows are represented internally by a tree of contexts where the `main` function runs in the root context.
 Cancellation propagates from outer contexts to inner ones and is handled by catching `CancellationError`s when `await`ing on `CancellablePromise`s.
-Activities and timers return a `CancellablePromise` which can be cancelled.
+Activities and timers return a `CancellablePromise`.
 
 #### `CancellablePromise` (or `ContextualPromise`)
 
@@ -124,7 +124,7 @@ export async function main() {
   // Timers and Activities are automatically cancelled when their promise is cancelled.
   // Awaiting on a cancelled promise with throw the original CancellationError.
   const promise = sleep(1);
-  promise.cancel(); // promise is a CancellablePromise which supports cancellation
+  promise.cancel(); // promise is a CancellablePromise
   try {
     await promise;
   } catch (e) {
@@ -140,7 +140,6 @@ export async function main() {
 #### `Context.cancellable` and `Context.nonCancellable`
 
 In order to have fine-grained control over cancellation, the Workflow library exports 2 methods for explicitly creating `CancellablePromise`s.
-`Context.cancellable` and `Context.nonCancellable` take a single argument which can either be an async function or a `CancellablePromise`, they also return a `CancellablePromise`.
 
 The first is `Context.cancellable` which when cancelled will propagate cancellation to all child `CancellablePromise`s including timers and Activities.
 
@@ -179,11 +178,14 @@ import { CancellationError, Context } from '@temporalio/workflow';
 import { httpGetJSON } from '@activities';
 
 export async function main(url: string) {
-  // Shield and await completion
+  // Prevent activity from being cancelled and await completion
+  // Note that the Workflow is completely unaware of cancellation in this example.
   const result = await Context.nonCancellable(httpGetJSON(url));
   return result;
 }
 ```
+
+`Context.cancellable` and `Context.nonCancellable` take a single argument which can either be an async function or a `CancellablePromise`, they also return a `CancellablePromise`.
 
 Contexts can be nested e.g. for handling Workflow cancellation without disrupting Activity execution.
 
@@ -192,7 +194,6 @@ import { CancellationError, Context } from '@temporalio/workflow';
 import { httpGetJSON } from '@activities';
 
 export async function main(url: string) {
-  // Shield and await completion
   let result: any = undefined;
   try {
     const promise = Context.nonCancellable(httpGetJSON(url));
@@ -221,14 +222,14 @@ More complex flows may be achieved by combining `cancellable`s and `nonCancellab
 1. What happens when a timer or activity is awaited in both cancellable and non-cancellable contexts?
 
 ```ts
-async function logWhenDone(p: PromiseLike<void>) {
+async function logWhenDone(p: PromiseLike<void>): Promise<void> {
   await p;
   console.log('done');
 }
 
 export async function main() {
   const p = sleep(3);
-  await Promise.all([logWhenDone(p), Context.nonCancellable(async () => await logWhenDone(p))]);
+  await Promise.all([logWhenDone(p), Context.nonCancellable(() => logWhenDone(p))]);
 }
 ```
 
@@ -236,11 +237,17 @@ If the Workflow is cancelled, the user might be surprised if `p` throws in a non
 
 One approach would be to say that once a `CancellablePromise` is awaited in a non-cancellable context it becomes non-cancellable in all contexts. Another approach is the exact opposite where the promise becomes cancellable once awaited in a cancellable context.
 
+Another approach would be to throw if a promise is simultaneously awaited in multiple contexts but this is might be too strict of a limitation.
+
 We should be able to support different cancellation policies for a single promise.
 With this approach, when a promise is cancelled while it is awaited in a both cancellable and non-cancellable contexts, an exception is thrown immediately in all cancellable contexts (assuming TRY_CANCEL cancellation type) but the activity does not get cancelled.
 
 The first 2 approaches are still surprising although they're predictable if they are well documented.
-The latter approach seems preferable to me and the least surprising. Not sure how feasable this is and if there are limitations with different cancellation types.
+The latter approach is complex and surprising in the worst way, there's no way for a Workflow to know if the activity was really cancelled or just the promise was cancelled.
+
+The first approach seems like the way to go, because users rely on cancellation being propagated to Workflow code in order to perform cleanup.
+
+> NOTE: This is an edge case and will probably not be encountered by most users.
 
 #### Callbacks do not play well with cancellation
 
