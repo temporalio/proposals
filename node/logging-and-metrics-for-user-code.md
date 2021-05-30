@@ -25,7 +25,7 @@ There are a few options for doing IO inside a Workflow's isolate:
 - When isolate runs out of memory but in that case logs will probably not work anyways.
 - When WF code gets stuck e.g goes into an infinite loop but we can mitigate this problem by enforcing a time limit of execution in the isolate, in case execution times out we will be able to extract the logs.
 
-(3) has the lowest overhead but also means there's an inherent delay from logs and metrics generation to processing - should be reliablility minimal assuming Workflow code is not CPU bound.<br/>
+(3) has the lowest overhead but also means there's an inherent delay from logs and metrics generation to processing - should be relatively minimal assuming Workflow code is not CPU bound - activations are typically short.<br/>
 (3) is limited to either ignored and asynchronous functions since because it does **not** block the isolate.
 
 ### Proposed solution
@@ -33,7 +33,7 @@ There are a few options for doing IO inside a Workflow's isolate:
 Allow users to expose their logging and metrics interfaces to Workflow code as external dependencies.
 We'll support techniques (2) and (3) stated above depending on the type of injected function.
 
-**Extra care should be taken when using values returned from external dependencies because it can easily break deterministic Workflow execution**
+**Extra care should be taken when using values returned from external dependencies because it can easily break deterministic Workflow execution.**
 
 #### Definitions
 
@@ -78,7 +78,7 @@ export enum ApplyMode {
    * Injected function will be called at the end of an activation.
    * Isolate enqueues function to be called during activation and does not register a callback to await its completion.
    * This is the safest async `ApplyMode` because it can not break Workflow core determinism.
-   * Can only be used when exposing an async function that returns Promise<void> to the isolate.
+   * Can only be used when the injected function returns void and the implementation returns void or Promise<void>.
    */
   ASYNC_IGNORED = 'asyncIgnored',
   /**
@@ -87,17 +87,17 @@ export enum ApplyMode {
    */
   SYNC = 'applySync',
   /**
+   * Injected function is called synchronously, implementation must return a promise.
+   * Injection is done using an `isolated-vm` reference, function called with `applySyncPromise`.
+   * This is the safest sync `ApplyMode` because it can not break Workflow core determinism.
+   */
+  SYNC_PROMISE = 'applySyncPromise',
+  /**
    * Injected function is called in the background not blocking the isolate.
    * Implementation can be either synchronous or asynchronous.
    * Injection is done using an `isolated-vm` reference, function called with `applyIgnored`.
    */
   SYNC_IGNORED = 'applyIgnored',
-  /**
-   * Injected function is called synchronously, implementation must an asynchronous function.
-   * Injection is done using an `isolated-vm` reference, function called with `applySyncPromise`.
-   * This is the safest sync `ApplyMode` because it can not break Workflow core determinism.
-   */
-  SYNC_PROMISE = 'applySyncPromise',
 }
 ```
 
