@@ -48,8 +48,10 @@ We define the `WorkflowInfo` interface which is accessible in Workflow code via 
 export interface WorkflowInfo {
   workflowId: string;
   runId: string;
+  filename: string;
+  namespace: string;
+  taskQueue: string;
   isReplaying: boolean;
-  // TBD - more attributes
 }
 ```
 
@@ -128,11 +130,11 @@ export interface InjectedDependencyFunction<F extends DependencyFunction> {
    */
   applyMode: ApplyMode;
   /**
-   * By default function arguments and result are copied on invocation.
+   * By default function arguments are copied on invocation.
    * That can be customized per isolated-vm docs with these options.
    * Only applicable to `SYNC_*` apply modes.
    */
-  transferOptions?: isolatedVM.TransferOptionsBidirectional;
+  arguments?: 'copy' | 'reference';
 }
 ```
 
@@ -198,12 +200,13 @@ await worker.create<{ dependencies: MyDependencies /* optional for type checking
             console.log(info, message);
           },
           applyMode: ApplyMode.SYNC,
+          arguments: 'copy',
         },
         error: {
           fn(info: WorkflowInfo, message: string) {
             console.error(info, message);
           },
-          applyMode: ApplyMode.SYNC_IGNORED,
+          applyMode: ApplyMode.ASYNC_IGNORED,
           // Not really practical to have only error called during replay.
           // We put it here just for the sake of the example.
           callDuringReplay: true,
