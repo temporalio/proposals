@@ -1,8 +1,8 @@
-## NodeJS SDK interceptors
+# NodeJS SDK interceptors
 
-### What are interceptors?
+## What are interceptors?
 
-Interceptors are a concept introduced in the [Java SDK](https://github.com/temporalio/sdk-java/tree/master/temporal-sdk/src/main/java/io/temporal/common/interceptors), they provide a mechanism for users to override behavior of different components of the SDK.
+Interceptors are a concept introduced in the [Java SDK](https://github.com/temporalio/sdk-java/tree/master/temporal-sdk/src/main/java/io/temporal/common/interceptors), they provide a mechanism for users to override and extend the behavior of different components of the SDK.
 
 Main uses for interceptors is for extending inbound and outbound calls with auth[NZ] and tracing.
 
@@ -10,7 +10,7 @@ Some server API requests and responses, such as [StartWorkflowExecutionRequest](
 
 > NOTE: Java is the only SDK that supports interceptors at the time of this writing.
 
-### What kind of interceptors are there? (in the Java SDK)
+## What kind of interceptors are there? (in the Java SDK)
 
 #### [WorkerInterceptor](https://github.com/temporalio/sdk-java/blob/master/temporal-sdk/src/main/java/io/temporal/common/interceptors/WorkerInterceptor.java)
 
@@ -36,45 +36,33 @@ Responsible for registering `WorkflowClientCallsInterceptor`s each time a `Workf
 
 Intercepts `WorkflowClient` method calls like `start`, `signal`, `query`, `cancel`, and `terminate`.
 
-### NodeJS SDK limitations
+## NodeJS SDK limitations
 
 Workflow interceptors should run in the Workflow isolate because they need to be replayed for reconstruction of their state.
 This limitation makes writing interceptors tricky because they should be split between isolated and non-isolated code (dependening on the interceptor type).
-Another complication that arises from running interceptors in isolation is that if node APIs or IO is a requirement users must rely on [external dependencies](https://github.com/temporalio/proposals/blob/a8d5371595ac96ebab62aaaea6f72a5e45bda344/node/logging-and-metrics-for-user-code.md#proposed-solution) for breaking isolation.
+Another complication that arises from running interceptors in isolation is that if node APIs or IO is a requirement users must rely on [external dependencies](./logging-and-metrics-for-user-code.md#proposed-solution) for breaking isolation.
 
-### Which interceptors do we want to port to Node?
+## Which interceptors do we want to port to Node?
 
-We can probably avoid using the `WorkerInterceptor` and simply pass `ActivityInboundCallsInterceptor`, `WorkflowInboundCallsInterceptor` and `WorkflowOutboundCallsInterceptor` directly to the Worker.
+### ~~`WorkerInterceptor`~~
+
+Replaced by (see [example](#workeroptions) below):
 
 ```ts
-await Worker.create({
-  interceptors: {
-    activityInbound: [
-      {
-        /* Implementation goes here */
-      },
-    ],
-    // Note the use of paths here, the SDK expects these paths to be valid JS files
-    // which export an interceptor variable.
-    // These paths will be included in the bundled Workflow code and loaded into the isolate.
-    workflowInboundPaths: ['../workflows/interceptors/inbound2', '../workflows/interceptors/inbound2'],
-    workflowOutboundPaths: ['../workflows/interceptors/outbound1', '../workflows/interceptors/outbound2'],
-  },
-});
+export interface WorkerInterceptors {
+  workflowModules?: string[];
+  activityInbound?: ActivityInboundCallsInterceptorFactory[];
+}
 ```
 
-Same goes for `WorkflowClientInterceptor`, we can pass `WorkflowClientCallsInterceptor` directly to the `Connection` constructor.
+### ~~`WorkflowClientInterceptor`~~
+
+Replaced by (see [example](#connectionoptions) below):
 
 ```ts
-new Connection({
-  interceptors: {
-    workflowClient: [
-      {
-        /* Implementation goes here */
-      },
-    ],
-  },
-});
+export interface ConnectionInterceptors {
+  workflowClient?: WorkflowClientCallsInterceptorFactory[];
+}
 ```
 
 ### `ActivityInboundCallsInterceptor`
@@ -122,18 +110,103 @@ Runs in the main NodeJS isolate.
 - Interceptor methods are all optional, implementors can choose which methods to intercept.
 - Interceptor methods receive the `next` interceptor method which they can call in order to continue the interception chain and eventually call the original SDK method
 
-  ```ts
-  export const interceptor: WorkflowOutboundCallsInterceptor = {
-    async startTimer(input, next): Promise<void> {
-      console.log('Timer started', input);
-      let success = false;
-      try {
-        // next has the same signature as startTimer without the next argument
-        await next(input);
-        success = true;
-      } finally {
-        console.log('Timer completed', input, { success });
-      }
+## Examples
+
+### WorkerOptions
+
+Pass a list of `ActivityInboundCallsInterceptor` factories and locations of `WorkflowInboundCallsInterceptor`s and `WorkflowOutboundCallsInterceptor`s to the `Worker` constructor.
+
+```ts
+await Worker.create({
+  interceptors: {
+    // Note the use of paths here, the SDK expects these paths to be valid JS files in the workflows directory.
+    // The modules should export an interceptors variable.
+    // These paths will be included in the bundled Workflow code and loaded into the isolate.
+    workflowModules: ['interceptor1', 'interceptor2'],
+    activityInbound: [
+      (ctx: ActivityContext) => ({
+        /* Implementation provided inline, alternatively instantiate a class */
+        async execute(input, next) {
+          const encodedTraceId = input.headers.get('traceId');
+          const traceId = encodedTraceId ? defaultDataConverter.fromPayload(encodedTraceId) : undefined;
+          try {
+            return await next(input);
+          } finally {
+            console.log('activity complete', { traceId });
+          }
+        },
+      }),
+    ],
+  },
+});
+```
+
+### Workflow interceptors
+
+Workflow modules listed in `WorkerOptions.interceptors.workflowModules` should export an `interceptors` variable structured as follows:
+
+> NOTE: Workflow interceptors are passed as instances instead of factory functions since they are recreated on isolate creation.
+
+```ts
+import { WorkflowInterceptors } from '@temporalio/workflow';
+
+export const interceptors: WorkflowInterceptors = {
+  inbound: [
+    /* Inbound interceptors go here */
+  ],
+  outbound: [
+    {
+      async scheduleActivity(input, next): Promise<void> {
+        let success = false;
+        try {
+          // next has the same signature as scheduleActivity without the next argument
+          await next(input);
+          success = true;
+        } finally {
+          console.log('Timer completed', input, { success });
+        }
+      },
     },
-  };
-  ```
+  ],
+};
+```
+
+### ConnectionOptions
+
+Pass a list of `WorkflowClientCallsInterceptor` factories to the `Connection` constructor.
+
+```ts
+new Connection({
+  interceptors: {
+    workflowClient: [
+      (options: CompiledWorkflowOptions) => ({
+        /* Implementation goes here */
+      }),
+    ],
+  },
+});
+```
+
+### Example usage with classes
+
+```ts
+export class MyActivityInterceptor implements ActivityInboundCallsInterceptor {
+  constructor(public readonly ctx: ActivityContext, someOtherParam: number) {}
+
+  public async execute(
+    input: ActivityExecuteInput,
+    next: Next<ActivityInboundCallsInterceptor, 'execute'>
+  ): Promise<unknown> {
+    // No-op activity execution interceptor
+    return next(input);
+  }
+}
+
+const someParam = 2;
+
+await Worker.create({
+  interceptors: {
+    activityInbound: [(ctx: ActivityContext) => new MyActivityInterceptor(ctx, someParam)],
+  },
+});
+```
