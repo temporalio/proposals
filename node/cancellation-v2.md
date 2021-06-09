@@ -49,19 +49,20 @@ Issue (2.2) is a bug but it raises the point that the docs should clarify which 
 ### Naming and structure
 
 ```
-shield -> CancellationScope.shield
-cancel -> CancellationScope.cancel
+cancellationScope -> static CancellationScope.cancellable
+shield -> static CancellationScope.nonCancellable
+cancel -> member CancellationScope.cancel
 ```
 
 ### Behavior
 
-- `cancellationScope` no longer throws `CancellationError`, it simply cancels timers and activities which in turn should throw `CancellationError`
-- Activities and timers started in a `cancellationScope` after it's been cancelled will not start and instead will throw `CancellationError`
-- `Context.cancelled` changes to return a promise to assist writing Workflows which are driven solely by signals
+- `CancellationScope` no longer throws `CancellationError`, it simply cancels timers and activities which in turn should throw `CancellationError`
+- Activities and timers started in a `CancellationScope` after it's been cancelled will not start and instead will throw `CancellationError`
+- `Context.cancelled` is moved to `CancellationScope.cancelRequested` and changed to return a promise to assist writing Workflows which are driven solely by signals
 
   ```ts
   async function main() {
-    await Context.cancelled;
+    await CancellationScope.current().cancelRequested;
   }
 
   let counter = 0;
@@ -79,7 +80,7 @@ cancel -> CancellationScope.cancel
 In the Node SDK, Workflows are represented internally by a tree of scopes where the `main` function runs in the root scope.
 Cancellation propagates from outer scopes to inner ones and is handled by catching `CancellationError`s when `await`ing on promises.
 
-Scopes are created using the `cancellationScope` function.
+Scopes are created using the `CancellationScope` constructor or the static helper methods `cancellable`, `nonCancellable` and `withTimeout`.
 
 When a cancellation scope is cancelled, it will cancel any cancellables that reside within the scope and nested inner scopes, cancellables consist of:
 
@@ -89,40 +90,46 @@ When a cancellation scope is cancelled, it will cancel any cancellables that res
 
 ### Constructs
 
-#### `cancellationScope`
+#### `CancellationScope`
 
-- Creates a new `CancellationScope` and links it as a child of the active `CancellationScope`
-- Signatures
-  - `cancellationScope<T>(fn: (scope: CancellationScope) => Promise<T>): Promise<T>`
-  - `cancellationScope<T>(opts: CancellationScopeOptions, fn: (scope: CancellationScope) => Promise<T>): Promise<T>`
-
-#### `withTimeout<T>(timeout: number, fn: (scope: CancellationScope) => Promise<T>): Promise<T>`
-
-- Alias to `cancellationScope({ deadline: Date.now() + timeout }, fn)`
+- `new CancellationScope(opts: CancellationScopeOptions)` - create a new `CancellationScope` with given options
+- `run<T>(fn: () => Promise<T>): Promise<T>` - run `fn` and link the scope as a child of the active `CancellationScope`, returns the result of `fn`
+- `cancel(): void` - request to cancel the scope and linked child scopes
+- `cancelRequested: Promise<never>` - rejected when scope cancellation is requested
 
 #### `CancellationScopeOptions`
 
-- `deadline` - absolute (Workflow) time before the scope is cancelled
-- `shield` - start the scope in `shield` mode preventing cancellation from propagating to inner scopes, Activities, timers, and Triggers.
+- `timeout` - time in milliseconds before the scope cancellation is automatically requested
+- `cancellable` - if `false`, prevent outer cancellation from propagating to inner scopes, Activities, timers, and Triggers, defaults to `true`.<br/>
+  (Scope still propagates `CancellationError`s thrown from within)
+
 - `parent` - an **optional** `CancellationScope` (useful for running background tasks)
 
-#### `CancellationScope`
+#### Static members
 
-- Passed into the function argument of `cancellationScope`
+##### `CancellationScope.cancellable<T>(fn: () => Promise<T>): Promise<T>`
 
-  ```ts
-  await cancellationScope(async (scope /* CancellationScope */) => {
-    scope.deadline = Date.now() + 1000;
-    await httpPost('...');
-  });
-  ```
+Alias to `new CancellationScope({ cancellable: true }).run(fn)`
 
-- Exposes the following methods and attributes
-  - `cancelled` - a promise that rejects once the scope is cancelled
-  - `cancel()` - manually cancel the scope
-  - `deadline` - dynamic deadline for the scope
-  - `shield` - boolean controlling whether to shield scope from outer cancellation<br/>
-    (Scope may still be cancelled from within if it calls a function that throw `CancellationError`)
+##### `CancellationScope.nonCancellable<T>(fn: () => Promise<T>): Promise<T>`
+
+Alias to `new CancellationScope({ cancellable: false }).run(fn)`
+
+##### `CancellationScope.withTimeout<T>(timeout: number, fn: () => Promise<T>): Promise<T>`
+
+Alias to `new CancellationScope({ cancellable: true, timeout }).run(fn)`
+
+##### `CancellationScope.current()`
+
+Get the current "active" `CancellationScope`.
+
+```ts
+await CancellationScope.cancellable(async () => {
+  const promise = activity1('...');
+  CancellationScope.current().cancel(); // Cancels the activity
+  await promise; // Throws CancellationError
+});
+```
 
 #### `Trigger`
 
@@ -149,16 +156,39 @@ When a cancellation scope is cancelled, it will cancel any cancellables that res
 #### Cancel a timer from Workflow code
 
 ```ts
-import { CancellationError, cancellationScope, sleep } from '@temporalio/workflow';
+import { CancellationError, CancellationScope, sleep } from '@temporalio/workflow';
 
 export async function main() {
   // Timers and Activities are automatically cancelled when their containing scope is cancelled.
   // Awaiting on a cancelled scope with throw the original CancellationError.
   try {
-    await cancellationScope(async (scope) => {
-      sleep(1); // <-- Will be cancelled because it is attached to `scope`
-      scope.cancel();
+    await CancellationScope.cancellable(async () => {
+      const promise = sleep(1); // <-- Will be cancelled because it is attached to `scope`
+      CancellationScope.current().cancel();
+      await promise; // <-- Promise must be awaited in order for `cancellable` to throw
     });
+  } catch (e) {
+    if (e instanceof CancellationError) {
+      console.log('Exception was propagated 👍');
+    }
+    throw e; // <-- Fail the workflow
+  }
+}
+```
+
+#### Alternatively the above can be written as
+
+```ts
+import { CancellationError, CancellationScope, sleep } from '@temporalio/workflow';
+
+export async function main() {
+  // Timers and Activities are automatically cancelled when their containing scope is cancelled.
+  // Awaiting on a cancelled scope with throw the original CancellationError.
+  try {
+    const scope = new CancellationScope();
+    const promise = scope.run(() => sleep(1));
+    scope.cancel(); // <-- Cancel the timer created in scope
+    await promise; // <-- Throws CancellationError
   } catch (e) {
     if (e instanceof CancellationError) {
       console.log('Exception was propagated 👍');
@@ -171,45 +201,43 @@ export async function main() {
 #### Run multiple activities with a single deadline
 
 ```ts
-import { withTimeout } from '@temporalio/workflow';
+import { CancellationScope } from '@temporalio/workflow';
 import { httpGetJSON } from '@activities';
 
 export async function main(urls: string[], timeoutMs: number) {
   // If timeout triggers before all activities complete
   // the Workflow will fail with a CancellationError.
-  const results = await withTimeout(timeout, () => Promise.all(urls.map(httpGetJSON)));
+  const results = await CancellationScope.withTimeout(timeout, () => Promise.all(urls.map(httpGetJSON)));
   // Do something with the results
 }
 ```
 
-#### `CancellationScope`s can be shielded, preventing cancellation from propagating to created cancellables
+#### `CancellationScope.nonCancellable` prevents cancellation from propagating to children
 
 ```ts
-import { cancellationScope } from '@temporalio/workflow';
+import { CancellationScope } from '@temporalio/workflow';
 import { httpGetJSON } from '@activities';
 
 export async function main(url: string) {
   // Prevent Activity from being cancelled and await completion.
-  // Note that the Workflow is completely oblivious to cancellation in this example.
-  const result = await cancellationScope(async (scope) => {
-    scope.shield = true;
-    return httpGetJSON(url);
-  });
+  // Note that the Workflow is completely oblivious and impervious to cancellation in this example.
+  const result = await CancellationScope.nonCancellable(() => httpGetJSON(url));
   return result;
 }
 ```
 
-#### `Context.cancelled` may be awaited upon in order to make Workflow aware of cancellation while waiting on shielded scopes
+#### `cancelRequested` may be awaited upon in order to make Workflow aware of cancellation while waiting on `nonCancellable` scopes
 
 ```ts
-import { CancellationError, cancellationScope } from '@temporalio/workflow';
+import { CancellationError, CancellationScope } from '@temporalio/workflow';
 import { httpGetJSON } from '@activities';
 
 export async function main(url: string) {
   let result: any = undefined;
+  const scope = new CancellationScope({ cancellable: false });
+  const promise = scope.run(() => httpGetJSON(url));
   try {
-    const promise = cancellationScope({ shield: true }, () => httpGetJSON(url));
-    result = await Promise.race([Context.cancelled, promise]);
+    result = await Promise.race([scope.cancelRequested, promise]);
   } catch (err) {
     if (!(e instanceof CancellationError)) {
       throw err;
@@ -224,21 +252,21 @@ export async function main(url: string) {
 #### Handle Workflow cancellation by an external client while an Activity is running
 
 ```ts
-import { CancellationError, cancellationScope } from '@temporalio/workflow';
+import { CancellationError, CancellationScope } from '@temporalio/workflow';
 import { httpPostJSON, cleanup } from '@activities';
 
 export async function main(url: string, data: any): Promise<void> {
   try {
     await httpPostJSON(url, data);
-  } catch (e) {
-    if (e instanceof CancellationError) {
+  } catch (err) {
+    if (err instanceof CancellationError) {
       console.log('Workflow cancelled');
-      // Cleanup logic goes in a shielded scope here
-      // If we'd run cleanup outside of a shielded scope it would've been cancelled
+      // Cleanup logic goes in a nonCancellable scope
+      // If we'd run cleanup outside of a nonCancellable scope it would've been cancelled
       // before being started because the Workflow's root scope is cancelled.
-      await cancellationScope({ shield: true }, () => cleanup(url));
+      await CancellationScope.nonCancellable(() => cleanup(url));
     }
-    throw e; // <-- Fail the Workflow
+    throw err; // <-- Fail the Workflow
   }
 }
 ```
@@ -246,38 +274,38 @@ export async function main(url: string, data: any): Promise<void> {
 #### Complex flows may be achieved by nesting cancellation scopes
 
 ```ts
-import { CancellationError, cancellationScope } from '@temporalio/workflow';
+import { CancellationError, CancellationScope } from '@temporalio/workflow';
 import { setup, httpPostJSON, cleanup } from '@activities';
 
 export async function main(url: string) {
-  try {
-    return await cancellationScope(async (scope) => {
-      await cancellationScope({ shield: true }, () => setup());
-      scope.deadline = Date.now() + 1000; // 1 second after setup is complete
-      await httpPostJSON(url);
-    });
-  } catch (err) {
-    if (!(err instanceof CancellationError)) {
+  await CancellationScope.cancellable(async () => {
+    await CancellationScope.nonCancellable(() => setup());
+    try {
+      await CancellationScope.withTimeout(1000, () => httpPostJSON(url));
+    } catch (err) {
+      if (err instanceof CancellationError) {
+        await CancellationScope.nonCancellable(() => cleanup(url));
+      }
       throw err;
     }
-    await cancellationScope({ shield: true }, () => cleanup(url));
-  }
+  });
 }
 ```
 
 #### Sharing promises between scopes
 
 ```ts
-import { cancellationScope } from '@temporalio/workflow';
+import { CancellationScope } from '@temporalio/workflow';
 import { activity1, activity2 } from '@activities';
 
-export async function main(): Promise<void> {
-  const p1 = activity1(); // <-- Start activity1 in root scope
-  const p2 = activity2(); // <-- Start activity2 in root scope
+export async function main() {
+  const p1 = activity1(); // <-- Start activity1 in the root scope
+  const p2 = activity2(); // <-- Start activity2 in the root scope
 
-  const scopePromise = cancellationScope(async (scope) => {
+  const scopePromise = CancellationScope.cancellable(async () => {
     const first = await Promise.race([p1, p2]);
-    scope.cancel(); // Does not cancel activity1 or activity2 as they're tied to the root scope
+    // Does not cancel activity1 or activity2 as they're linked to the root scope
+    CancellationScope.current().cancel();
     return first;
   });
   return await scopePromise;
@@ -288,15 +316,16 @@ export async function main(): Promise<void> {
 ```
 
 ```ts
-import { cancellationScope } from '@temporalio/workflow';
+import { CancellationScope } from '@temporalio/workflow';
 import { activity1 } from '@activities';
 
-export async function main(): Promise<void> {
-  const p = await cancellationScope(async (scope) => {
-    scope.shield = true;
-    return activity1(); // <-- Start activity1 in shielded scope without awaiting completion
+export async function main() {
+  let p: Promise<any> | undefined = undefined;
+
+  await CancellationScope.nonCancellable(async () => {
+    p = activity1(); // <-- Start activity1 in nonCancellable scope without awaiting completion
   });
-  // Activity is shielded from cancellation even though it is awaited in the unshielded root scope
+  // Activity is shielded from cancellation even though it is awaited in the cancellable root scope
   return await p;
 }
 ```
@@ -305,7 +334,7 @@ export async function main(): Promise<void> {
 
 Callbacks are not particularly useful in the Workflows because all meaningful asynchronous operations return a Promise.
 
-In the odd case that user code utilizes callbacks, `CancellationScope.cancelled` can be used to subscribe to cancellation.
+In the odd case that user code utilizes callbacks, `CancellationScope.cancelRequested` can be used to subscribe to cancellation.
 
 ```js
 function doSomehing(callback) {
@@ -314,9 +343,9 @@ function doSomehing(callback) {
 
 export async function main() {
   await new Promise((resolve, reject) => {
-    cancellationScope(async (scope) => {
+    CancellationScope.cancellable(async () => {
       doSomehing(resolve);
-      scope.cancelled.catch(reject);
+      CancellationScope.current().cancelRequested.catch(reject);
     });
   });
 }
