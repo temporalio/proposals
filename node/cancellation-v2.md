@@ -57,6 +57,7 @@ cancel -> member CancellationScope.cancel
 ### Behavior
 
 - `CancellationScope` no longer throws `CancellationError`, it simply cancels timers and activities which in turn should throw `CancellationError`
+- Activities and timers started in a `CancellationScope` after it's been cancelled will not start and instead will throw `CancellationError`
 - `Context.cancelled` is moved to `CancellationScope.cancelRequested` and changed to return a promise to assist writing Workflows which are driven solely by signals
 
   ```ts
@@ -260,7 +261,10 @@ export async function main(url: string, data: any): Promise<void> {
   } catch (err) {
     if (err instanceof CancellationError) {
       console.log('Workflow cancelled');
-      await cleanup(url);
+      // Cleanup logic goes in a nonCancellable scope
+      // If we'd run cleanup outside of a nonCancellable scope it would've been cancelled
+      // before being started because the Workflow's root scope is cancelled.
+      await CancellationScope.nonCancellable(() => cleanup(url));
     }
     throw err; // <-- Fail the Workflow
   }
@@ -280,7 +284,7 @@ export async function main(url: string) {
       await CancellationScope.withTimeout(1000, () => httpPostJSON(url));
     } catch (err) {
       if (err instanceof CancellationError) {
-        await cleanup(url);
+        await CancellationScope.nonCancellable(() => cleanup(url));
       }
       throw err;
     }
