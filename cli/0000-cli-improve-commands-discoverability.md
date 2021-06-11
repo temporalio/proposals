@@ -28,7 +28,6 @@ After
 tctl activity complete {flags}
 ```
 
-
 # Adoption strategy
 
 This change was prior to Release v1.0.0
