@@ -38,6 +38,6 @@ $ tctl -h
 ...
 ```
 
-Follow a similar principal for :
+Follow the similar principal for:
 - sub-commands, ex. `workflow desc` -> `workflow d`. Remove lesser used shorts such as `workflow term` (for terminate sub-command)
 - flags, ex. `--print_json` which has a short `--pjson` should be changed to `-j` (for `--json`).
