@@ -9,8 +9,10 @@ Support configuring some of the tctl defaults through a configuration file.
 Add `config` top level command that should allow setting and reading specific config options
 
  Use XDG-spec to locate the config file:
- ~/.config/tctl on Unix
- %LOCALAPPDATA%\tctl on Windows
+ 
+ `~/.config/tctl` on Unix
+ 
+ `%LOCALAPPDATA%\tctl` on Windows
 
 For start, support the equivalents of the following tctl flags:
  - Namespace name `--namespace`
