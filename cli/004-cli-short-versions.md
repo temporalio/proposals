@@ -19,11 +19,9 @@ $ tctl -h
    dataconverter, dc  ...
 ...
 ```
-As you can see, short versions of commands are randomly different in length.
+As you can see, short versions of commands are randomly different in length. Change the short versions of commands to single characters only. Remove some of the short versions especially for the commands that are expected to be less used.
 
-Change the short versions of commands to single characters only. Remove some of the short versions especially for the commands that are expected to be less used.
-
-New structure for `--help`:
+As for the above `--help` example, after the changes this will become:
 
 ``` bash
 $ tctl -h
