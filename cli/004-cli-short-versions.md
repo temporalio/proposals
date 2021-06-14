@@ -21,7 +21,7 @@ $ tctl -h
 ```
 As you can see, short versions of commands are randomly different in length.
 
-Change the short versions of commands to single characters only. Remove some of the short versions especially for the commands that are expected to be used less.
+Change the short versions of commands to single characters only. Remove some of the short versions especially for the commands that are expected to be less used.
 
 New structure for `--help`:
 
