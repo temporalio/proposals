@@ -19,7 +19,7 @@ $ tctl -h
    dataconverter, dc  ...
 ...
 ```
-As you can see, short versions of commands seemingly for no reason are different in length.
+As you can see, short versions of commands are randomly different in length.
 
 Change the short versions of commands to a single character only. Remove some of the short versions especially for the commands that are expected to be used less.
 
