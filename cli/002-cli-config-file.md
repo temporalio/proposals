@@ -3,7 +3,6 @@
 - Issue:
 
 ### Config file for tctl defaults
-As a user i want to be able to change the defaults of some flags, such as the default namespace.
 Support configuring some of the tctl defaults through a configuration file. 
 
 Add `config` top level command that should allow setting and reading specific config options
