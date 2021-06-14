@@ -17,4 +17,4 @@ For start, support the equivalents of the following tctl flags:
  - Namespace name `--namespace`
  - Temporal frontend service address `--address`
  - Data converter plugin path `--data-converter-plugin`
- - RPC context timeout `--context_timeout`
+ - RPC context timeout `--context-timeout`
