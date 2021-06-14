@@ -8,5 +8,21 @@ Problem: currently piping the output into other tools is not well supported. For
 Structure outputs so it would be easy to pipe it into common utilities. 
 To achieve that: 
  - `wc`, `more` support: integrate output with `less` cmd by default if it's available in the OS. If `less` is not found, create and use builtin functiniality to output all available rows immediately (similar to how `cat` behaves).
+ Examples: 
+ ``` bash
+ tctl workflow list --open --all | wc
+ ```
+ ``` bash
+ tctl workflow list --all | more
+ ```
+ 
  - `grep` support: add a flag to output data as cards, where each row will follow format `{field name}: {field value}`
+ Examples:
+ ``` bash
+ tctl workflow list --card --all | grep WorkflowId
+ ```
  - `jq` support: json output (`--json` flag) should be possible to process using jq
+Examples:
+``` bash
+tctl workflow list --json | jq '.execution'
+```
