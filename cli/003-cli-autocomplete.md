@@ -23,5 +23,7 @@ Expected: auto-completes to tctl workflows
 
 Sources:
 https://github.com/urfave/cli/blob/master/docs/v2/manual.md#bash-completion
+
 `kubectl completion -h`
+
 `gh completion -h`
