@@ -4,7 +4,7 @@
 
 ### Improve commands output UX and rendering options
 
-Issues (bold) and proposals:
+Current Issues and improvement proposals:
 
 #### - Many commands do not support switching between Table and JSON views.
 
