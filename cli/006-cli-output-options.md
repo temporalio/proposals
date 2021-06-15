@@ -4,7 +4,7 @@
 
 ### Improve commands output UX and rendering options
 
-##### many commands do not support switching between Table and JSON views.
+#### Many commands do not support switching between Table and JSON views.
 
 In places where we retrieve and print entity objects, support changing how the objects are printed through `--json` and `--table` flags. For arrays of objects, usually prefer Table view as the default. Implement the proposal by creating a unified rendering utility.
 
