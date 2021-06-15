@@ -8,7 +8,7 @@
 
 Proposal: in places where we retrieve and print entity objects, support changing how the objects are printed through `--json` and `--table` flags. For arrays of objects, usually prefer Table view as the default. Implement the proposal by creating a unified rendering utility.
 
-- All commands do not support printing data in a form of cards (`{field name} {field value}` per row), which is especially useful in combination with `grep` or when printing a single object.
+- All commands do not support printing data in a form of cards (`{field name} {field value}` per row), which is especially useful in combination with `grep` or when describing a single object.
 
 Proposal: Add `--card` flag that will print entity object in a format `{field name} {field value}`.
 
