@@ -4,7 +4,7 @@
 
 ### Format timestamp fields using a flag
 
-When printing data in `--table` or `--card` views, allow swithing the format of the timestamp fields (ie. `google.protobuf.Timestamp`) 
+When printing data in `--table` or `--card` views, allow switching the format of the timestamp fields (ie. `google.protobuf.Timestamp`) 
 
 Add `--time-format` flag with possible values:
 - `relative` to print in a format `6 hours ago`. Use as default format in tty environment
