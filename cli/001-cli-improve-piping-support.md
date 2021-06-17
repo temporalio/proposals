@@ -13,7 +13,7 @@ To achieve that:
  
  Examples: 
  ``` bash
- tctl workflow list --open --all | wc
+ tctl workflow list --open --all | wc -l
  ```
  ``` bash
  tctl workflow list --all | more
