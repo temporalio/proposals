@@ -8,6 +8,7 @@ Some commands may take time to execute until showing an output or an error (typi
 
 Show a spinner or progress bar where applicable.
 
-The spinner should only be applied if the output medium is a terminal (stdout is connected to tty). Add a flag `--no-spin` that disables spinner.
+The spinner/progress bar should only be applied if the output medium is a terminal (stdout is connected to tty). 
+Add a flag `--no-progress` that disables spinner (similar to [npm --no-progress](https://github.com/npm/npm/issues/8704#issuecomment-158222250))
 
 Target to make the cli immediate and responsive.
