@@ -23,7 +23,7 @@ To achieve that:
  
  Examples:
  ``` bash
- tctl workflow list --format card --all | grep WorkflowId
+ tctl workflow list --format card | grep WorkflowId
  ```
  - `jq` support: json output (`--json` flag) should be possible to process using jq
 
