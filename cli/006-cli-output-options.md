@@ -31,7 +31,7 @@ tctl workflow list --details
 
 #### - Limited support for changing the columns/fields in Table view. Only specific fields are explicitly supported through flags, ex. `--print_memo`.
 
-Proposal: Add `--field` flag so users can customize the fields to output in Table/Card (can be passed ). Add `--fields` flag to examine and print all available field names for --field input. If a field passed with `--field` is not found, then notify the user and print the result of `--fields` as a suggestion. 
+Proposal: Add `--field` flag so users can customize the fields to output in Table/Card. Add `--fields` flag to examine and print all available field names for --field input. If a field passed with `--field` is not found, then notify the user and print the result of `--fields` as a suggestion. 
 ``` bash
 tctl workflow list --field Execution.RunId --field searchAttributes
 ```
