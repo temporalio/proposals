@@ -8,17 +8,18 @@ Current Issues and improvement proposals:
 
 #### - Many commands do not support switching between Table and JSON views.
 
-In places where we retrieve and print entity objects, support changing how the objects are printed through `--json` and `--table` flags. For arrays of objects, usually prefer Table view as the default. Implement the proposal by creating a unified rendering utility.
-``` bash
-tctl workflow list --table # default for most commands
-tctl workflow list --json
-```
+In places where we retrieve and print entity objects, support changing how the objects are printed through `--format` flag that accepts the following values:
+- `--format table` # default for most commands
+- `--format json`
+- `--format card` # new view
 
-#### - All commands do not support printing data in a form of cards (`{field name} {field value}` per row), which is especially useful in combination with `grep` or when describing a single object.
+For arrays of objects, usually prefer Table view as the default. Implement the proposal by creating a unified rendering utility.
 
-Add `--card` flag that will print entity object in a format `{field name} {field value}`.
+#### - All commands do not support printing data in a form of cards (`{field name}: {field value}` per row), which is especially useful in combination with `grep` or when describing a single object.
+
+Add `--format card` key that will print entity object in a format `{field name}: {field value}`.
 ``` bash
-tctl workflow list --card | grep WorkflowId
+tctl workflow list --format card | grep WorkflowId
 ```
 
 #### - Output is often noisy, single entity row may spill to the next rows and break the tables.
