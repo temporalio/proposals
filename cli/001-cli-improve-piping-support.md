@@ -19,11 +19,11 @@ To achieve that:
  tctl workflow list --all | more
  ```
  
- - `grep` support: add a flag to output data as cards, where each row will follow format `{field name}: {field value}`
+ - `grep` support: add a --format view to output data as cards, where each row follows format `{field name}: {field value}`
  
  Examples:
  ``` bash
- tctl workflow list --card --all | grep WorkflowId
+ tctl workflow list --format card --all | grep WorkflowId
  ```
  - `jq` support: json output (`--json` flag) should be possible to process using jq
 
