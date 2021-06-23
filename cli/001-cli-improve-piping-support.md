@@ -2,32 +2,46 @@
 - RFC PR:
 - Issue:
 
-### Support better piping of output 
-Problem: currently piping the output into other tools is not well supported. For example utilities such as `grep`, `wc`, `jq` may work with very limited set of commands / in limited functionality. 
+### Unified pagination tooling
+In the current tctl each command that wants to use pagination has to implement it from scratch. This also leads to incostistent behavior between commands. 
+Create a unified pager tooling for easy integration and consistent UX. The utility should also support piping into other tools.
 
-Structure outputs so it would be easy to pipe it into common utilities. 
+Usage syntax of the unified tooling:
+``` go
+# create iterator over your data
+iterator := collection.NewPagingIterator(paginationFunc)
 
-To achieve that:
+# specify fields to print and optionally few other options (default formatting as Table or JSON?)
+options := &format.PrintOptions{
+  Fields: []string{"Execution.WorkflowId", "Execution.RunId", "StartTime"}  
+}
 
- - `wc`, `more` support: integrate output with `less` cmd by default if it's available in the OS. If `less` is not found, create and use builtin functiniality to output all available rows immediately (similar to how `cat` behaves).
- 
- Examples: 
- ``` bash
- tctl workflow list --open --all | wc -l
- ```
- ``` bash
- tctl workflow list --all | more
- ```
- 
- - `grep` support: add a --format view to output data as cards, where each row follows format `{field name}: {field value}`
- 
- Examples:
- ``` bash
- tctl workflow list --format card | grep WorkflowId
- ```
- - `jq` support: json output (`--json` flag) should be possible to process using jq
+# start pager printing process (or fallback to os.Stdout)
+format.Paginate(cliContext, iterator, options)
+```
+
+### UX & Performance improvement over large sets of data
+1. Piping into other tools may create performance issues on large sets of data, since you have to pre-fetch all data and only then pass into a pipe.
+
+By direct integration of piping into pagers (`less`, `more`) we can improve performance since we get to benefit from lazy loading and fetching more data only when it's needed.
+This also improves the default pagination UX by using proved tools and follows UNIX philosophy.
 
 Examples:
-``` bash
-tctl workflow list --json | jq '.execution'
+Page over items with `less`
+```bash
+tctl workflow list --pager less # default behavior for Table view
+```
+Page over items with `more`
+```bash
+tctl workflow list --pager more # default behavior for JSON and Card views
+```
+
+### Any custom pagers
+Allow users to provide their own favorite pagers
+
+Example
+```bash
+tctl workflow list --pager myFavoritePager
+
+tctl workflow list --pager bat
 ```
