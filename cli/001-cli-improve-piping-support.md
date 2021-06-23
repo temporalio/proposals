@@ -11,7 +11,7 @@ Usage syntax of the unified tooling:
 # create iterator over your data
 iterator := collection.NewPagingIterator(paginationFunc)
 
-# specify fields to print and optionally few other options (default formatting as Table or JSON?)
+# specify fields to print and optionally few other details (default formatting as Table or JSON?)
 options := &format.PrintOptions{
   Fields: []string{"Execution.WorkflowId", "Execution.RunId", "StartTime"}  
 }
