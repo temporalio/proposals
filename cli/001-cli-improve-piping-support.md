@@ -36,6 +36,12 @@ Page over items with `more`
 tctl workflow list --pager more # default behavior for JSON and Card views
 ```
 
+Set pager in env variable `PAGER`
+```bash
+export PAGER=more && tctl workflow list
+```
+
+
 ### Any custom pagers
 Allow users to provide their own favorite pagers
 
