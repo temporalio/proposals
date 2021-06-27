@@ -26,7 +26,7 @@ tctl workflow list --format card | grep WorkflowId
 
 Change the list commands to output 3-5 columns/fields by default. Add `--long` flag that will add few more of the ~most important fields. This behavior is similar to `nushell`'s `ls --long` flag
 ``` bash
-tctl workflow list --details
+tctl workflow list --long
 ```
 
 #### - Limited support for changing the columns/fields in Table view. Only specific fields are explicitly supported through flags, ex. `--print_memo`.
