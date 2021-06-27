@@ -24,7 +24,7 @@ tctl workflow list --format card | grep WorkflowId
 
 #### - Output is often noisy, single entity row may spill to the next rows and break the tables.
 
-Change the list commands to output 3-5 columns/fields by default. Add `--details` flag that will add few more of the ~most important fields. This behavior is similar to `nushell`'s `ls --long` flag
+Change the list commands to output 3-5 columns/fields by default. Add `--long` flag that will add few more of the ~most important fields. This behavior is similar to `nushell`'s `ls --long` flag
 ``` bash
 tctl workflow list --details
 ```
