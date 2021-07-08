@@ -26,7 +26,7 @@ tctl workflow list --output card | grep WorkflowId
 
 Proposal: Add `--columns` flag so users can customize the columns to output in Table/Card. The flag should accept comma separated list of field names. Not passing a value into `--columns` or passing a wrong field name should print an error message plus all of the available fields.  
 ``` bash
-tctl workflow list --columns "Execution.RunId, searchAttributes"
+tctl workflow list --columns Execution.RunId,SearchAttributes
 ```
 
 #### - Output is often noisy, single entity row may spill to the next rows and break the tables.
