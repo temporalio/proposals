@@ -8,6 +8,6 @@ Good usage of coloring can help users to read the output and direct attention to
 
 - Standartize the colors used in printing
 - Work through commands and improve the coloring
-- add a flag `--no-color` to disable coloring alltogether
+- add a flag `--color` that takes the following values: `auto` (enable in tty/ disable in non-tty), `always`, `disabled` 
 - low priority: colorize command and flag names in `--help` output
 - low priority: add built-in coloring of `--json` output. Piping into `jq` can be used by users as an alternative so low priority.
