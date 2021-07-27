@@ -16,9 +16,9 @@ If the workflow code is executing for the first time, it will write a marker int
 
 Version ranges can still be simulated if needed like:
 ```rust
-if changed("change-ver-1") {
+if changed("change-ver-2") {
     // blah
-} else if changed("change-ver-2") {
+} else if changed("change-ver-1") {
     // blah
 }
 // etc
