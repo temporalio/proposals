@@ -72,7 +72,6 @@ This code accepts any sort of history (which means there must be *no* v1 workers
 // Version 4
 fn workflow() {
    // ...previous code....
-   must_have_change("change_id")
    activity_b().await;
 }
 ```
