@@ -12,12 +12,12 @@ Usage syntax of the unified tooling:
 iterator := collection.NewPagingIterator(paginationFunc)
 
 # specify fields to print and optionally few other details (default formatting as Table or JSON?)
-options := &format.PrintOptions{
+options := &output.PrintOptions{
   Fields: []string{"Execution.WorkflowId", "Execution.RunId", "StartTime"}  
 }
 
 # start pager printing process (or fallback to os.Stdout)
-format.Paginate(cliContext, iterator, options)
+output.Paginate(cliContext, iterator, options)
 ```
 
 ### UX & Performance improvement over large sets of data
@@ -40,6 +40,8 @@ Set pager in env variable `PAGER`
 ```bash
 export PAGER=more && tctl workflow list
 ```
+
+Allow disabling the pager through `--no-pager` flag. When the flag is provided use stdout for outputting. 
 
 
 ### Any custom pagers
