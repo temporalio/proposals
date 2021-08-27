@@ -46,9 +46,14 @@ Environment scope keys:
 - tls-server-name
 - tls-disable-host-verification
 
-##### 
+##### Using environment per command --environment
 
 Add a global flag `--environment <name>` that will use specific environment when running a command, but not set it as active in config.  
+
+Example:
+```bash
+$ tctl --environment cluster-1 workflow list
+```
 
 ##### Example of environment aware configuration file:
 
