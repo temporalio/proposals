@@ -4,21 +4,25 @@
 
 ### Configuring multiple environments
 
+##### Problem
+
 Users may have multiple Temporal service environments (development, production, ..) with their own respective mTLS configs, namespaces, address etc. Current implementation of tctl config feature only supports configuring a single environment and doesn't help at quickly switching between multiple.
+
+##### Proposal
 
 To make it easy for users to switch between environments, allow configuring multiple instead of just one and provide command to switch between them.
 
 Syntax to activate environment configs:
 
 ```bash
-$ tctl config set-environment <name>
+$ tctl config use-environment <name>
 Active environment: <name>
 ```
 
 If the environment doesn't yet exist in config, create it and set as active
 
 ```bash
-$ tctl config set-environment <new>
+$ tctl config use-environment <new>
 Environment <new> record doesn't exist, adding..
 Active environment: <name>
 ```
@@ -42,7 +46,11 @@ Environment scope keys:
 - tls-server-name
 - tls-disable-host-verification
 
-Example of environment aware configuration file:
+##### 
+
+Add a global flag `--environment <name>` that will use specific environment when running a command, but not set it as active in config.  
+
+##### Example of environment aware configuration file:
 
 ```yml
 active: development
