@@ -58,5 +58,4 @@ environments:
 alias:
   - key: wl
     value: workflow list
-version: next
 ```
