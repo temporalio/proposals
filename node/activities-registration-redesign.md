@@ -21,7 +21,7 @@
 
 Another approach would be to reuse the concept from [`ExternalDependencies`](https://docs.temporal.io/docs/node/external-dependencies#example)
 
-### Activity stub setup
+### Activity stub configuration
 
 `workflows/example.ts`
 
@@ -32,13 +32,13 @@ export interface ActivityInterface {
 }
 
 // deposit and withdraw are typesafe stubs
-const { deposit, withdraw } = Context.setupActivities<ActivityInterface>(activityOptions);
+const { deposit, withdraw } = Context.configureActivities<ActivityInterface>(activityOptions);
 
 // -- OR --
 
 // We only use the type here, the import gets dropped by the typescript compiler
 import * as activities from '../activities';
-const { deposit, withdraw } = Context.setupActivities<typeof activities>(activityOptions);
+const { deposit, withdraw } = Context.configureActivities<typeof activities>(activityOptions);
 ```
 
 ### Activity Registration
