@@ -58,7 +58,7 @@ $ tctl --environment cluster-1 workflow list
 ##### Example of environment aware configuration file:
 
 ```yml
-active: development
+active: local
 environments:
   - name: development
     namespace: default
