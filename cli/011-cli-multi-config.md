@@ -60,7 +60,7 @@ $ tctl --environment cluster-1 workflow list
 ```yml
 active: local
 environments:
-  - name: development
+  - name: local
     namespace: default
     address: 127.0.0.1
     port: 7023
