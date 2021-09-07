@@ -14,7 +14,7 @@ To make it easy for users to switch between environments, allow configuring mult
 
 Syntax to activate environment configs:
 
-```bash
+```shellsession
 $ tctl config use-environment <name>
 Active environment: <name>
 ```
