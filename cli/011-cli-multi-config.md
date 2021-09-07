@@ -23,7 +23,7 @@ If the environment doesn't yet exist in config, create it and set as active
 
 ```shellsession
 $ tctl config use-environment <name>
-Environment <new> record doesn't exist, adding..
+Environment <name> record doesn't exist, adding..
 Active environment: <name>
 ```
 
