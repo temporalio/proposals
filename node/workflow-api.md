@@ -79,17 +79,17 @@ await condition(() => !isBlocked);
 `workflows.ts`
 
 ```ts
-import { Signal, Query, condition } from '@temporalio/workflow';
+import { condition, defineSignal, defineQuery, setListener } from '@temporalio/workflow';
 
 // Define the signal / query with the type signature at the top level to share the definition for handle creation
-export const unblockSignal = new Signal<[] /* args */>('unblock');
-export const isBlockedQuery = new Query<boolean /* return type */, [] /* args */>('isBlocked');
+export const unblockSignal = defineSignal<[] /* args (optional) */>('unblock');
+export const isBlockedQuery = defineQuery<boolean /* return type */, [] /* args (optional) */>('isBlocked');
 
 // Types are inferred without an additional type definition
 export async function myWorkflow(arg1: number, arg2: string): Promise<void> {
   let isBlocked = true;
-  unblockSignal.handler = () => (isBlocked = false);
-  isBlockedQuery.handler = () => isBlocked;
+  setListener(unblockSignal, () => (isBlocked = false));
+  setListener(isBlockedQuery, () => isBlocked);
   await condition(() => !isBlocked);
 }
 ```
@@ -99,8 +99,8 @@ export async function myWorkflow(arg1: number, arg2: string): Promise<void> {
   ```ts
   export async function unblocked() {
     let isBlocked = true;
-    unblockSignal.handler = () => (isBlocked = false);
-    isBlockedQuery.handler = () => isBlocked;
+    setListener(unblockSignal, () => (isBlocked = false));
+    setListener(isBlockedQuery, () => isBlocked);
     await condition(() => !isBlocked);
   }
 
@@ -124,10 +124,10 @@ import { myWorkflow, unblockSignal, isBlockedQuery } from './workflows';
 const client = new WorkflowClient();
 const handle = client.createWorkflowHandle(myWorkflow);
 await handle.start();
-await handle.query(isBlocked /* no args */); // true
+await handle.query(isBlockedQuery /* no args */); // true
 await handle.signal(unblockSignal /* no args */);
-await handle.query(isBlocked /* no args */); // false
-await handle.query<[number, string], string>('queryWithUnexportedType', 1, 'a'); // should return a string
+await handle.query(isBlockedQuery /* no args */); // false
+await handle.query<string, [number, string]>('queryWithUnexportedType', 1, 'a'); // should return a string
 await handle.result(); // undefined
 ```
 
