@@ -136,7 +136,7 @@ Proposal:
 
 ```go
 type ActivityInterceptor interface {
-	InterceptActivity(ctx context.Context, next ActivityInboundInterceptor) ActivityInboundInterceptor
+  InterceptActivity(ctx context.Context, next ActivityInboundInterceptor) ActivityInboundInterceptor
 }
 ```
 
@@ -152,11 +152,13 @@ type ActivityInput struct {
 }
 
 type ActivityInboundInterceptor interface {
-	Init(outbound ActivityOutboundInterceptor) error
+  Init(outbound ActivityOutboundInterceptor) error
 
-	ExecuteActivity(ctx context.Context, input *ActivityInput) (interface{}, error)
+  ExecuteActivity(ctx context.Context, input *ActivityInput) (interface{}, error)
 }
 ```
+
+Also a `ActivityInboundInterceptorBase` implementation with expected delegation.
 
 Why: Mimics `WorkflowInboundInterceptor` but for activities.
 
@@ -169,7 +171,7 @@ type ActivityOutboundInterceptor interface {
   GetInfo(ctx context.Context) ActivityInfo
   GetLogger(ctx Context) log.Logger
   GetMetricsScope(ctx Context) tally.Scope
-	RecordHeartbeat(ctx context.Context, details ...interface{})
+  RecordHeartbeat(ctx context.Context, details ...interface{})
   HasHeartbeatDetails(ctx context.Context) bool
   GetHeartbeatDetails(ctx context.Context, d ...interface{}) error
   GetWorkerStopChannel(ctx context.Context) <-chan struct{}
@@ -182,8 +184,8 @@ Why:
 
 * Mimics `WorkflowOutboundInterceptor` but for activities.
 
-For discussion `GetInfo` returns expensive copies because `activity.GetInfo` does. Is this ok? This is inconsistent with
-workflow info which is a pointer.
+For discussion: `GetInfo` returns expensive copies because `activity.GetInfo` does. Is this ok? This is inconsistent
+with workflow info which is a pointer.
 
 ## Interceptor Possible Updates
 
@@ -202,7 +204,7 @@ Current:
 
 ```go
 type WorkflowInterceptor interface {
-	InterceptWorkflow(info *WorkflowInfo, next WorkflowInboundCallsInterceptor) WorkflowInboundCallsInterceptor
+  InterceptWorkflow(info *WorkflowInfo, next WorkflowInboundCallsInterceptor) WorkflowInboundCallsInterceptor
 }
 ```
 
@@ -256,7 +258,7 @@ func (aii) ExecuteActivity(ctx context.Context, input *interceptors.ActivityInpu
 
 func (wii) ExecuteWorkflow(ctx workflow.Context, input *interceptors.WorkflowInput) (interface{}, error)
 
-func (woi) ExecuteActivity(ctx workflow.Context,activityType string, args ...interface{}) workflow.Future
+func (woi) ExecuteActivity(ctx workflow.Context, activityType string, args ...interface{}) workflow.Future
 func (woi) ExecuteLocalActivity(ctx workflow.Context, activityType string, args ...interface{}) workflow.Future
 func (woi) ExecuteChildWorkflow(ctx workflow.Context, childWorkflowType string, args ...interface{}) workflow.ChildWorkflowFuture
 ```
