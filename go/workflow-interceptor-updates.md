@@ -7,6 +7,7 @@ This proposal is for updates to Go workflow interceptors with the following feat
 * Provide feature parity with Java SDK and other missing features (see https://github.com/temporalio/sdk-go/issues/529)
 * Add activity interceptors
 * Make inbound interceptors future-proof for argument addition
+* Examples for altering headers both via interceptors and client wrappers
 
 **These updates are known to NOT be backwards-compatible**
 
@@ -26,7 +27,9 @@ Proposal:
 InterceptWorkflow(ctx Context, next WorkflowInboundCallsInterceptor) WorkflowInboundCallsInterceptor
 ```
 
-Why: Callers can use the context to get workflow info.
+Why: Callers can use the context to get workflow info in addition to other things (e.g. loggers, metricsm, etc). Also
+using the context as the first parameter is good Go practice and allows for more contextual information to be provided
+in the future.
 
 ### WorkflowXCallsInterceptor
 
@@ -69,7 +72,6 @@ Proposal:
 type SignalInput struct {
   SignalName string
   Arg interface{}
-  EventID string
 }
 
 HandleSignal(ctx Context, input *SignalInput) error
@@ -80,9 +82,8 @@ Also, this will be called to handle the signal with the last invocation in the c
 Why:
 
 * `HandleSignal` matches Java nomenclature and new behavior better
-* Currently sending is sent separate and async, so the current version doesn't wrap the handling. Instead this will be
-  part of the async call and documentation will make clear it needs to be safe for concurrent invocation.
-* The Java version provides the event ID so we will too
+* Currently the sending of the signal to the handler is done after the interceptor not allowing the interceptor to
+  actually intercept and alter/prevent the send. We will change to have the last interceptor do the actual send.
 
 ### WorfkflowInboundCallsInterceptor.HandleQuery
 
@@ -223,14 +224,17 @@ Then change `WorkerOptions.WorkflowInterceptorChainFactories []WorkflowIntercept
 For discussion:
 
 * This maps to what Java does
-* Would we want a `WorkerInterceptorBase` with default impls? Why doesn't Java have this?
+* Would we want a `WorkerInterceptorBase` with default impls that return instances of `ActivityInboundInterceptorBase`
+  and `WorkflowInboundInterceptorBase`? Why doesn't Java have this?
 
 ## OpenTelemetry Implementation
 
 Proposal in separate `opentelemetry` package:
 
 ```go
-// Added to existing internal.ClientOptions struct
+// Added to existing internal.ClientOptions struct to allow the gRPC
+// interceptors to be enabled and allow options to be set for them from
+// https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 type ClientOptions struct {
   OpenTelemetry OpenTelemetryClientOptions
 }
@@ -266,4 +270,4 @@ func (woi) ExecuteChildWorkflow(ctx workflow.Context, childWorkflowType string, 
 For discussion:
 
 * This matches Java feature-wise, is this enough? Does Java impl not trace anything we might want to?
-* Do we want to do anything with the existing `opentracing` stuff as part of this?
+* Do we want to do anything with the existing `opentracing` Go SDK implementation as part of this?
