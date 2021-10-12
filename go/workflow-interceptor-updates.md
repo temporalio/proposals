@@ -131,6 +131,17 @@ GetInfo(ctx Context) *WorkflowInfo
 
 Why: All other calls match `workflow` package, why not this?
 
+### WorkflowOutboundCallsInterceptor.NewContinueAsNewError
+
+Currently this doesn't exist. Proposal:
+
+```go
+NewContinueAsNewError(ctx Context, wfn interface{}, args ...interface{}) error
+```
+
+Why: This is needed for the later tracing piece that adds headers to the context.
+
+
 ### ActivityInterceptor
 
 Proposal:
@@ -199,6 +210,82 @@ Why: In the newer gRPC service interfaces this is done to allow interface additi
 [this](https://github.com/grpc/grpc-go/blob/03ca7b7d00cada2ff8a3ea7348fe6c3a2b2ee4fb/examples/helloworld/helloworld/helloworld_grpc.pb.go#L52)
 as an example.
 
+#### Explanation of Forced Embeds
+
+To explain this concept a little further, imagine there is an interface in a library you want to implement:
+
+```go
+type MyInterface interface {
+  DoSomething() error
+}
+
+type MyInterfaceBase struct{}
+func (MyInterfaceBase) DoSomething() error { return nil }
+```
+
+And you implement it but without embedding the base struct:
+
+```go
+type MyImpl struct{}
+var _ otherlib.MyInterface = MyImpl{}
+func (MyImpl) DoSomething() error { return nil }
+```
+
+Now if the library goes back and changes the interface to:
+
+```go
+type MyInterface interface {
+  DoSomething() error
+  DoAnotherThing() error
+}
+
+type MyInterfaceBase struct{}
+func (MyInterfaceBase) DoSomething() error { return nil }
+func (MyInterfaceBase) DoAnotherThing() error { return nil }
+```
+
+You'd upgrade the dependency and then your compilation would break making the library's interface alteration not as
+compatible as it could be. But if the library had originally defined its interface and base as:
+
+```go
+type MyInterface interface {
+  DoSomething() error
+  mustEmbedBase()
+}
+
+type MyInterfaceBase struct{}
+func (MyInterfaceBase) DoSomething() error { return nil }
+func (MyInterfaceBase) mustEmbedBase() {}
+```
+
+Then you'd have _no choice_ but to embed `MyInterfaceBase`:
+
+```go
+type MyImpl struct{ otherlib.MyInterfaceBase }
+// This will fail to compile if you hadn't done the embed
+var _ otherlib.MyInterface = MyImpl{}
+func (MyImpl) DoSomething() error { return nil }
+```
+
+So now, when the library adds a new method to the interface like:
+
+```go
+type MyInterface interface {
+  DoSomething() error
+  DoAnotherThing() error
+  mustEmbedBase()
+}
+
+type MyInterfaceBase struct{}
+func (MyInterfaceBase) DoSomething() error { return nil }
+func (MyInterfaceBase) DoAnotherThing() error { return nil }
+func (MyInterfaceBase) mustEmbedBase() {}
+```
+
+The library knows all implementations of the interface embedded the struct they had to for forwards compatibility and it
+knows that nobody's compilation will fail because they didn't embed the base. This is what gRPC and other libraries are
+starting to do to force forward compatibility of interfaces.
+
 ### WorkerInterceptor
 
 Current:
@@ -227,47 +314,61 @@ For discussion:
 * Would we want a `WorkerInterceptorBase` with default impls that return instances of `ActivityInboundInterceptorBase`
   and `WorkflowInboundInterceptorBase`? Why doesn't Java have this?
 
-## OpenTelemetry Implementation
+## Tracing and Context Propagation
 
-Proposal in separate `opentelemetry` package:
+Current:
+
+* A concept called a context propagator handles marshalling to/from workflow and activity proto "headers" (a construct
+  in the body not to be confused with actual HTTP headers)
+* Client options accept an OpenTracing tracer
+* An internal context propagator is creating for the OpenTracing tracer that marshals to/from a span context to a
+  special key in the headers
+* The tracer is sent all throughout the contextual work of workflows and activities so that spans can be created at
+  different times
+
+Proposal:
+
+* A new ability to retrieve a mutable set of proto "headers" on the context will be made so that interceptors can set
+  workflow/activity headers in either direction
+* Internally, headers will be obtained from the context by the last interceptor
+  * So headers are set on the context before interceptor invocation for mutation by interceptors
+* A `tracing` package will be created with:
+  * `WorkerInterceptor` implementations for OpenTracing and OpenTelemetry tracers
+    * Wraps the same inbound/outbound calls in spans that are otherwise wrapped by the tracer today
+    * On inbound `ExecuteActivity` and `ExecuteWorkflow` span context is unmarshaled from header
+    * On outbound `ExecuteActivity`, `ExecuteLocalActivity`, `ExecuteChildWorkflow`, and `NewContinueAsNewError` span
+      context is marshaled into header
+  * `Client` implementations for OpenTracing and OpenTelemetry tracers
+    * Wraps the same calls in spans that are otherwise wrapped by the tracer today
+    * On `ExecuteWorkflow` and `SignalWithStartWorkflow` span context is marshaled into header
 
 ```go
-// Added to existing internal.ClientOptions struct to allow the gRPC
-// interceptors to be enabled and allow options to be set for them from
-// https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
-type ClientOptions struct {
-  OpenTelemetry OpenTelemetryClientOptions
-}
+package interceptors
 
-type OpenTelemetryClientOptions struct {
-  Enabled bool
-  Options []otelgrpc.Option
-}
+// Header returns nil if this context does not have the header on it (meaning
+// they cannot be mutated by an interceptor).
+func Header(ctx interface { Value(interface{}) interface{} }) map[string]*commonpb.Payload
+```
 
-// Wraps only the calls implemented in spans, delegates the rest
-func NewTracingClient(opts) client.Client
+```go
+package tracing
 
-func (cl) ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error)
-func (cl) SignalWithStartWorkflow(ctx context.Context, workflowID string, signalName string, signalArg interface{},
-	options client.StartWorkflowOptions, workflow interface{}, workflowArgs ...interface{}) (client.WorkflowRun, error)
+func NewOpenTracingClient(c client.Client, tracer opentracing.Tracer) client.Client
+func NewOpenTracingInterceptor(tracer opentracing.Tracer) interceptors.WorkerInterceptor
 
-// Wraps only the calls implemented in spans, delegates the rest
-func NewTracingActivityInterceptor(opts) interceptors.ActivityInterceptor
-func NewTracingWorkflowInterceptor(opts) interceptors.WorkflowInterceptor
-
-func (i) InterceptActivity(ctx context.Context, next interceptors.ActivityInboundInterceptor) interceptors.ActivityInboundInterceptor
-func (i) InterceptWorkflow(ctx workflow.Context, next interceptors.WorkflowInboundInterceptor) interceptors.WorkflowInboundInterceptor
-
-func (aii) ExecuteActivity(ctx context.Context, input *interceptors.ActivityInput) (interface{}, error)
-
-func (wii) ExecuteWorkflow(ctx workflow.Context, input *interceptors.WorkflowInput) (interface{}, error)
-
-func (woi) ExecuteActivity(ctx workflow.Context, activityType string, args ...interface{}) workflow.Future
-func (woi) ExecuteLocalActivity(ctx workflow.Context, activityType string, args ...interface{}) workflow.Future
-func (woi) ExecuteChildWorkflow(ctx workflow.Context, childWorkflowType string, args ...interface{}) workflow.ChildWorkflowFuture
+func NewOpenTelemetryClient(c client.Client, tracer trace.Tracer) client.Client
+func NewOpenTelemetryInterceptor(tracer trace.Tracer) interceptors.WorkerInterceptor
 ```
 
 For discussion:
 
-* This matches Java feature-wise, is this enough? Does Java impl not trace anything we might want to?
-* Do we want to do anything with the existing `opentracing` Go SDK implementation as part of this?
+* Is the approach of `workflow.Header` and `activity.Header` acceptable or do we want to combine them somehow?
+* This effectively deprecates the `ClientOptions.Tracer` field, shall we remove it completely?
+  * If not, should we gut the existing `opentracing` impl and have it default to this implementation (i.e. if
+    `ClientOptions.Tracer` is present, implicitly wrap the client and add the interceptor)?
+* This effectively deprecates `ContextPropagator`s, shall we remove them completely?
+* Is a `tracing` package ok, or would we rather separate`opentracing` and `opentelemetry` packages?
+* We technically could make this a separate module if the dependencies were too onerous for those not wanting tracing,
+  but it's probably fine in the primary module
+* We could add a `InterceptClient(next client.Client) client.Client` to `WorkerInterceptor` and remove the concept of
+  `NewXClient` above? Thoughts? (note Java separates client call interceptors and worker interceptors currently)
