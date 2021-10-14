@@ -7,7 +7,9 @@ This proposal is for updates to Go workflow interceptors with the following feat
 * Provide feature parity with Java SDK and other missing features (see https://github.com/temporalio/sdk-go/issues/529)
 * Add activity interceptors
 * Make inbound interceptors future-proof for argument addition
-* Examples for altering headers both via interceptors and client wrappers
+* Support for using workflow/activity proto headers from interceptors
+  * One notable use case for this is to support validation (e.g. authz) and erroring out based on workflow/activity
+    header contents
 
 **These updates are known to NOT be backwards-compatible**
 
