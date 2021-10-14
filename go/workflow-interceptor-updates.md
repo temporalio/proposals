@@ -314,6 +314,45 @@ For discussion:
 * Would we want a `WorkerInterceptorBase` with default impls that return instances of `ActivityInboundInterceptorBase`
   and `WorkflowInboundInterceptorBase`? Why doesn't Java have this?
 
+### ClientCallsInterceptor
+
+This has intentionally been avoided because the same thing can be done just wrapping a client. For example, you can
+have:
+
+```go
+type MyClient struct { client.Client }
+
+func (m *MyClient) ExecuteWorkflow(
+  ctx context.Context,
+  options client.StartWorkflowOptions,
+  workflow interface{},
+  args ...interface{},
+) (client.WorkflowRun, error) {
+  // Change the headers (see tracing section)
+  myHeaderVal, err := converters.GetDefaultDataConverter().ToPayload("myheaderval")
+  if err != nil {
+    return nil, err
+  }
+  interceptors.Header(ctx)["myheaderkey"] = myHeaderVal
+  return m.Client.ExecuteWorkflow(ctx, options, workflow, args...)
+}
+```
+
+If we must have such a thing, we can have:
+
+```go
+type ClientCallsInterceptor interface { client.Client }
+
+type ClientCallsInterceptorBase struct { client.Client }
+```
+
+But it makes little sense.
+
+Arguably were the Go SDK completely redesigned, the entire "interceptor" concept would be replaced with a more idiomatic
+concept of "middleware" even though it'd behave the same way in practice but would be named a bit different so as not to
+seem confusing that the last "interceptor" in the chain implements all the real business logic instead of just
+"intercepting".
+
 ## Tracing and Context Propagation
 
 Current:
@@ -330,6 +369,8 @@ Proposal:
 
 * A new ability to retrieve a mutable set of proto "headers" on the context will be made so that interceptors can set
   workflow/activity headers in either direction
+  * Note, the reason this is on the context instead of the input is because it is contextual information that flows
+    through the system instead of literal parameters. We do the same for other bits of contextual information.
 * Internally, headers will be obtained from the context by the last interceptor
   * So headers are set on the context before interceptor invocation for mutation by interceptors
 * A `tracing` package will be created with:
