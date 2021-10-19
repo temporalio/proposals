@@ -6,6 +6,7 @@ This proposal is for updates to Go workflow interceptors with the following feat
 * Support idiomatic Go interceptor design
 * Provide feature parity with Java SDK and other missing features (see https://github.com/temporalio/sdk-go/issues/529)
 * Add activity interceptors
+* Add client interceptors
 * Make inbound interceptors future-proof for argument addition
 * Support for using workflow/activity proto headers from interceptors
   * One notable use case for this is to support validation (e.g. authz) and erroring out based on workflow/activity
@@ -15,29 +16,73 @@ This proposal is for updates to Go workflow interceptors with the following feat
 
 ## Interceptor Proposed Updates
 
-### WorkflowInterceptor.InterceptWorkflow
+### Interceptor
+
+Currently does not exist.
+
+Proposal:
+
+```go
+type Interceptor interface {
+  ClientInterceptor
+  WorkerInterceptor
+}
+```
+
+There will be an `InterceptorBase` but embedding will not be required (unlike all other interfaces).
+
+Why: This allows one to have a single interceptor for all. See later for explanation of worker and client interceptors.
+
+### WorkerInterceptor
 
 Current:
 
 ```go
-InterceptWorkflow(info *WorkflowInfo, next WorkflowInboundCallsInterceptor) WorkflowInboundCallsInterceptor
+type WorkflowInterceptor interface {
+  InterceptWorkflow(/*...*/)
+}
 ```
 
 Proposal:
 
 ```go
-InterceptWorkflow(ctx Context, next WorkflowInboundCallsInterceptor) WorkflowInboundCallsInterceptor
+type WorkerInterceptor interface {
+  InterceptActivity(/*...*/)
+  InterceptWorkflow(/*...*/)
+
+  mustEmbedWorkerInterceptorBase()
+}
+```
+
+There will also be a `WorkerInterceptorBase` which must be embedded. See later for explanation of forced embeds and
+activity interceptors.
+
+Why: Maps to what Java does.
+
+### WorkerInterceptor.InterceptWorkflow
+
+Current:
+
+```go
+InterceptWorkflow(info *WorkflowInfo, next WorkflowInboundInterceptor) WorkflowInboundInterceptor
+```
+
+Proposal:
+
+```go
+InterceptWorkflow(ctx Context, next WorkflowInboundInterceptor) WorkflowInboundInterceptor
 ```
 
 Why: Callers can use the context to get workflow info in addition to other things (e.g. loggers, metricsm, etc). Also
 using the context as the first parameter is good Go practice and allows for more contextual information to be provided
 in the future.
 
-### WorkflowXCallsInterceptor
+### WorkflowXInterceptor
 
-Proposal: Change the name to `WorkflowXInterceptor`. Why: `Calls` just adds noise (more accepted in Java, not Go).
+Proposal: Change the name from `WorkflowXCallsInterceptor` to `WorkflowXInterceptor`. Why: `Calls` just adds noise (more
+accepted in Java, not Go).
 
-### WorkflowInboundCallsInterceptor.ExecuteWorkflow
+### WorkflowInboundInterceptor.ExecuteWorkflow
 
 Current:
 
@@ -58,9 +103,11 @@ ExecuteWorkflow(ctx Context, input *WorkflowInput) (interface{}, error)
 Why:
 
 * Workflow type can be derived from the context _or_ the info first given to `InterceptWorkflow`
+  * We are currently not allowing workflow type to be changed here, but it has been mentioned and we can add that to
+    `WorkflowInput` at a later time if necessary
 * Workflows can only return a value + error or just an error and this makes it more explicit what the error is
 
-### WorkflowInboundCallsInterceptor.ProcessSignal
+### WorkflowInboundInterceptor.HandleSignal
 
 Current:
 
@@ -86,8 +133,10 @@ Why:
 * `HandleSignal` matches Java nomenclature and new behavior better
 * Currently the sending of the signal to the handler is done after the interceptor not allowing the interceptor to
   actually intercept and alter/prevent the send. We will change to have the last interceptor do the actual send.
+* We will need an integration test to confirm that this is invoked on start-with-signal workflow that has a sync receive
+  as the first statement
 
-### WorfkflowInboundCallsInterceptor.HandleQuery
+### WorfkflowInboundInterceptor.HandleQuery
 
 Current:
 
@@ -112,12 +161,12 @@ Why:
 * All other calls convert the payload outside of the interceptor call, this can too
 * No need to pass a handler, that is just part of the last item in the interceptor chain (i.e. when calling next)
 
-### WorkflowOutboundCallsInterceptor
+### WorkflowOutboundInterceptor
 
 We can leave everything the way it is because, while it doesn't make the interceptor parameters future-proof with struct
 wrappers, it mimics the actual calls that aren't going to have backwards-compatible alterations.
 
-### WorkflowOutboundCallsInterceptor.GetWorkflowInfo
+### WorkflowOutboundInterceptor.GetInfo
 
 Current:
 
@@ -133,28 +182,17 @@ GetInfo(ctx Context) *WorkflowInfo
 
 Why: All other calls match `workflow` package, why not this?
 
-### WorkflowOutboundCallsInterceptor.NewContinueAsNewError
+Note: We need to make sure we document that this returns *workflow.Info since internal names can be confusing.
 
-Currently this doesn't exist. Proposal:
-
-```go
-NewContinueAsNewError(ctx Context, wfn interface{}, args ...interface{}) error
-```
-
-Why: This is needed for the later tracing piece that adds headers to the context.
-
-
-### ActivityInterceptor
+### WorkerInterceptor.InterceptActivity
 
 Proposal:
 
 ```go
-type ActivityInterceptor interface {
-  InterceptActivity(ctx context.Context, next ActivityInboundInterceptor) ActivityInboundInterceptor
-}
+InterceptActivity(ctx context.Context, next ActivityInboundInterceptor) ActivityInboundInterceptor
 ```
 
-Why: Mimics `WorkflowInterceptor` but for activities.
+Why: Mimics `InterceptWorkflow` but for activities.
 
 ### ActivityInboundInterceptor
 
@@ -169,6 +207,8 @@ type ActivityInboundInterceptor interface {
   Init(outbound ActivityOutboundInterceptor) error
 
   ExecuteActivity(ctx context.Context, input *ActivityInput) (interface{}, error)
+
+  mustEmbedActivityInboundInterceptorBase()
 }
 ```
 
@@ -183,12 +223,14 @@ Proposal:
 ```go
 type ActivityOutboundInterceptor interface {
   GetInfo(ctx context.Context) ActivityInfo
-  GetLogger(ctx Context) log.Logger
-  GetMetricsScope(ctx Context) tally.Scope
+  GetLogger(ctx context.Context) log.Logger
+  GetMetricsScope(ctx context.Context) tally.Scope
   RecordHeartbeat(ctx context.Context, details ...interface{})
   HasHeartbeatDetails(ctx context.Context) bool
   GetHeartbeatDetails(ctx context.Context, d ...interface{}) error
   GetWorkerStopChannel(ctx context.Context) <-chan struct{}
+
+  mustEmbedActivityOutboundInterceptorBase()
 }
 ```
 
@@ -201,7 +243,94 @@ Why:
 For discussion: `GetInfo` returns expensive copies because `activity.GetInfo` does. Is this ok? This is inconsistent
 with workflow info which is a pointer.
 
-## Interceptor Possible Updates
+### ClientInterceptor
+
+Proposal:
+
+```go
+type ClientInterceptor interface {
+  InterceptClient(next ClientOutboundInterceptor) ClientOutboundInterceptor
+
+  mustEmbedClientInterceptorBase()
+}
+```
+
+Why:
+
+* This kinda mimics `WorkerInterceptor` calls, but note it only provides an outbound interceptor because all client
+  calls are outbound by their nature so there is no inbound equivalent
+
+### ClientOutboundInterceptor
+
+Proposal:
+
+```go
+type ClientOutboundInterceptor interface {
+  ExecuteWorkflow(context.Context, *ClientExecuteWorkflowInput) (WorkflowRun, error)
+  GetWorkflow(context.Context, *ClientGetWorkflowInput) (WorkflowRun, error)
+  SignalWorkflow(context.Context, *ClientSignalWorkflowInput) error
+  SignalWithStartWorkflow(ctx context.Context, *ClientSignalWithStartWorkflowInput) (WorkflowRun, error)
+  CancelWorkflow(context.Context, *ClientCancelWorkflowInput) error
+  TerminateWorkflow(context.Context, *ClientTerminateWorkflowInput) error
+  GetWorkflowHistory(context.Context, *ClientGetWorkflowHistoryInput) (HistoryEventIterator, error)
+  CompleteActivity(context.Context, *ClientCompleteActivityInput) error
+  CompleteActivityByID(context.Context, *ClientCompleteActivityByIDInput) error
+  RecordActivityHeartbeat(context.Context, *ClientRecordActivityHeartbeatInput) error
+  RecordActivityHeartbeatByID(context.Context, *ClientRecordActivityHeartbeatByIDInput) error
+  ListClosedWorkflow(context.Context, *ClientListClosedWorkflowInput) (*workflowservice.ListClosedWorkflowExecutionsResponse, error)
+  ListOpenWorkflow(context.Context, *ClientListOpenWorkflowInput) (*workflowservice.ListOpenWorkflowExecutionsResponse, error)
+  ListWorkflow(context.Context, *ClientListWorkflowInput) (*workflowservice.ListWorkflowExecutionsResponse, error)
+  ListArchivedWorkflow(context.Context, *ClientListArchivedWorkflowInput) (*workflowservice.ListArchivedWorkflowExecutionsResponse, error)
+  ScanWorkflow(context.Context, *ClientScanWorkflowInput) (*workflowservice.ScanWorkflowExecutionsResponse, error)
+  CountWorkflow(context.Context, *ClientCountWorkflowInput) (*workflowservice.CountWorkflowExecutionsResponse, error)
+  GetSearchAttributes(context.Context, *ClientGetSearchAttributesInput) (*workflowservice.GetSearchAttributesResponse, error)
+  QueryWorkflow(context.Context, *ClientQueryWorkflowInput) (converter.EncodedValue, error)
+  QueryWorkflowWithOptions(context.Context, *ClientQueryWorkflowWithOptionsInput) (*QueryWorkflowWithOptionsResponse, error)
+  DescribeWorkflowExecution(context.Context, *ClientDescribeWorkflowExecutionInput) (*workflowservice.DescribeWorkflowExecutionResponse, error)
+  DescribeTaskQueue(context.Context, *ClientDescribeTaskQueueInput) (*workflowservice.DescribeTaskQueueResponse, error)
+  ResetWorkflowExecution(context.Context, *ClientResetWorkflowExecutionInput) (*workflowservice.ResetWorkflowExecutionResponse, error)
+
+  mustEmbedClientOutboundInterceptorBase()
+}
+```
+
+Matches client calls by name but error added to all that didn't support that before. The `XInput` structs have been
+omitted for brevity. There will be a `ClientOutboundInterceptorBase`.
+
+Why:
+
+* We could have just used the existing `Client` interface but that not only causes package dependency, but 
+* It was decided that the cost of creating structs for every single call is not a big deal
+  * Note, there is not much value in preserving forward compatibility for parameter changes to these calls, because we'd
+    have to change the client interface too
+
+### ClientOptions and WorkerOptions
+
+Currently there are no interceptors on the client options and only workflow interceptors on the worker options.
+
+Proposal:
+
+```go
+type ClientOptions struct {
+  // ...
+
+  // Interceptors to apply to the client. Any interceptors that also implement Interceptor (meaning they implement
+  // WorkerInterceptor in addition to ClientInterceptor) will be used for worker interception as well. When interceptors
+  // are here and in worker options, these interceptors are applied first.
+  Interceptors []ClientInterceptor
+}
+```
+
+```go
+type WorkerOptions struct {
+  // ...
+
+  // Interceptors to apply to the worker. Any interceptors that also implement Interceptor (meaning they implement
+  // ClientInterceptor in addition to WorkerInterceptor) will be used for client interception as well. When interceptors
+  // are here and in client options, the client interceptors are applied first.
+  Interceptors []WorkerInterceptor
+}
+```
 
 ### Forced Base Embedding
 
@@ -288,73 +417,6 @@ The library knows all implementations of the interface embedded the struct they 
 knows that nobody's compilation will fail because they didn't embed the base. This is what gRPC and other libraries are
 starting to do to force forward compatibility of interfaces.
 
-### WorkerInterceptor
-
-Current:
-
-```go
-type WorkflowInterceptor interface {
-  InterceptWorkflow(info *WorkflowInfo, next WorkflowInboundCallsInterceptor) WorkflowInboundCallsInterceptor
-}
-```
-
-Proposal:
-
-```go
-type WorkerInterceptor interface {
-  InterceptActivity(ctx context.Context, next ActivityInboundInterceptor) ActivityInboundInterceptor
-  InterceptWorkflow(ctx Context, next WorkflowInboundInterceptor) WorkflowInboundInterceptor
-}
-```
-
-Then change `WorkerOptions.WorkflowInterceptorChainFactories []WorkflowInterceptor` to
-`WorkerOptions.Interceptors []WorkerInterceptor`.
-
-For discussion:
-
-* This maps to what Java does
-* Would we want a `WorkerInterceptorBase` with default impls that return instances of `ActivityInboundInterceptorBase`
-  and `WorkflowInboundInterceptorBase`? Why doesn't Java have this?
-
-### ClientCallsInterceptor
-
-This has intentionally been avoided because the same thing can be done just wrapping a client. For example, you can
-have:
-
-```go
-type MyClient struct { client.Client }
-
-func (m *MyClient) ExecuteWorkflow(
-  ctx context.Context,
-  options client.StartWorkflowOptions,
-  workflow interface{},
-  args ...interface{},
-) (client.WorkflowRun, error) {
-  // Change the headers (see tracing section)
-  myHeaderVal, err := converters.GetDefaultDataConverter().ToPayload("myheaderval")
-  if err != nil {
-    return nil, err
-  }
-  interceptors.Header(ctx)["myheaderkey"] = myHeaderVal
-  return m.Client.ExecuteWorkflow(ctx, options, workflow, args...)
-}
-```
-
-If we must have such a thing, we can have:
-
-```go
-type ClientCallsInterceptor interface { client.Client }
-
-type ClientCallsInterceptorBase struct { client.Client }
-```
-
-But it makes little sense.
-
-Arguably were the Go SDK completely redesigned, the entire "interceptor" concept would be replaced with a more idiomatic
-concept of "middleware" even though it'd behave the same way in practice but would be named a bit different so as not to
-seem confusing that the last "interceptor" in the chain implements all the real business logic instead of just
-"intercepting".
-
 ## Tracing and Context Propagation
 
 Current:
@@ -375,43 +437,45 @@ Proposal:
     through the system instead of literal parameters. We do the same for other bits of contextual information.
 * Internally, headers will be obtained from the context by the last interceptor
   * So headers are set on the context before interceptor invocation for mutation by interceptors
-* A `tracing` package will be created with:
-  * `WorkerInterceptor` implementations for OpenTracing and OpenTelemetry tracers
-    * Wraps the same inbound/outbound calls in spans that are otherwise wrapped by the tracer today
-    * On inbound `ExecuteActivity` and `ExecuteWorkflow` span context is unmarshaled from header
-    * On outbound `ExecuteActivity`, `ExecuteLocalActivity`, `ExecuteChildWorkflow`, and `NewContinueAsNewError` span
-      context is marshaled into header
-  * `Client` implementations for OpenTracing and OpenTelemetry tracers
-    * Wraps the same calls in spans that are otherwise wrapped by the tracer today
-    * On `ExecuteWorkflow` and `SignalWithStartWorkflow` span context is marshaled into header
+* `opentracing` and `opentelemetry` packages will be creating and have tracer interceptor implementations that
+  intercept the same things that are intercepted for tracing today. The header marshaling will be:
+  * Inbound `ExecuteActivity` and `ExecuteWorkflow` to unmarshal a span context from the header
+  * Outbound `ExecuteActivity`, `ExecuteLocalActivity`, and `ExecuteChildWorkflow` to marshal the span context into the
+    header
+  * Client `ExecuteWorkflow` and `SignalWithStartWorkflow` to marshal the span context into the header
+* At implementation time, special care must be taken to ensure continue-as-new is properly connected to the existing
+  trace
 
 ```go
 package interceptors
 
-// Header returns nil if this context does not have the header on it (meaning
-// they cannot be mutated by an interceptor).
-func Header(ctx interface { Value(interface{}) interface{} }) map[string]*commonpb.Payload
+func WorkflowHeader(workflow.Context) map[string]*commonpb.Payload
+func ActivityHeader(context.Context) map[string]*commonpb.Payload
+```
+
+These header calls retrieve the header for reading _and_ writing only calls that support a header. Otherwise they are
+nil. This was originally just one call with a parameter of `interface { Value(interface{}) interface{} }` but it was
+decided that was too complicated for users to understand that could be used for both contexts.
+
+```go
+package opentracing
+
+func NewInterceptor(tracer opentracing.Tracer) interceptors.Interceptor
 ```
 
 ```go
-package tracing
+package opentelemetry
 
-func NewOpenTracingClient(c client.Client, tracer opentracing.Tracer) client.Client
-func NewOpenTracingInterceptor(tracer opentracing.Tracer) interceptors.WorkerInterceptor
-
-func NewOpenTelemetryClient(c client.Client, tracer trace.Tracer) client.Client
-func NewOpenTelemetryInterceptor(tracer trace.Tracer) interceptors.WorkerInterceptor
+func NewTracingInterceptor(tracer trace.Tracer) interceptors.Interceptor
 ```
 
 For discussion:
 
-* Is the approach of `workflow.Header` and `activity.Header` acceptable or do we want to combine them somehow?
 * This effectively deprecates the `ClientOptions.Tracer` field, shall we remove it completely?
   * If not, should we gut the existing `opentracing` impl and have it default to this implementation (i.e. if
     `ClientOptions.Tracer` is present, implicitly wrap the client and add the interceptor)?
+  * Yes, we can remove it
 * This effectively deprecates `ContextPropagator`s, shall we remove them completely?
+  * No, they should be left (but can be implemented as interceptors)
 * Is a `tracing` package ok, or would we rather separate`opentracing` and `opentelemetry` packages?
-* We technically could make this a separate module if the dependencies were too onerous for those not wanting tracing,
-  but it's probably fine in the primary module
-* We could add a `InterceptClient(next client.Client) client.Client` to `WorkerInterceptor` and remove the concept of
-  `NewXClient` above? Thoughts? (note Java separates client call interceptors and worker interceptors currently)
+  * We prefer separate packages
