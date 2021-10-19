@@ -266,43 +266,44 @@ Proposal:
 
 ```go
 type ClientOutboundInterceptor interface {
-  ExecuteWorkflow(context.Context, *ClientExecuteWorkflowInput) (WorkflowRun, error)
-  GetWorkflow(context.Context, *ClientGetWorkflowInput) (WorkflowRun, error)
-  SignalWorkflow(context.Context, *ClientSignalWorkflowInput) error
-  SignalWithStartWorkflow(ctx context.Context, *ClientSignalWithStartWorkflowInput) (WorkflowRun, error)
-  CancelWorkflow(context.Context, *ClientCancelWorkflowInput) error
-  TerminateWorkflow(context.Context, *ClientTerminateWorkflowInput) error
-  GetWorkflowHistory(context.Context, *ClientGetWorkflowHistoryInput) (HistoryEventIterator, error)
-  CompleteActivity(context.Context, *ClientCompleteActivityInput) error
-  CompleteActivityByID(context.Context, *ClientCompleteActivityByIDInput) error
-  RecordActivityHeartbeat(context.Context, *ClientRecordActivityHeartbeatInput) error
-  RecordActivityHeartbeatByID(context.Context, *ClientRecordActivityHeartbeatByIDInput) error
-  ListClosedWorkflow(context.Context, *ClientListClosedWorkflowInput) (*workflowservice.ListClosedWorkflowExecutionsResponse, error)
-  ListOpenWorkflow(context.Context, *ClientListOpenWorkflowInput) (*workflowservice.ListOpenWorkflowExecutionsResponse, error)
-  ListWorkflow(context.Context, *ClientListWorkflowInput) (*workflowservice.ListWorkflowExecutionsResponse, error)
-  ListArchivedWorkflow(context.Context, *ClientListArchivedWorkflowInput) (*workflowservice.ListArchivedWorkflowExecutionsResponse, error)
-  ScanWorkflow(context.Context, *ClientScanWorkflowInput) (*workflowservice.ScanWorkflowExecutionsResponse, error)
-  CountWorkflow(context.Context, *ClientCountWorkflowInput) (*workflowservice.CountWorkflowExecutionsResponse, error)
-  GetSearchAttributes(context.Context, *ClientGetSearchAttributesInput) (*workflowservice.GetSearchAttributesResponse, error)
-  QueryWorkflow(context.Context, *ClientQueryWorkflowInput) (converter.EncodedValue, error)
-  QueryWorkflowWithOptions(context.Context, *ClientQueryWorkflowWithOptionsInput) (*QueryWorkflowWithOptionsResponse, error)
-  DescribeWorkflowExecution(context.Context, *ClientDescribeWorkflowExecutionInput) (*workflowservice.DescribeWorkflowExecutionResponse, error)
-  DescribeTaskQueue(context.Context, *ClientDescribeTaskQueueInput) (*workflowservice.DescribeTaskQueueResponse, error)
-  ResetWorkflowExecution(context.Context, *ClientResetWorkflowExecutionInput) (*workflowservice.ResetWorkflowExecutionResponse, error)
+  ExecuteWorkflow(ctx context.Context, options StartWorkflowOptions, workflow interface{}, args ...interface{}) (WorkflowRun, error)
+  GetWorkflow(ctx context.Context, workflowID string, runID string) WorkflowRun
+  SignalWorkflow(ctx context.Context, workflowID string, runID string, signalName string, arg interface{}) error
+  SignalWithStartWorkflow(ctx context.Context, workflowID string, signalName string, signalArg interface{}, options StartWorkflowOptions, workflow interface{}, workflowArgs ...interface{}) (WorkflowRun, error)
+  CancelWorkflow(ctx context.Context, workflowID string, runID string) error
+  TerminateWorkflow(ctx context.Context, workflowID string, runID string, reason string, details ...interface{}) error
+  GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType enumspb.HistoryEventFilterType) HistoryEventIterator
+  CompleteActivity(ctx context.Context, taskToken []byte, result interface{}, err error) error
+  CompleteActivityByID(ctx context.Context, namespace, workflowID, runID, activityID string, result interface{}, err error) error
+  RecordActivityHeartbeat(ctx context.Context, taskToken []byte, details ...interface{}) error
+  RecordActivityHeartbeatByID(ctx context.Context, namespace, workflowID, runID, activityID string, details ...interface{}) error
+  ListClosedWorkflow(ctx context.Context, request *workflowservice.ListClosedWorkflowExecutionsRequest) (*workflowservice.ListClosedWorkflowExecutionsResponse, error)
+  ListOpenWorkflow(ctx context.Context, request *workflowservice.ListOpenWorkflowExecutionsRequest) (*workflowservice.ListOpenWorkflowExecutionsResponse, error)
+  ListWorkflow(ctx context.Context, request *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error)
+  ListArchivedWorkflow(ctx context.Context, request *workflowservice.ListArchivedWorkflowExecutionsRequest) (*workflowservice.ListArchivedWorkflowExecutionsResponse, error)
+  ScanWorkflow(ctx context.Context, request *workflowservice.ScanWorkflowExecutionsRequest) (*workflowservice.ScanWorkflowExecutionsResponse, error)
+  CountWorkflow(ctx context.Context, request *workflowservice.CountWorkflowExecutionsRequest) (*workflowservice.CountWorkflowExecutionsResponse, error)
+  GetSearchAttributes(ctx context.Context) (*workflowservice.GetSearchAttributesResponse, error)
+  QueryWorkflow(ctx context.Context, workflowID string, runID string, queryType string, args ...interface{}) (converter.EncodedValue, error)
+  QueryWorkflowWithOptions(ctx context.Context, request *QueryWorkflowWithOptionsRequest) (*QueryWorkflowWithOptionsResponse, error)
+  DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*workflowservice.DescribeWorkflowExecutionResponse, error)
+  DescribeTaskQueue(ctx context.Context, taskqueue string, taskqueueType enumspb.TaskQueueType) (*workflowservice.DescribeTaskQueueResponse, error)
+  ResetWorkflowExecution(ctx context.Context, request *workflowservice.ResetWorkflowExecutionRequest) (*workflowservice.ResetWorkflowExecutionResponse, error)
+  Close()
 
   mustEmbedClientOutboundInterceptorBase()
 }
 ```
 
-Matches client calls by name but error added to all that didn't support that before. The `XInput` structs have been
-omitted for brevity. There will be a `ClientOutboundInterceptorBase`.
+Matches `client.Client` interface (embed notwithstanding) by intention. There will be a `ClientOutboundInterceptorBase`.
 
 Why:
 
-* We could have just used the existing `Client` interface but that not only causes package dependency, but 
-* It was decided that the cost of creating structs for every single call is not a big deal
-  * Note, there is not much value in preserving forward compatibility for parameter changes to these calls, because we'd
-    have to change the client interface too
+* We could have just used the existing `Client` interface but that causes package dependency and doesn't allow us to
+  grow just the interceptor
+* Like other outbound interceptors, this does not follow Java in making every input param a struct for forward
+  compatibility because if any of these signatures changed, so would their actual caller-visible counterparts which
+  would be a bigger change
 
 ### ClientOptions and WorkerOptions
 
