@@ -16,6 +16,11 @@ This proposal is for updates to Go workflow interceptors with the following feat
 
 ## Interceptor Proposed Updates
 
+### Interceptor Package
+
+Currently the package is `interceptors` but to match our other singular package names, I will take this opportunity to
+call it `interceptor`.
+
 ### Interceptor
 
 Currently does not exist.
@@ -266,44 +271,26 @@ Proposal:
 
 ```go
 type ClientOutboundInterceptor interface {
-  ExecuteWorkflow(ctx context.Context, options StartWorkflowOptions, workflow interface{}, args ...interface{}) (WorkflowRun, error)
-  GetWorkflow(ctx context.Context, workflowID string, runID string) WorkflowRun
-  SignalWorkflow(ctx context.Context, workflowID string, runID string, signalName string, arg interface{}) error
-  SignalWithStartWorkflow(ctx context.Context, workflowID string, signalName string, signalArg interface{}, options StartWorkflowOptions, workflow interface{}, workflowArgs ...interface{}) (WorkflowRun, error)
-  CancelWorkflow(ctx context.Context, workflowID string, runID string) error
-  TerminateWorkflow(ctx context.Context, workflowID string, runID string, reason string, details ...interface{}) error
-  GetWorkflowHistory(ctx context.Context, workflowID string, runID string, isLongPoll bool, filterType enumspb.HistoryEventFilterType) HistoryEventIterator
-  CompleteActivity(ctx context.Context, taskToken []byte, result interface{}, err error) error
-  CompleteActivityByID(ctx context.Context, namespace, workflowID, runID, activityID string, result interface{}, err error) error
-  RecordActivityHeartbeat(ctx context.Context, taskToken []byte, details ...interface{}) error
-  RecordActivityHeartbeatByID(ctx context.Context, namespace, workflowID, runID, activityID string, details ...interface{}) error
-  ListClosedWorkflow(ctx context.Context, request *workflowservice.ListClosedWorkflowExecutionsRequest) (*workflowservice.ListClosedWorkflowExecutionsResponse, error)
-  ListOpenWorkflow(ctx context.Context, request *workflowservice.ListOpenWorkflowExecutionsRequest) (*workflowservice.ListOpenWorkflowExecutionsResponse, error)
-  ListWorkflow(ctx context.Context, request *workflowservice.ListWorkflowExecutionsRequest) (*workflowservice.ListWorkflowExecutionsResponse, error)
-  ListArchivedWorkflow(ctx context.Context, request *workflowservice.ListArchivedWorkflowExecutionsRequest) (*workflowservice.ListArchivedWorkflowExecutionsResponse, error)
-  ScanWorkflow(ctx context.Context, request *workflowservice.ScanWorkflowExecutionsRequest) (*workflowservice.ScanWorkflowExecutionsResponse, error)
-  CountWorkflow(ctx context.Context, request *workflowservice.CountWorkflowExecutionsRequest) (*workflowservice.CountWorkflowExecutionsResponse, error)
-  GetSearchAttributes(ctx context.Context) (*workflowservice.GetSearchAttributesResponse, error)
-  QueryWorkflow(ctx context.Context, workflowID string, runID string, queryType string, args ...interface{}) (converter.EncodedValue, error)
-  QueryWorkflowWithOptions(ctx context.Context, request *QueryWorkflowWithOptionsRequest) (*QueryWorkflowWithOptionsResponse, error)
-  DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*workflowservice.DescribeWorkflowExecutionResponse, error)
-  DescribeTaskQueue(ctx context.Context, taskqueue string, taskqueueType enumspb.TaskQueueType) (*workflowservice.DescribeTaskQueueResponse, error)
-  ResetWorkflowExecution(ctx context.Context, request *workflowservice.ResetWorkflowExecutionRequest) (*workflowservice.ResetWorkflowExecutionResponse, error)
-  Close()
+	ExecuteWorkflow(context.Context, *ClientExecuteWorkflowInput) (WorkflowRun, error)
+	SignalWorkflow(context.Context, *ClientSignalWorkflowInput) error
+	SignalWithStartWorkflow(context.Context, *ClientSignalWithStartWorkflowInput) (WorkflowRun, error)
+	CancelWorkflow(context.Context, *ClientCancelWorkflowInput) error
+	TerminateWorkflow(context.Context, *ClientTerminateWorkflowInput) error
+	QueryWorkflow(context.Context, *ClientQueryWorkflowInput) (converter.EncodedValue, error)
 
   mustEmbedClientOutboundInterceptorBase()
 }
 ```
 
-Matches `client.Client` interface (embed notwithstanding) by intention. There will be a `ClientOutboundInterceptorBase`.
+There will also be a `ClientOutboundInterceptorBase`.
 
 Why:
 
-* We could have just used the existing `Client` interface but that causes package dependency and doesn't allow us to
-  grow just the interceptor
-* Like other outbound interceptors, this does not follow Java in making every input param a struct for forward
-  compatibility because if any of these signatures changed, so would their actual caller-visible counterparts which
-  would be a bigger change
+* We intentionally choose to only allow a subset of client calls to be mocked as these are the ones considered
+  "workflow client" calls by the SDKs
+* Note, `Client.QueryWorkflow` can be intercepted but not `Client.QueryWorkflowWithOptions` cannot because the former is
+  the high level version like other SDK "workflow clients"
+* We have made all input params structs here unlike other outbound interceptors just in case
 
 ### ClientOptions and WorkerOptions
 
@@ -326,9 +313,8 @@ type ClientOptions struct {
 type WorkerOptions struct {
   // ...
 
-  // Interceptors to apply to the worker. Any interceptors that also implement Interceptor (meaning they implement
-  // ClientInterceptor in addition to WorkerInterceptor) will be used for client interception as well. When interceptors
-  // are here and in client options, the client interceptors are applied first.
+  // Interceptors to apply to the worker. When interceptors are here and in client options, the client interceptors are
+  // applied first.
   Interceptors []WorkerInterceptor
 }
 ```
