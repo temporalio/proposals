@@ -20,13 +20,13 @@ Entire Workflow versioning is an approach that'll greatly simplify the current W
 
 - In JavaScript (and probably WASM in the future) we bundle the Workflow code with its dependencies into a single file
 - In Java we may use Jars (pending POC)
-- A user uploads their bundle to a central repository stating wheter it's the "latest" version or if it patches an older version
+- A user uploads their bundle to a central repository stating whether it's the "latest" version or if it patches an older version
 
   - Patching requires use of the [`patch`](https://docs.temporal.io/docs/typescript/patching#typescript-sdk-patching-api) marker
     - side-effect: No need for `deprecatePatch` in most cases
   - Example of a version graph (tag versions denote patches)
 
-  [![Version graph](https://mermaid.ink/img/eyJjb2RlIjoiZmxvd2NoYXJ0IExSXG4gICAgVjEgLS0-IFYyIC0tPiBWM1xuICAgIFYxIC0tPiBWMScgLS0-IFYxJydcbiAgICBWMiAtLT4gVjInIC0teCBWMicnXG4gICAgVjInIC0tPiBWMicnYVxuICAgIHN1YmdyYXBoIGxhdGVzdFxuICAgICAgICBWM1xuICAgIGVuZFxuICAgIHN1YmdyYXBoIHBhdGNoZml4XG4gICAgICAgIFYyJydhXG4gICAgZW5kIiwibWVybWFpZCI6eyJ0aGVtZSI6ImRlZmF1bHQifSwidXBkYXRlRWRpdG9yIjpmYWxzZSwiYXV0b1N5bmMiOnRydWUsInVwZGF0ZURpYWdyYW0iOmZhbHNlfQ)](https://mermaid-js.github.io/mermaid-live-editor/edit#eyJjb2RlIjoiZmxvd2NoYXJ0IExSXG4gICAgVjEgLS0-IFYyIC0tPiBWM1xuICAgIFYxIC0tPiBWMScgLS0-IFYxJydcbiAgICBWMiAtLT4gVjInIC0teCBWMicnXG4gICAgVjInIC0tPiBWMicnYVxuICAgIHN1YmdyYXBoIGxhdGVzdFxuICAgICAgICBWM1xuICAgIGVuZFxuICAgIHN1YmdyYXBoIHBhdGNoZml4XG4gICAgICAgIFYyJydhXG4gICAgZW5kIiwibWVybWFpZCI6IntcbiAgXCJ0aGVtZVwiOiBcImRlZmF1bHRcIlxufSIsInVwZGF0ZUVkaXRvciI6ZmFsc2UsImF1dG9TeW5jIjp0cnVlLCJ1cGRhdGVEaWFncmFtIjpmYWxzZX0)
+  [![Version graph](https://mermaid.ink/img/eyJjb2RlIjoiZmxvd2NoYXJ0IExSXG4gICAgVjEgLS0-IFYyIC0tPiBWM1xuICAgIFYxIC0tPiBWMScgLS0-IFYxJydcbiAgICBWMiAtLT4gVjInIC0tPiBWMicnXG5cbiAgICBzdWJncmFwaCBsYXRlc3RcbiAgICAgICAgVjNcbiAgICBlbmQiLCJtZXJtYWlkIjp7InRoZW1lIjoiZGVmYXVsdCJ9LCJ1cGRhdGVFZGl0b3IiOnRydWUsImF1dG9TeW5jIjp0cnVlLCJ1cGRhdGVEaWFncmFtIjp0cnVlfQ)](https://mermaid-js.github.io/mermaid-live-editor/edit/#eyJjb2RlIjoiZmxvd2NoYXJ0IExSXG4gICAgVjEgLS0-IFYyIC0tPiBWM1xuICAgIFYxIC0tPiBWMScgLS0-IFYxJydcbiAgICBWMiAtLT4gVjInIC0tPiBWMicnXG5cbiAgICBzdWJncmFwaCBsYXRlc3RcbiAgICAgICAgVjNcbiAgICBlbmQiLCJtZXJtYWlkIjoie1xuICBcInRoZW1lXCI6IFwiZGVmYXVsdFwiXG59IiwidXBkYXRlRWRpdG9yIjp0cnVlLCJhdXRvU3luYyI6dHJ1ZSwidXBkYXRlRGlhZ3JhbSI6dHJ1ZX0)
 
 - When processing the first Workflow Task, the SDK inserts a version marker to record which code version was used to process this workflow history.
 
