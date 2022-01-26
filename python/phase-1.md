@@ -16,7 +16,7 @@ The Python SDK will be backed by [sdk-core](https://github.com/temporalio/sdk-co
 The high-level goals for the Python SDK are:
 
 * Be as simple as possible from a caller POV
-* Be as lightweight as possible wrt dependencies
+* Be as lightweight as reasonable with regards to dependencies
 * Be reasonably flexible with reasonable defaults
 * Support only Python >= 3.7
 * Be friendly to REPL/interpreter use cases
@@ -36,10 +36,10 @@ An example of a client (intentionally missing _a lot_ of features):
 ```python
 import temporalio
 
-def main():
-  client = temporalio.Client("localhost:7233", namespace="MyNamespace")
-  result = await client.execute_workflow("MyWorkflow", "arg1", id="someid", task_queue="somequeue")
-  print("Result", result)
+async def main():
+    client = await temporalio.Client.create("localhost:7233", namespace="MyNamespace")
+    result = await client.execute_workflow("MyWorkflow", "arg1", id="someid", task_queue="somequeue")
+    print("Result", result)
 ```
 
 An example of an activity and registration (also missing a lot of features):
@@ -50,10 +50,11 @@ import temporalio
 def say_hello(name: str) -> str:
   return f"Hello, {name}!"
 
-def main(client: temporalio.Client):
-  worker = temporalio.Worker(client, task_queue="somequeue")
-  worker.register_activity(say_hello)
-  await worker.run()
+async def main():
+    core = await temporalio.Core.create("localhost:7233", namespace="MyNamespace")
+    worker = temporalio.Worker(core, task_queue="somequeue")
+    worker.register_activity(say_hello)
+    await worker.run()
 ```
 
 ## API Definitions
@@ -75,16 +76,27 @@ exported from `temporalio`):
 
 ```python
 class Client:
-    def __init__(
-        self,
+    @staticmethod
+    async def create(
         addr: str,
         *,
         namespace: str = "default",
         default_task_queue: str = None,
         identity: str = None
         # ... additional options omitted for brevity
-    ) -> None:
+    ) -> Client:
         # Actually dials gRPC here
+        pass
+
+    def __init__(
+        self,
+        service: workflowservice.WorkflowService,
+        *,
+        namespace: str = "default",
+        default_task_queue: str = None,
+        identity: str = None
+        # ... additional options omitted for brevity
+    ) -> None:
         pass
 
     # Raw gRPC service
@@ -92,7 +104,8 @@ class Client:
     def service(self) -> workflowservice.WorkflowService:
         pass
 
-    def start_workflow(
+    async def start_workflow(
+        self,
         workflow: str,
         *args,
         id: str = None,
@@ -102,15 +115,27 @@ class Client:
         start_signal: str = None,
         start_signal_args=[],
         # ... additional options omitted for brevity
-    ) -> WorkflowHandle[Any]:
+    ) -> WorkflowHandle[Any]:  # This result defines __await__ among other things
         pass
 
     # In a future phase:
     # @overload
-    # def start_workflow(workflow: Callable[P, T], *args: P.args, ...) -> WorkflowExecution[T]
+    # async def start_workflow(workflow: Callable[P, T], *args: P.args, ...) -> WorkflowHandle[T]
+    #
+    # @overload
+    # async def start_workflow(workflow: T, *args) -> T
+
+    # Just a wrapper for start workflow that awaits the handle
+    async def execute_workflow(
+        self,
+        workflow: str,
+        *args,
+        # ... additional options omitted for brevity
+    ) -> Any:
+        return await (await self.start_workflow(workflow, *args))
 
     # Does not validate whether a workflow exists
-    def workflow(
+    def get_workflow_handle(
         workflow_id: str,
         run_id: str = None
         # ...
@@ -156,10 +181,47 @@ Notes:
   * We could make an abstract base class if we want for typing/purposes that just has the `service` property
     unimplemented
 * We call it `start_workflow` instead of just `start` to be clearer
+* We have an `execute_workflow` to combine start + result waiting
 * We have embedded `start_signal` and `start_signal_args` as parameters, so if the former is present we will perform a
   signal with start. Is this ok?
   * This is an intentional deviation from other SDKs, but makes logical sense
 * The client supports a default task queue, do we want this?
+
+### Core
+
+Exported from `temporalio` (but probably in `temporalio/core/core.py`, exported from `temporalio.core` then
+exported from `temporalio`):
+
+```python
+class Core:
+    async def create(
+        addr: str,
+        *,
+        namespace: str = "default"
+        # ... All the same options as Client.create
+    ) -> Core:
+        pass
+```
+
+Notes:
+
+* If we could use Core to back our API client, then this would not be needed
+  * Even if we didn't, maybe if the worker feature is enabled we can create a core instance during client creation? Then
+    we can pass a client to worker instead of core which would be much cleaner
+* While we could implicitly create this, say, per address I think each core instance has enough uniqueness to require
+  manual user management
+* We could flip the wording of this a bit and have a "worker" not be task queue specific and be 1:1 with core, then have
+  the concept of a "task queue worker" that then lets you register activities and such.
+  * Probably deviates too much from the norm. Still, it's quite unfortunate to have a two-step process to create a
+    worker.
+* Is there any harm in creating one core instance per worker? We could do away with this if not.
+  * Do we lose some of the shared core benefits by only registering one worker for each core instance?
+  * I assume there is a meaningful difference between 1000 core instances that we poll on each and just 1?
+* Any other ideas on removing Core from explicit creation by users while still allowing multiple workers on different
+  server addresses?
+  * We can't do something like one-core-per-server-addr because there are different core options than just addr
+  * Should we just make the `core` optional in worker and have a global one that they can init (and hope they do so
+    before starting worker)?
 
 ### Worker
 
@@ -167,13 +229,23 @@ Exported from `temporalio` (but probably in `temporalio/worker/worker.py`, expor
 exported from `temporalio`):
 
 ```python
+
 class Worker:
     def __init__(
         self,
         client: temporalio.Client,
         *,
         # Uses default in client if not present (or errors if no default)
-        task_queue: str = None
+        task_queue: str = None,
+        # Can be anything accepted by register_activities
+        activities=None,
+        # An executor to be used for synchronous activities. If set, the worker
+        # does not shut this down. If unset, the worker may use a thread pool
+        # internally.
+        activity_executor=None,
+        # Whether to use the given/defaulted executor for async activities as
+        # well.
+        use_activity_executor_on_async: bool = False,
         # ...
     ) -> None:
         pass
@@ -186,8 +258,8 @@ class Worker:
         *,
         # Set the name override. If not set, uses the @activity.run decorator
         # name. If that's not set, uses the function/method name or class name
-        # if it has __call__. If it's a lambda or nested function, a name must
-        # be provided (or it can be decorated of course).
+        # if it has __call__. If it's a lambda, a name must be provided (or it
+        # can be manually decorated).
         name: str = None
         # ...
     ) -> None:
@@ -216,9 +288,61 @@ Notes:
 * Stopping the worker is done via cancellation of the run task/future
 * Internally, activities will run in the same event loop `run()` is called on
 * By default will fail already-registered activities
-* Should we accept a set of activities to register in `__init__`?
+* We also accept a set of activities to register in `__init__` and caller can choose preferred approach
 * Does exporting `temporalio.Worker` directly cause any packaging issues if we want to separate the client as its own
   published package?
+  * I believe we can catch an import error
+* We allow a custom executor and potentially even default one for sync activities
+  * Should we default an executor for sync?
+  * Is it ok to not default an executor for async? Or should we use it for them too?
+
+### Activity Utilities
+
+These are all top-level calls in `temporalio.activity`:
+
+```python
+# Whether the current code is in an activity
+def in_activity() -> bool:
+    pass
+
+
+def info() -> Info:
+    pass
+
+
+class Info:
+    # Other fields/properties skipped for brevity
+
+    @property
+    def cancelled(self) -> bool:
+        pass
+
+    @property
+    def cancellation() -> asyncio.Task:
+        pass
+
+
+# Adapter that extracts info() only when available in context
+class LoggerAdapter(logging.LoggerAdapter):
+    pass
+
+
+_logger = LoggerAdapter(logging.getLogger(__name__))
+
+# Logger that activities can use w/ activity context info instead of making
+# their own (though making your own is recommended)
+def logger() -> logging.Logger:
+    return _logger
+
+
+def heartbeat(*details) -> None:
+    pass
+```
+
+Notes:
+
+* These all uses `contextvars` to get activity info or throw otherwise
+  * We will make the contextual state open to caller injection to support test mocking. The details are undecided atm.
 
 ### Activity Definition/Registration
 
@@ -251,7 +375,7 @@ async def another_activity(arg1):
     try:
         while True:
             await asyncio.sleep(1)
-            await activity.heartbeat("some details")
+            activity.heartbeat("some details")
     except asyncio.CancelledError as exc:
         raise RuntimeError("someone cancelled me!") from exc
 
@@ -289,13 +413,15 @@ def register_all(worker):
     worker.register_activity(activity.run(name="MyLambda2")(lambda arg1: arg1))
     # Methods work just like top-level methods
     worker.register_activity(MyActivities().not_automatically_registered)
-
-    # Fails because no name provided and it's not a top-level function
+    # Nested function registers as "nested_activity"
     def nested_activity():
         pass
     worker.register_activity(nested_activity)
+
     # Fails because it's not callable
     worker.register_activity(MyActivities())
+    # Fails because it's a lambda w/ no name
+    worker.register_activity(lambda arg1: arg1)
 
     # Registers only "activity1"
     worker.register_activities(MyActivities())
@@ -316,16 +442,18 @@ Notes:
   * When we get to workflows, we will do similar with `@workflow.run` vs `@workflow.signal` vs `@workflow.query`, etc
     and `workflow.info()`
 * Cancellation is task cancellation
-  * Do we need to differentiate worker shutdown from server-side cancellation?
-  * So we need an explicit future they can wait on for activity cancellation?
+  * We need to research whether, in Python 3.7, we can interrupt an async task w/ our own error reliably
+* Heartbeat is a synchronous call
+  * Should we throw a cancellation error if we know the activity is cancelled when they try to heartbeat?
+    * is this something core should be returning from `record_heartbeat` instead of lang?
 
-### Data Converters
+### Payload Converters
 
-Exported from `temporalio` (but probably in `temporalio/converter/converter.py`, exported from `temporalio.converter`
+Exported from `temporalio` (but maybe in `temporalio/converter/converter.py`, exported from `temporalio.converter`
 then exported from `temporalio`):
 
 ```python
-class DataConverter(ABC):
+class PayloadConverter(ABC):
     # This can be sync or async. Always takes a list. Can return a single
     # payload or a list of payloads with the same size as the input list or None
     # if the value cannot be converted with this converter. Any other result
@@ -343,7 +471,7 @@ class DataConverter(ABC):
         pass
 
 
-class CompositeDataConverter(DataConverter):
+class CompositePayloadConverter(PayloadConverter):
     def __init__(self, converters) -> None:
         pass
 
@@ -354,13 +482,13 @@ class CompositeDataConverter(DataConverter):
         pass
 
 
-DataConverter.default = CompositeDataConverter(
+PayloadConverter.default = CompositePayloadConverter(
     [
-        BinaryNullDataConverter(),
-        BinaryPlainDataConverter(),
-        JSONProtoDataConverter(),
-        BinaryProtoDataConverter(),
-        JSONPlainDataConverter(),
+        BinaryNullPayloadConverter(),
+        BinaryPlainPayloadConverter(),
+        JSONProtoPayloadConverter(),
+        BinaryProtoPayloadConverter(),
+        JSONPlainPayloadConverter(),
     ]
 )
 ```
