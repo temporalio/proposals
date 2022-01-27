@@ -38,12 +38,11 @@ import temporalio
 
 
 async def main():
-    core = await temporalio.Core.default_local()
-    client = temporalio.Client(core)
-    result = await client.execute_workflow(
-        "MyWorkflow", "arg1", id="someid", task_queue="somequeue"
-    )
-    print("Result", result)
+    async with temporalio.Client("localhost:7233") as client:
+        result = await client.execute_workflow(
+            "MyWorkflow", "arg1", id="someid", task_queue="somequeue"
+        )
+        print("Result", result)
 ```
 
 An example of an activity and registration (also missing a lot of features):
@@ -57,11 +56,11 @@ def say_hello(name: str) -> str:
 
 
 async def main():
-    core = await temporalio.Core.default_local()
-    worker = temporalio.Worker(
-        core, task_queue="somequeue", activities={"say_hello": say_hello}
-    )
-    await worker.run()
+    async with temporalio.Client("localhost:7233") as client:
+        worker = temporalio.Worker(
+            client, task_queue="somequeue", activities={"say_hello": say_hello}
+        )
+        await worker.run()
 ```
 
 ## API Definitions
@@ -76,40 +75,6 @@ High-level notes:
 * We are not using proper function documentation, but rather inline comments for easier discussion
 * **NOTE: These will have proper docs and types when developed!**
 
-### Core
-
-Exported from `temporalio` (but probably in `temporalio/core/core.py`, exported from `temporalio.core` then
-exported from `temporalio`):
-
-```python
-class Core:
-    @staticmethod
-    async def create(
-        addr: str,
-        *,
-        namespace: str = "default"
-        # ... additional options omitted for brevity
-    ) -> Core:
-        pass
-
-    @classmethod
-    async def default_local(cls) -> Core:
-        pass
-
-    async def shutdown(self) -> None:
-        pass
-```
-
-Notes:
-
-* After discussion, it has been decided that both clients and workers will be backed by core
-    * Yes that means clients require the Rust library which we accept
-* After discussion, it has been decided that we will not have an implicit local default like TypeScript SDK, but instead
-  an explicit default
-  * `default_local()` memoizes success
-* Should we have a constructor, an `__aenter__`, and an `__aexit__`?
-  * Probably
-
 ### Client
 
 Exported from `temporalio` (but probably in `temporalio/client/client.py`, exported from `temporalio.client` then
@@ -117,12 +82,38 @@ exported from `temporalio`):
 
 ```python
 class Client:
-    def __init__(core_or_service: temporalio.Core) -> None:
+    # Basically __init__ + __aenter__, caller must close themselves
+    @staticmethod
+    async def connect(
+        addr: str,
+        *,
+        namespace: str = "default"
+        # ... additional options omitted for brevity
+    ) -> Client:
         pass
 
-    # Raw gRPC service
+    # Should only be used with async with
+    def __init__(
+        self,
+        addr: str,
+        *,
+        namespace: str = "default"
+        # ... additional options omitted for brevity
+    ) -> None:
+        pass
+
+    async def __aenter__(self) -> Client:
+        pass
+
+    async def __aexit__(self) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        pass
+
+    # Raw gRPC access
     @property
-    def service(self) -> workflowservice.WorkflowService:
+    def service(self) -> temporalio.WorkflowService:
         pass
 
     async def start_workflow(
@@ -146,14 +137,15 @@ class Client:
     # @overload
     # async def start_workflow(workflow: T, *args) -> T
 
-    # Just a wrapper for start workflow that awaits the handle
+    # Just a wrapper for start workflow that awaits the result
     async def execute_workflow(
         self,
         workflow: str,
         *args: Any,
         # ... additional options omitted for brevity
     ) -> Any:
-        return await (await self.start_workflow(workflow, *args))
+        handle = await self.start_workflow(workflow, *args)
+        return handle.result()
 
     # Does not validate whether a workflow exists
     def get_workflow_handle(
@@ -164,10 +156,17 @@ class Client:
         pass
 
 
+class WorkflowService:
+    # All calls from https://github.com/temporalio/api/blob/master/temporal/api/workflowservice/v1/service.proto
+    # but unfortunately we may not be able to match the pure Python gRPC
+    # signatures.
+    pass
+
+
 class WorkflowHandle(Generic[T]):
     def __init__(
         self,
-        client: temporalio.Client,
+        client: Client,
         workflow_id: str,
         *,
         run_id: Optional[str] = None
@@ -175,7 +174,8 @@ class WorkflowHandle(Generic[T]):
     ) -> None:
         pass
 
-    def __await__(self) -> T:
+    # This is not memoized, each invocation calls the server
+    async def result(self) -> T:
         pass
 
     async def cancel(self):
@@ -196,24 +196,18 @@ class WorkflowHandle(Generic[T]):
 
 Notes:
 
+* This API supports `async with` or just `Client.connect` + `client.close()`, user's preference
 * We have chosen to, at first, only use Core's gRPC layer
   * The generated API/gRPC code for the pure Python gRPC client is still available for use, just not by this wrapper
-  * Above we show exposing Core gRPC as the `service` property using the same type as the Python generated code. More
-    likely, we'll need a typing Protocol that covers both.
-    * Due to how Core wraps gRPC today, we are probably going to have to have every call in
-      [WorkflowService](https://github.com/temporalio/api/blob/master/temporal/api/workflowservice/v1/service.proto)
-      manually wrapped (though the protos will still be dynamic). This should not pose a huge problem since the RPC
-      count on that service rarely changes.
 * We are intentionally defining a `Client` instead of a `WorkflowClient` since this will be general purpose
   * Having a general purpose client keeps things simple, but this will probably only ever contain the pieces above (and
     overloads thereof) and async activity heartbeat/complete
 * We call it `start_workflow` instead of just `start` to be clearer
-* We have an `execute_workflow` to combine start + result waiting
+* We have an `execute_workflow` to combine start + result waiting just as a shortcut
 * We have embedded `start_signal` and `start_signal_args` as parameters, so if the former is present we will perform a
-  signal with start. Is this ok?
-  * After discussion, it was determined this is acceptable
+  signal with start. After discussion, it was determined this is acceptable.
 * After discussion, we determined that the concept of a "default task queue" at the client level is not worth it right
-  now
+  now.
 
 ### Worker
 
@@ -224,39 +218,53 @@ exported from `temporalio`):
 class Worker:
     def __init__(
         self,
-        core: temporalio.Core,
+        client: temporalio.Client,
         *,
         task_queue: str,
         # Must be a mapping with the key as the activity name and the value as a
         # callable to be called when the activity is invoked.
-        activities: Mapping[str, Callable[P, T]]={},
+        activities: Mapping[str, Callable[P, T]] = {},
         # An executor to be used for synchronous activities. If set, the worker
         # does not shut this down. If unset, the worker may use a thread pool
         # internally.
-        activity_executor: Optional[concurrent.futures.Executor]=None,
-        # Whether to use the given/defaulted executor for async activities as
-        # well.
-        use_activity_executor_on_async: bool = False,
+        activity_executor: Optional[concurrent.futures.Executor] = None,
+        # Same as activity_executor but for asynchronous activities.
+        async_activity_executor: Optional[concurrent.futures.Executor] = None,
         # ...
     ) -> None:
         pass
 
-    async def run() -> None:
+    # Just start + shutdown on finally (so can be cancelled via asyncio cancel)
+    async def run(self) -> None:
         pass
+
+    async def start(self) -> None:
+        pass
+
+    async def shutdown(self) -> None:
+        pass
+
+    async def __aenter__(self) -> Worker:
+        await self.start()
+        return self
+
+    async def __aexit__(self) -> None:
+        await self.shutdown()
 ```
 
 Notes:
 
 * We have left off workflow registration until a later phase
-* Stopping the worker is done via cancellation of the run task/future
-* The constructor will fail if the task queue has already been registered with that instance of core
-* Internally, activities will run in the same event loop `run()` is called on
-* We allow a custom executor and potentially even default one for sync activities
-  * Should we default an executor for sync?
-  * Is it ok to not default an executor for async? Or should we use it for them too?
-* Should we have an `__aenter__` and an `__aexit__`?
-  * Probably, and change the examples to use `with` to ensure worker is shut down properly
-  * This means we have to treat those two calls as separate start and shutdown
+* Can be used as `async with` or just via `await run()` which supports cancelling the task causing shutdown
+* No current protection against multiple workers on the same task queue and client
+  * Should we protect against that?
+  * Any different-config reasons to have two workers for the same task queue and client? Maybe a stick and non-sticky
+    one?
+* Internally, activities will run in the same event loop `start()` is called on
+* We allow a custom executor for sync activities and one for async activities
+  * It was assumed that even though the activities may be async, they may want an executor too because they may have CPU
+    bound work
+  * Should combine the executors in the params instead of having caller provide separate?
 
 ### Activity Utilities
 
@@ -351,9 +359,9 @@ class MyActivities:
         pass
 
 
-def create_my_worker() -> temporalio.Worker:
+def create_my_worker(client: temporalio.Client) -> temporalio.Worker:
     return temporalio.Worker(
-        temporalio.Core.default_local(),
+        client,
         taskqueue="MyTaskQueue",
         activities={
             # The names can be any value
@@ -377,8 +385,17 @@ Notes:
 * Cancellation is task cancellation
   * We need to research whether, in Python 3.7, we can interrupt an async task w/ our own error reliably
 * Heartbeat is a synchronous call
-  * Should we throw a cancellation error if we know the activity is cancelled when they try to heartbeat?
-    * is this something core should be returning from `record_heartbeat` instead of lang?
+* There were a lot of discussions around registering of activities, here are the results:
+  * At least to start with, we want explicit names during register instead of the callable's `__name__` to avoid
+    name-registration surprises that plague other languages
+    * It was decided we can always be more flexible later or provided utilities if we must
+  * A decorator (e.g. `@activity.defn`) was gonna help with naming, but:
+    * Since we decided to use a mapping in the constructor instead of an iterable, name is always there
+    * So the decorator would have no current purpose except as a "marker" to implementers to beware how it is used,
+      which we decided was unnecessary at this time but we can revisit
+  * We still have to have discussions around activity invocation from a worker, because just what appears to be a normal
+    Python invocation turning to an `ExecuteActivity` or not based on decorator or similar alone may not be explicit
+    enough
 
 ### Payload Converters
 
@@ -392,7 +409,9 @@ class PayloadConverter(ABC):
     # if the value cannot be converted with this converter. Any other result
     # causes an error. Any error raised is bubbled.
     @abstractmethod
-    async def encode(self, *values):
+    async def encode(
+        self, *values: Any
+    ) -> Union[temporalio.Payload, list[temporalio.Payload]]:
         pass
 
     # This can be sync or async. Always takes a list. Can return a single value
@@ -400,7 +419,7 @@ class PayloadConverter(ABC):
     # value cannot be converted with this converter. Any other result causes an
     # error. Any error raised is bubbled.
     @abstractmethod
-    async def decode(self, *payloads):
+    async def decode(self, *payloads: temporalio.Payload) -> Union[Any, list[Any]]:
         pass
 
 
@@ -408,11 +427,9 @@ class CompositePayloadConverter(PayloadConverter):
     def __init__(self, converters) -> None:
         pass
 
-    async def encode(self, *values):
-        pass
 
-    async def decode(self, *payloads):
-        pass
+class PicklePayloadConverter(PayloadConverter):
+    pass
 
 
 PayloadConverter.default = CompositePayloadConverter(
@@ -424,6 +441,7 @@ PayloadConverter.default = CompositePayloadConverter(
         JSONPlainPayloadConverter(),
     ]
 )
+
 ```
 
 Notes:
@@ -431,7 +449,8 @@ Notes:
 * May be a bit difficult to allow async and non-async converter w/ same base but we can
   * Ref https://stackoverflow.com/questions/47555934/how-require-that-an-abstract-method-is-a-coroutine
 * This is a combination of the otherwise separate concepts of "DataConverter" and "PayloadConverter" from other SDKs
-  since the extra abstraction seems unnecessary, is that ok?
+  since the extra abstraction seems unnecessary. After discussion, this was deemed acceptable.
+* We intentionally don'ty put the `PicklePayloadConverter` in the composite set because it is not other-SDK compatible
 
 ### Other API Items
 
