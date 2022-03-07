@@ -40,7 +40,8 @@ situations where a "broken" workflow needs to be fixed to make progress. Such
 fixes are typically less common than just making changes to workflow logic, though.
 
 To make the more common case easier, we will provide a set of features that
-make the "versioned task queues" approach much easier to use.
+make the "versioned task queues" approach much easier to use for changes to
+workflows which break history compatability (but not interface compatability).
 
 At a high level:
 * Provide a simple API for versioning entire workers (this proposal)
@@ -71,9 +72,9 @@ increases in versioning granularity in the future. For example, we have consider
 versioning Workflows, Activities, and Data Converters/Interceptors all separately.
 They could be added as new fields to this message if/when that happens.
 
-Each language will expose a way to set the worker version to start, supporting
-the possibility other versions later. This will translate into the above message
-to be sent to server.
+Each language will expose a way to (optionally) set the worker version to 
+start, supporting the possibility of other versions later. This will translate 
+into the above message to be sent to server.
 
 ### TypeScript
 
