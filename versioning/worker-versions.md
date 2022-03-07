@@ -1,4 +1,4 @@
-# User-specified Worker versions
+# User-specified Worker Versions
 
 Temporal workflow authors experience a number of difficulties when it comes to
 changing workflow code. The current techniques for versioning workflows are:
@@ -17,7 +17,7 @@ IE: A worker operating on task queue `foo-v1` is changed, and when redeployed
 points at `foo-v2`.
 
 This avoids complicating the workflow code itself, but means users need to be
-aware of when all workflows on `foo-v1` are complete, allowing them to decomission
+aware of when all workflows on `foo-v1` are complete, allowing them to decommission
 the old workers. It also means potentially deploying larger numbers of workers.
 
 It also requires updating clients who are starting workflows to point at the
@@ -35,7 +35,7 @@ workflow name.
 
 ## Improving the situation
 
-The `patch` type APIs can't be elimiated completely. There will always be 
+The `patch` type APIs can't be eliminated completely. There will always be 
 situations where a "broken" workflow needs to be fixed to make progress. Such
 fixes are typically less common than just making changes to workflow logic, though.
 
@@ -47,7 +47,7 @@ At a high level:
 * Allow clients to point at task queue `foo`, and automatically route new workflow executions
   to the latest version of the `foo` queue.
 * Provide good notifications and information about when old workers may be
-  decomissioned
+  decommissioned
 
 Building on this base set of features, we plan to eventually implement
 automatic safe-rollout of changes, and possibly tools like k8s operators
@@ -66,7 +66,7 @@ message WorkerVersions {
 }
 ```
 
-This message is pre-emptively named pluarally in order to accomodate potential
+This message is pre-emptively named plurally in order to accommodate potential
 increases in versioning granularity in the future. For example, we have considered
 versioning Workflows, Activities, and Data Converters/Interceptors all separately.
 They could be added as new fields to this message if/when that happens.
