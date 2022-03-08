@@ -127,7 +127,7 @@ Require a new workflow type name (or new task queue name)
 
 #### Major
 
-- A backwards-incompatible change to the workflow implementation
+- A backwards-incompatible change to the workflow implementation. See more [here](https://docs.temporal.io/docs/concepts/what-is-a-workflow-definition/#deterministic-constraints)
     - Anything that would cause the workflow to fail replay due to nondeterminism, given any possible valid history from the unaltered version of the workflow. 
     - Includes changes to data converters or interceptors which would result in such incompatibilities.
 
