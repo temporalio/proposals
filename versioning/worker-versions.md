@@ -63,7 +63,16 @@ Because version information will need to be sent to the Temporal Cluster,
 we define it as a protobuf message (which will show up in our API somewhere):
 ```protobuf
 message WorkerVersions {
-    string worker_version = 1;
+    UserVersion worker_version = 1;
+}
+
+message UserVersion {
+    // The string the user passed as their version representation
+    string original = 1;
+    // Parsed from original string
+    uint32 major = 2;
+    // Parsed from original string
+    uint32 minor = 3;
 }
 ```
 
