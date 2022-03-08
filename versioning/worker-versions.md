@@ -105,3 +105,33 @@ workerOptions := worker.Options{
 ```java
 WorkerOptions.newBuilder().setWorkerVersion("1.0").build()
 ```
+
+## When and how to increment the worker version number
+
+The information here will be added as a documentation page once this feature
+has shipped.
+
+--
+
+The worker version number encompasses changes to all workflow code registered
+with the worker, as well as changes to any code which might affect the path
+of execution within workflow code.
+
+#### Super-Major
+Require a new workflow type name (or new task queue name)
+
+- A backwards-incompatible change to the workflow interface
+    - Changing a required parameter type
+    - Adding or removing a required parameter
+
+
+#### Major
+
+- A backwards-incompatible change to the workflow implementation
+    - Anything that would cause the workflow to fail replay due to nondeterminism, given any possible valid history from the unaltered version of the workflow. 
+    - Includes changes to data converters or interceptors which would result in such incompatibilities.
+
+#### Minor
+
+- Backwards compatible change to workflow implementation
+    - This includes adding properly implemented `getVersion` or `patch` calls, for fixing bugs.
