@@ -104,7 +104,7 @@ same UpdateRequest to access the server-generated Update ID.
 ## gRPC API
 
 The gRPC API comprises two functions, `UpdateWorkflow` and
-`AwaitUpdateWorkflowResponse` to be added to the `WorkflowService` service
+`PollUpdateWorkflowResponse` to be added to the `WorkflowService` service
 definition. The former is used to invoke an update and follows the standard
 patterns for identifying a workflow execution and carrying arbitrary metadata
 (Header) and payloads (Payloads). The request type for this function includes a
@@ -114,7 +114,7 @@ value can be set to zero indicating no such waiting should occur.  The
 `request_id` property uniquely identifies the logical request (_not_ the
 issuance of the request) and is intended for use as an idempotency token.
 
-The second function, `AwaitUpdateWorkflowResponse` is used when a client has
+The second function, `PollUpdateWorkflowResponse` is used when a client has
 already issued an `UpdateWorkflow` request and has the resulting `update_id`.
 That `update_id` can be provided to re-attach to an in-flight or completed
 Update and obtain the associated UpdateResult in the form of an
@@ -124,7 +124,7 @@ Update and obtain the associated UpdateResult in the form of an
 ```protobuf
 service WorkflowService {
     rpc UpdateWorkflow(UpdateWorkflowRequest) returns (UpdateWorkflowResponse){}
-    rpc AwaitUpdateWorkflowResponse(AwaitUpdateWorkflowResponseRequest) returns (UpdateWorkflowResponse){}
+    rpc PollUpdateWorkflowResponse(PollUpdateWorkflowResponseRequest) returns (UpdateWorkflowResponse){}
 }
 
 message UpdateWorkflowRequest {
@@ -151,7 +151,7 @@ enum UpdateResultType {
     UPDATE_RESULT_TYPE_FAILURE = 3;
 }
 
-message AwaitUpdateResponseRequest {
+message PollUpdateResponseRequest {
     string update_id = 1; 
 }
 
@@ -176,14 +176,14 @@ Client calls `UpdateWorkflowRequest` with an acceptable `wait_timeout`. If the
 `result_type` of the returned `UpdateWorkflowResponse` is
 `UPDATE_RESULT_TYPE_UNSPECIFIED` then the client can infer that the Update is
 still runing and can use the returned `update_id` to obtain the UpdateResponse
-at a later time with `AwaitUpdateWorkflowResponse`. If the `result_type` is any
+at a later time with `PollUpdateWorkflowResponse`. If the `result_type` is any
 other value then the response `output` can be used directly.
 
 ### Known Long Update
 
 Client calls `UpdateWorkflowRequest` with a zero `wait_timeout` and uses the
 returned `update_id` to obtain the UpdateResponse at a later time with
-`AwaitWorkflowResponse`.
+`PollWorkflowResponse`.
 
 ### Invalid Update
 
