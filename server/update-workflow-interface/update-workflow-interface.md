@@ -24,7 +24,7 @@ workflow code constraints on determinism) triggered by an UpdateRequest and
 eventually resulting in a single UpdateResponse. The processing of an Update is
 performed by workflow code and as such the timeliness of the UpdateResponse is
 dependent on worker resources being available to process the Update. A given
-Update applies to exactly one workflow execution. The lifetime of an updated
+Update applies to exactly one workflow execution. The lifetime of an Update
 begins at the first UpdateRequest triggering said Update and ends when the
 UpdateResponse has been made durable. Consequently, the lifetime of an Update
 may exceed the lifetime of the RPC request/response that initiates it.
