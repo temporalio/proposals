@@ -116,9 +116,9 @@ issuance of the request) and is intended for use as an idempotency token.
 
 The second function, `AwaitUpdateWorkflowResponse` is used when a client has
 already issued an `UpdateWorkflow` request and has the resulting `update_id`.
-That `update_id` can be provided along with a `wait_timeout` (same semantics as
-above) to re-attach to an in-flight or completed Update and obtain the
-associated UpdateResult in the form of an `UpdateWorkflowResponse`.
+That `update_id` can be provided to re-attach to an in-flight or completed
+Update and obtain the associated UpdateResult in the form of an
+`UpdateWorkflowResponse`.
 
 
 ```protobuf
@@ -151,7 +151,6 @@ enum UpdateResultType {
 
 message AwaitUpdateResponseRequest {
     string update_id = 1; 
-    google.protobuf.Duration wait_timeout = 2;
 }
 ```
 
