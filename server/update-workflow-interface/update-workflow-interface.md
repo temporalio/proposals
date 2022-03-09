@@ -138,19 +138,29 @@ message UpdateWorkflowRequest {
 }
 
 message UpdateWorkflowResponse {
-    UpdateResultType result_type = 1;
-    string update_id = 2;
-    temporal.api.common.v1.Payloads output = 3;
+    string update_id = 1;
+    UpdateResultType result_type = 2;
+    UpdateSuccess success = 3;
+    UpdateFailure failure = 4;
 }
 
 enum UpdateResultType {
     UPDATE_RESULT_TYPE_UNSPECIFIED = 0;
-    UPDATE_RESULT_TYPE_SUCCESS = 1;
-    UPDATE_RESULT_TYPE_ERROR = 2;
+    UPDATE_RESULT_TYPE_IN_PROGRESS = 1;
+    UPDATE_RESULT_TYPE_SUCCESS = 2;
+    UPDATE_RESULT_TYPE_FAILURE = 3;
 }
 
 message AwaitUpdateResponseRequest {
     string update_id = 1; 
+}
+
+message UpdateSuccess {
+  temporal.api.common.v1.Payloads output = 1;
+}
+
+message UpdateFailure {
+  temporal.api.common.v1.Failure output = 1;
 }
 ```
 
