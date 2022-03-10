@@ -49,6 +49,8 @@ At a high level:
   to the latest version of the `foo` queue.
 * Provide good notifications and information about when old workers may be
   decommissioned
+* Ensure histories replayed on older versions fail fast with informative errors
+* Easy visibility into what versions deployed workers are using
 
 Building on this base set of features, we plan to eventually implement
 automatic safe-rollout of changes, and possibly tools like k8s operators
