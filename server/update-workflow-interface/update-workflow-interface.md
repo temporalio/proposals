@@ -87,7 +87,7 @@ all for the UpdateResponse, preferring instead to poll for it later.
 
 UpdateRequests can be invalid given the state of the receiving workflow. In such
 cases the UpdateResponse will contain an error indication and payload. Invalid
-updates _must not_ be recorded in workflow history to prevent a malicious issuer
+updates _must not_ be recorded in workflow history to prevent a byzantine client
 from causing a denial of service on the workflow by issuing repeated invalid
 UpdateRequests.
 
