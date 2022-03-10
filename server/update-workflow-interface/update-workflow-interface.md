@@ -25,9 +25,10 @@ eventually resulting in a single UpdateResponse. The processing of an Update is
 performed by workflow code and as such the timeliness of the UpdateResponse is
 dependent on worker resources being available to process the Update. A given
 Update applies to exactly one workflow execution. The lifetime of an Update
-begins at the first UpdateRequest triggering said Update and ends when the
-UpdateResponse has been made durable. Consequently, the lifetime of an Update
-may exceed the lifetime of the RPC request/response that initiates it.
+begins when the workflow validates an UpdateRequest triggering said Update and
+ends when the UpdateResponse has been made durable. Consequently, the lifetime
+of an Update may exceed the lifetime of the RPC request/response that initiates
+it.
 
 ### Update ID
 
@@ -50,7 +51,10 @@ The output value of an Update. The UpdateResponse may lack a data playload, in
 which case the UpdateResponse only indicates the success or failure of the
 Update operation. The UpdateResponse is accessed via gRPC or SDK-specific APIs
 wrapping the same. UpdateResponses become durable parts of a given workflow's
-history. UpdateResponses can be accessed after the lifecycle of the Update has
+history (note that an UpdateResponse depends on the existence of an Update and
+the Update depends on the workflow's acceptance of an UpdateRequest, so we can
+safely say that UpdateResponses only exist for UpdateRequests that are
+accepted). UpdateResponses can be accessed after the lifecycle of the Update has
 completed, subject to workflow retention.
 
 ## Use Cases
