@@ -51,7 +51,7 @@ which case the UpdateResponse only indicates the success or failure of the
 Update operation. The UpdateResponse is accessed via gRPC or SDK-specific APIs
 wrapping the same. UpdateResponses become durable parts of a given workflow's
 history. UpdateResponses can be accessed after the lifecycle of the Update has
-completed, subject to history storage & archival configuration.
+completed, subject to workflow retention.
 
 ## Use Cases
 
