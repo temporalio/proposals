@@ -108,11 +108,23 @@ The gRPC API comprises two functions, `UpdateWorkflow` and
 definition. The former is used to invoke an update and follows the standard
 patterns for identifying a workflow execution and carrying arbitrary metadata
 (Header) and payloads (Payloads). The request type for this function includes a
-`wait_timeout` property indicating how long the client is willing to wait for a
-synchronous response once the request has been accepted by the system. This
-value can be set to zero indicating no such waiting should occur.  The
-`request_id` property uniquely identifies the logical request (_not_ the
+`result_access_style` property indicating whether the caller intends to poll for
+a result later (via `PollUpdateWorkflowResponse`) or wants the result to be
+delivered "inline" as part of the `UpdateWorkflowResponse` that is returned from
+the `UpdateWorkflow` gRPC call. In the case where the client intends to poll,
+the RPC will return as soon as the UpdateID is generated (in such cases, the
+`UpdateWorkflowResponse` may contain the actual UpdateResponse data or may be
+empty with the `UPDATE_WORKFLOW_RESULT_TYPE` flag set to
+`UPDATE_WORKFLOW_RESULT_TYPE_IN_PROGRESS`. If the client wants an inline response value,
+the RPC will block until the response value (or error) is available or the gRPC
+timeout is hit. In either case, the gRPC timeout for this call is server-side
+capped at low value, indicating the intent that this call either complete
+quickly or at least be validated quickly and the client will switch to polling.
+The `request_id` property uniquely identifies the logical request (_not_ the
 issuance of the request) and is intended for use as an idempotency token.
+
+As `UpdateWorkflow` executes workflow code in all cases it is recommended that
+this function be excluded from rpc latency metrics aggregation.
 
 The second function, `PollUpdateWorkflowResponse` is used when a client has
 already issued an `UpdateWorkflow` request and has the resulting `update_id`.
@@ -134,32 +146,38 @@ message UpdateWorkflowRequest {
     temporal.api.common.v1.WorkflowExecution execution = 4;
     string update_name = 5;
     temporal.api.common.v1.Payloads input = 6;
-    google.protobuf.Duration wait_timeout = 7;
+    UpdateWorkflowResultAccessStyle result_access_style = 7;
 }
 
 message UpdateWorkflowResponse {
     string update_id = 1;
-    UpdateResultType result_type = 2;
-    UpdateSuccess success = 3;
-    UpdateFailure failure = 4;
+    UpdateWorkflowResultType result_type = 2;
+    UpdateWorkflowSuccess success = 3;
+    UpdateWorkflowFailure failure = 4;
 }
 
-enum UpdateResultType {
-    UPDATE_RESULT_TYPE_UNSPECIFIED = 0;
-    UPDATE_RESULT_TYPE_IN_PROGRESS = 1;
-    UPDATE_RESULT_TYPE_SUCCESS = 2;
-    UPDATE_RESULT_TYPE_FAILURE = 3;
+enum UpdateWorkflowResultAccessStyle {
+    UPDATE_WORKFLOW_RESULT_ACCESS_STYLE_UNSPECIFIED = 0;
+    UPDATE_WORKFLOW_RESULT_ACCESS_STYLE_INLINE = 1;
+    UPDATE_WORKFLOW_RESULT_ACCESS_STYLE_POLL = 2;
+}
+
+enum UpdateWorkflowResultType {
+    UPDATE_WORKFLOW_RESULT_TYPE_UNSPECIFIED = 0;
+    UPDATE_WORKFLOW_RESULT_TYPE_IN_PROGRESS = 1;
+    UPDATE_WORKFLOW_RESULT_TYPE_SUCCESS = 2;
+    UPDATE_WORKFLOW_RESULT_TYPE_FAILURE = 3;
 }
 
 message PollUpdateResponseRequest {
     string update_id = 1; 
 }
 
-message UpdateSuccess {
+message UpdateWorkflowSuccess {
   temporal.api.common.v1.Payloads output = 1;
 }
 
-message UpdateFailure {
+message UpdateWorkflowFailure {
   temporal.api.common.v1.Failure output = 1;
 }
 ```
@@ -168,22 +186,27 @@ message UpdateFailure {
 
 ### Short Update
 
-Client calls `UpdateWorkflowRequest` with a suitable `wait_timeout`.
+Client calls `UpdateWorkflow` with `UpdateWorkflowRequest.result_access_style`
+set to `UPDATE_WORKFLOW_RESULT_ACCESS_STYLE_INLINE`. The UpdateResponse is returned
+as part of the gRPC response.
 
 ### Uncertain Duration Update
 
-Client calls `UpdateWorkflowRequest` with an acceptable `wait_timeout`. If the
-`result_type` of the returned `UpdateWorkflowResponse` is
-`UPDATE_RESULT_TYPE_UNSPECIFIED` then the client can infer that the Update is
-still runing and can use the returned `update_id` to obtain the UpdateResponse
-at a later time with `PollUpdateWorkflowResponse`. If the `result_type` is any
-other value then the response `output` can be used directly.
+Two options:
+
+1. Client calls `UpdateWorkflow` with `UpdateWorkflowRequest.result_access_style`
+   set to `UPDATE_WORKFLOW_RESULT_ACCESS_STYLE_INLINE`. If the UpdateResponse is
+   slow, client can retry safely with the same `request_id`.
+2. Client follows the steps for the "Known Long Update" use case.
 
 ### Known Long Update
 
-Client calls `UpdateWorkflowRequest` with a zero `wait_timeout` and uses the
-returned `update_id` to obtain the UpdateResponse at a later time with
-`PollWorkflowResponse`.
+Client calls `UpdateWorkflow` with `UpdateWorkflowRequest.result_access_style`
+set to `UPDATE_WORKFLOW_RESULT_ACCESS_STYLE_POLL`. An UpdateID is returned as
+part of the gRPC respons and if that same gRPC response indicates that the
+Update is still in progress (i.e. `UpdateWorkflowResponse.result_type ==
+UPDATE_WORKFLOW_RESPONSE_TYPE_IN_PROGRESS`), the client can then use
+`PollUpdateWorkflowResponse` to wait for Update completion.
 
 ### Invalid Update
 
@@ -196,7 +219,7 @@ however rejected UpdateRequests are _not_ recorded in workflow history.
 An Update that is passes verification by the workflow code and runs to
 completion but encounters an error at the application level is still considered
 to have completed correctly from the perspective of the Temporal system. The
-application-level error is recorded as the `UpdateWorkflowResponse.output` and
+application-level error is recorded as the `UpdateWorkflowResponse.failure` and
 the `UpdateWorkflowResponse.result_type` is set to `UPDATE_RESULT_TYPE_ERROR`.
 
 ### Unexpected Disconnect
