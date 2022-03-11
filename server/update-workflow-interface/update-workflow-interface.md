@@ -154,7 +154,7 @@ message UpdateWorkflowRequest {
 }
 
 message UpdateWorkflowResponse {
-    string update_id = 1;
+    bytes update_id = 1;
     UpdateWorkflowResultType result_type = 2;
     UpdateWorkflowSuccess success = 3;
     UpdateWorkflowFailure failure = 4;
@@ -174,7 +174,7 @@ enum UpdateWorkflowResultType {
 }
 
 message PollUpdateResponseRequest {
-    string update_id = 1; 
+    bytes update_id = 1;
 }
 
 message UpdateWorkflowSuccess {
