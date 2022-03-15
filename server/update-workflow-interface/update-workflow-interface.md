@@ -148,16 +148,17 @@ message UpdateWorkflowRequest {
     string request_id = 2;
     string namespace = 3;
     temporal.api.common.v1.WorkflowExecution execution = 4;
-    string update_name = 5;
-    temporal.api.common.v1.Payloads input = 6;
-    UpdateWorkflowResultAccessStyle result_access_style = 7;
+    string first_execution_run_id = 5;
+    string update_name = 6;
+    temporal.api.common.v1.Payloads input = 7;
+    UpdateWorkflowResultAccessStyle result_access_style = 8;
 }
 
 message UpdateWorkflowResponse {
     bytes update_id = 1;
     UpdateWorkflowResultType result_type = 2;
-    UpdateWorkflowSuccess success = 3;
-    UpdateWorkflowFailure failure = 4;
+    UpdateWorkflowSuccess succeded = 3;
+    UpdateWorkflowFailure failed = 4;
 }
 
 enum UpdateWorkflowResultAccessStyle {
@@ -174,7 +175,9 @@ enum UpdateWorkflowResultType {
 }
 
 message PollUpdateResponseRequest {
-    bytes update_id = 1;
+    string namespace_id = 1;
+    string workflow_id = 2;
+    bytes update_id = 3;
 }
 
 message UpdateWorkflowSuccess {
@@ -182,7 +185,7 @@ message UpdateWorkflowSuccess {
 }
 
 message UpdateWorkflowFailure {
-  temporal.api.common.v1.Failure output = 1;
+  temporal.api.common.v1.Failure failure = 1;
 }
 ```
 
