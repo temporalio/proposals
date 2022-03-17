@@ -1,4 +1,4 @@
-# User-specified Worker Versions
+# Worker Build ID Based Versioning
 
 Temporal workflow authors experience a number of difficulties when it comes to
 changing workflow code. The current techniques for versioning workflows are:
@@ -41,10 +41,11 @@ fixes are typically less common than just making changes to workflow logic, thou
 
 To make the more common case easier, we will provide a set of features that
 make the "versioned task queues" approach much easier to use for changes to
-workflows which break history compatability (but not interface compatability).
+workflows which break history compatability (but not interface compatability),
+or would like to safely roll out expected-to-be-compatible changes.
 
 At a high level:
-* Provide a simple API for versioning entire workers (this proposal)
+* Provide a simple methodology for versioning entire workers (this proposal)
 * Allow clients to point at task queue `foo`, and automatically route new workflow executions
   to the latest version of the `foo` queue.
 * Provide good notifications and information about when old workers may be
@@ -56,84 +57,118 @@ Building on this base set of features, we plan to eventually implement
 automatic safe-rollout of changes, and possibly tools like k8s operators
 which can automatically manage worker deployments.
 
-## SDK API changes
+## Safe-rollout
 
-The meat of this proposal is simple:
-**Add a version field to worker options in each SDK**
+Intentionally avoiding deep into details here, the foundation laid here should enable
+us, as well as users, to more easily implement automated and safe rollout
+of changes to workers. A process like this one can become the de-facto experience:
 
-Because version information will need to be sent to the Temporal Cluster,
-we define it as a protobuf message (which will show up in our API somewhere):
+* If deploying a known-breaking change, new workflows are only processed by
+  the new version, existing open workflows are processed by old workers.
+* If deploying an expected-to-be-compatible change, new workflow _tasks_ are
+  attempted by new workers, and if they succeed, that workflow will subsequently
+  only be processed by new workers. If they fail, execution goes back to old
+  workers.
+
+# Using opaque whole-worker-identifiers as worker versions
+
+Thanks to @jlegrone for his great feedback encouraging us to revive this approach.
+
+We already have a field called `binaryChecksum` (or similar) in `WorkerOptions`
+today in SDKs. This field's intent is to uniquely identify a specific worker
+build. Since we believe versioning entire workers is the easiest solution, we
+can lean on this existing field.
+
+Deprecating the name `binaryChecksum`and replacing it with something more 
+accurate like `workerBuildId` would be appropriate, since most of our SDKs
+don't even produce a binary.
+
+With this approach, users who wish to make use of the improved versioning 
+features should set the `workerBuildId` during their CI process to a value that
+is unique for that worker's implementation. _Implementation_ rather than 
+_build_ is an important distinction here, since rebuilds of identical
+code should (ideally) produce workers wit the same ID. It is not necessary to
+do this, and it is varyingly difficult depending on the language, but when
+done it enables users to produce workers with the same ID from their CI builds
+if they didn't touch worker code, but something else (ex: The CI definition itself).
+This involves some work on the part of the user, but is more reliable than expecting
+worker authors to increment a version number.
+
+Unfortunately it is infeasible to automatically set an appropriate ID for many languages.
+
+## How is versioning accomplished with the `workerBuildId`?
+
+Every new worker ID will be assumed to be incompatible with the existing id(s)
+unless explicitly specified otherwise. New workers will not process *anything* 
+until explicitly enabled if they opt into build-id based versioning. Users who 
+wish to always have new workers begin processing new workflows can make an API 
+call immediately establishing the new worker as latest as part of their 
+deployment process (see below).
+
+In order to either (safely or not) migrate *open* workflows to a new version,
+users will explicitly indicate that an ID is compatible with some already-extant
+ID.
+
+Because this behavior is a breaking change, SDKs will need to add a
+`enableBuildIdBasedVersioning` boolean flag to their `WorkerOptions`.
+
+## Server-side APIs for `workerBuildId`-based versioning
+
+Importantly, we _already_ send the id (checksum, today) on every poll request.
+It's TBD if the worker will be changed to poll a unique queue per ID, or if
+that will happen on the frontend, or matching.
+
+These APIs could very well end up in a different service, but are shown
+as part of `WorkflowService` here for simplicity.
 ```protobuf
-message WorkerVersions {
-    UserVersion worker_version = 1;
+service WorkflowService {
+    rpc SetWorkerBuildIdOrdering (SetWorkerBuildIdOrderingRequest) returns (SetWorkerBuildIdOrderingResponse) {}
+    // This could / maybe should just be part of `DescribeTaskQueue`, but is broken out here to show easily.
+    rpc GetWorkerBuildIdOrdering (GetWorkerBuildIdOrderingRequest) returns (GetWorkerBuildIdOrderingResponse) {}
 }
 
-message UserVersion {
-    // The string the user passed as their version representation
-    string original = 1;
-    // Parsed from original string
-    uint32 major = 2;
-    // Parsed from original string
-    uint32 minor = 3;
+message SetWorkerBuildIdOrderingRequest {
+    string namespace = 1;
+    // Must be set, the task queue to apply changes to.
+    string task_queue = 2;
+    // The build id we are targeting.
+    string worker_build_id = 3;
+    // When set, indicates that the `workerBuildId` in this message is compatible
+    // with the one specified in this field. Because compatability should form
+    // a DAG, any build id can only be the "next compatible" version for one
+    // other ID at a time, and any setting which would create a cycle is invalid.
+    string is_compatible_with = 4;
+    // When set, establishes the specified `workerBuildId` as the latest
+    // for the queue. Those workers will begin processing new workflow executions.
+    bool latest = 5
 }
-```
+message SetWorkerBuildIdOrderingResponse {}
 
-This message is pre-emptively named plurally in order to accommodate potential
-increases in versioning granularity in the future. For example, we have considered
-versioning Workflows, Activities, and Data Converters/Interceptors all separately.
-They could be added as new fields to this message if/when that happens.
-
-Each language will expose a way to (optionally) set the worker version to 
-start, supporting the possibility of other versions later. This will translate 
-into the above message to be sent to server.
-
-### TypeScript
-
-```typescript
-Worker.create({ workerVersion: '1.0', ...otherOptions })
-```
-
-### Go
-
-```go
-workerOptions := worker.Options{
-  WorkerVersion: "1.0",
-  // other options
+message GetWorkerBuildIdOrderingRequest {
+    string namespace = 1;
+    // Must be set, the task queue to interrogate about worker id ordering
+    string task_queue = 2;
+    // Limits how deep the returned DAG will go. 1 will return only the
+    // latest build id.
+    uint32 max_depth = 3;
 }
+message GetWorkerBuildIdOrderingResponse {
+    // The currently established latest worker build id
+    WorkerBuildIdNode current_latest = 1;
+    // Other current latest-compatible versions who are not the overall latest
+    repeated WorkerBuildIdNode compatible_leaves = 2;
+}
+
+message WorkerBuildIdNode {
+    string worker_build_id = 1;
+    WorkerBuildIdNode compatible_with = 2;
+    WorkerBuildIdNode previous_incompatible = 3;
+}
+
+// Additionally, some way to limit version DAG depth is necessary - likely
+// something settable via the Operator service.
+
 ```
 
-### Java
-
-```java
-WorkerOptions.newBuilder().setWorkerVersion("1.0").build()
-```
-
-## When and how to increment the worker version number
-
-The information here will be added as a documentation page once this feature
-has shipped.
-
---
-
-The worker version number encompasses changes to all workflow code registered
-with the worker, as well as changes to any code which might affect the path
-of execution within workflow code.
-
-#### Super-Major
-Require a new workflow type name (or new task queue name)
-
-- A backwards-incompatible change to the workflow interface
-    - Changing a required parameter type
-    - Adding or removing a required parameter
-
-
-#### Major
-
-- A backwards-incompatible change to the workflow implementation. See more [here](https://docs.temporal.io/docs/concepts/what-is-a-workflow-definition/#deterministic-constraints)
-    - Anything that would cause the workflow to fail replay due to nondeterminism, given any possible valid history from the unaltered version of the workflow. 
-    - Includes changes to data converters or interceptors which would result in such incompatibilities.
-
-#### Minor
-
-- Backwards compatible change to workflow implementation
-    - This includes adding properly implemented `getVersion` or `patch` calls, for fixing bugs.
+---
+This proposal is a second take / alternative to the one [here](https://github.com/temporalio/proposals/pull/52)
