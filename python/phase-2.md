@@ -179,7 +179,7 @@ Notes:
 
 ### Client
 
-#### WorkflowHandle
+#### `WorkflowHandle`
 
 Updated with the following generics:
 
@@ -189,7 +189,7 @@ class WorkflowHandle(Generic[WorkflowType, WorkflowReturnType]):
 
 The workflow type is used for typing the "self" of signal/query methods and the return type is for result
 
-#### Client.start_workflow
+#### `Client.start_workflow`
 
 The following overload _would_ be added to client:
 
@@ -236,7 +236,7 @@ Where `LocalParamType` is a `ParamSpec`. But since `Concatenate` is
 Where `LocalParamType` is a `TypeVar`. This means that multi-param workflows are not currently type-able which is
 probably an acceptable limitation for now.
 
-#### Client.get_workflow_handle_for
+#### `Client.get_workflow_handle_for`
 
 Due to the same no-mypy-`Concatenate` problem as `start_workflow`, this has a union for the param:
 
@@ -268,7 +268,7 @@ Notes:
   param names or order of params? Currently as described is the clearest.
 
 
-#### WorkflowHandle.result
+#### `WorkflowHandle.result`
 
 This is already typed and doesn't really change, but the type name changed so it looks like:
 
@@ -277,7 +277,7 @@ This is already typed and doesn't really change, but the type name changed so it
       pass
 ```
 
-#### WorkflowHandle.signal
+#### `WorkflowHandle.signal`
 
 Due to the same no-mypy-`Concatenate` problem as `start_workflow`, this has two overloads:
 
@@ -304,7 +304,7 @@ Due to the same no-mypy-`Concatenate` problem as `start_workflow`, this has two 
         pass
 ```
 
-#### WorkflowHandle.query
+#### `WorkflowHandle.query`
 
 Due to the same no-mypy-`Concatenate` problem as `start_workflow`, this has two overloads:
 
@@ -337,31 +337,31 @@ Due to the same no-mypy-`Concatenate` problem as `start_workflow`, this has two 
 
 ### Worker
 
-#### Worker.__init__.activities
+#### `Worker.__init__.activities`
 
 Currently `activities` are accepted as `Mapping[str, Callable]`. Due to `@activity.defn` we will change this to
 `Iterable[Callable]` and require all activities have `@activity.defn`. See the overview for notes/discussion on this.
 
-#### Worker.__init__.workflows
+#### `Worker.__init__.workflows`
 
 Workers will accept a `workflows` param which is `Iterable[Type]`. These will be classes that have `@workflow.defn` and
 they are validated at runtime.
 
-#### Worker.__init__.workflow_runner
+#### `Worker.__init__.workflow_runner`
 
 Optional class (not shown) that can be used to invoke workflows. Hopefully, the default for this will be a deterministic
 sandbox in phase 3. But in the meantime this is just an abstraction in preparation. It's not called "executor" because
 `activity_executor` already exists which uses the literal "concurrent executors" from Python.
 
-#### temporalio.worker.Interceptor
+#### `temporalio.worker.Interceptor`
 
 Will add `intercept_workflow` to this and support all inbound and outbound interception.
 
-### temporalio.workflow
+### `temporalio.workflow`
 
 The workflow package will contain functions that can only be called from inside a workflow.
 
-#### temporalio.workflow.start_activity()
+#### `temporalio.workflow.start_activity()`
 
 ```python
 
@@ -450,28 +450,28 @@ Notes:
 * Why does does mypy only work here when we separate out async from sync, but allows the use of `Union` for
   `WorkflowHandle.query`?
 
-#### temporalio.workflow.execute_activity()
+#### `temporalio.workflow.execute_activity()`
 
 Async shortcut for `temporalio.workflow.start_activity()` + `handle.result()`.
 
-#### temporalio.workflow.ActivityConfig
+#### `temporalio.workflow.ActivityConfig`
 
 `TypedDict` of `start_activity`/`execute_activity` configuration options.
 
-#### temporalio.workflow.start_local_activity()
+#### `temporalio.workflow.start_local_activity()`
 
 Same as `start_activity`, except no `heartbeat_timeout` param. For now, we will reuse `ActivityHandle` for the result
 since there would be nothing unique about a `LocalActivityHandle`.
 
-#### temporalio.workflow.execute_local_activity()
+#### `temporalio.workflow.execute_local_activity()`
 
 Shortcut for `temporalio.workflow.start_local_activity()` + `handle.result()`.
 
-#### temporalio.workflow.LocalActivityConfig
+#### `temporalio.workflow.LocalActivityConfig`
 
 `TypedDict` of `start_local_activity`/`execute_local_activity` configuration options.
 
-#### temporalio.workflow.start_child_workflow()
+#### `temporalio.workflow.start_child_workflow()`
 
 ```python
 class ChildWorkflowHandle(Generic[WorkflowType, WorkflowReturnType], Cancellable):
@@ -560,15 +560,15 @@ Notes:
   * How does TypeScript return a failure if the child workflow cancel
 * `start_child` was considered instead of `start_child_workflow`, but this seems clearer. Can be convinced otherwise.
 
-#### temporalio.workflow.execute_child_workflow()
+#### `temporalio.workflow.execute_child_workflow()`
 
 Shortcut for `temporalio.workflow.start_child_workflow()` + `handle.result()`
 
-#### temporalio.workflow.ChildWorkflowConfig
+#### `temporalio.workflow.ChildWorkflowConfig`
 
 `TypedDict` of `start_child_workflow`/`execute_child_workflow` configuration options.
 
-#### temporalio.workflow.continue_as_new()
+#### `temporalio.workflow.continue_as_new()`
 
 ```python
 # Overload for self (cannot type args)
@@ -632,11 +632,11 @@ Notes:
   * This will be subject to implementation-time research. The goal is to try to never return from the function (if it's
     `async` that implies never return from an `await` on it) and if possible do not raise an error.
 
-#### temporalio.workflow.ContinueAsNewConfig
+#### `temporalio.workflow.ContinueAsNewConfig`
 
 `TypedDict` of `continue_as_new` configuration options.
 
-#### temporalio.workflow.get_external_workflow_handle
+#### `temporalio.workflow.get_external_workflow_handle`
 
 ```python
 class ExternalWorkflowHandle(Generic[WorkflowType], Cancellable):
@@ -679,7 +679,7 @@ Notes:
 
 * This intentionally matches the client API
 
-#### temporalio.workflow.upsert_search_attributes
+#### `temporalio.workflow.upsert_search_attributes`
 
 ```python
 def upsert_search_attributes(attrs: Mapping[str, Any]) -> None:
@@ -692,7 +692,7 @@ Notes:
 * Originally there was concern that I couldn't report data conversion failure on search attributes, but since custom
   converters are not allowed, I can just make sync calls to the JSON data converter
 
-#### temporalio.workflow Async Utilities
+#### `temporalio.workflow` Async Utilities
 
 ```python
 async def sleep(delay: float, result: T = None) -> T:
@@ -708,7 +708,7 @@ Notes:
 * Like `temporal.activity.wait*` we choose the "wait_" prefix here as Python often does, e.g. for events which this is
   most analogous to
 
-#### temporalio.workflow Miscellaneous
+#### `temporalio.workflow` Miscellaneous
 
 ```python
 
@@ -737,7 +737,7 @@ Notes:
   when a deterministic sandbox appears. It is clearer to disallow deterministic calls than implicitly replace some.
 * `logger` uses a special adapter that is skipped during replay
 
-#### temporalio.workflow.CancellationScope
+#### `temporalio.workflow.CancellationScope`
 
 Rough sketch:
 
