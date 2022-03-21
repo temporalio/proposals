@@ -22,7 +22,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 @activity.defn
-def say_hello(name: str) -> str:
+async def say_hello(name: str) -> str:
     return f"Hello, {name}!"
 
 @workflow.defn
@@ -61,7 +61,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 @activity.defn
-def create_greeting_activity(salutation: str, name: str) -> str:
+async def create_greeting_activity(salutation: str, name: str) -> str:
     return f"{salutation}, {name}!"
 
 @workflow.defn
@@ -91,7 +91,7 @@ class GreetingWorkflow:
             )
             if self._salutation_update.is_set():
                 self._salutation_update.clear()
-            if self._complete.is_set():
+            elif self._complete.is_set():
                 return self._current_greeting
 
     @workflow.signal
@@ -557,7 +557,6 @@ Notes:
 * `ChildWorkflowHandle.signal` will have the same typed overloads that `WorkflowHandle.signal` does
 * `ChildWorkflowHandle.cancel` is present to simplify cancellation. See "temporalio.workflow Scoped Cancellation" for
   more discussion.
-  * How does TypeScript return a failure if the child workflow cancel
 * `start_child` was considered instead of `start_child_workflow`, but this seems clearer. Can be convinced otherwise.
 
 #### `temporalio.workflow.execute_child_workflow()`
