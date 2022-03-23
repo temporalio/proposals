@@ -121,6 +121,8 @@ that will happen on the frontend, or matching.
 These APIs could very well end up in a different service, but are shown
 as part of `WorkflowService` here for simplicity.
 ```protobuf
+syntax = "proto3";
+
 service WorkflowService {
     rpc SetWorkerBuildIdOrdering (SetWorkerBuildIdOrderingRequest) returns (SetWorkerBuildIdOrderingResponse) {}
     // This could / maybe should just be part of `DescribeTaskQueue`, but is broken out here to show easily.
@@ -131,18 +133,18 @@ message SetWorkerBuildIdOrderingRequest {
     string namespace = 1;
     // Must be set, the task queue to apply changes to.
     string task_queue = 2;
-    // The build id we are targeting.
-    string worker_build_id = 3;
-    // When set, indicates that the `workerBuildId` in this message is compatible
+    // The version id we are targeting.
+    VersionId version_id = 3;
+    // When set, indicates that the `version_id` in this message is compatible
     // with the one specified in this field. Because compatability should form
     // a DAG, any build id can only be the "next compatible" version for one
-    // other ID at a time, and any setting which would create a cycle is invalid.
-    string is_compatible_with = 4;
-    // When set, establishes the specified `workerBuildId` as the default
-    // for the queue. Those workers will begin processing new workflow executions.
+    // other ID of a certain type at a time, and any setting which would create a cycle is invalid.
+    VersionId is_compatible_with = 4;
+    // When set, establishes the specified `version_id` as the default of it's type
+    // for the queue. Workers matching it will begin processing new workflow executions.
     // The existing default will be marked as a previous incompatible version
     // to this one, assuming it is not also in `is_compatible_with`.
-    bool default = 5
+    bool default = 5;
 }
 message SetWorkerBuildIdOrderingResponse {}
 
@@ -155,16 +157,29 @@ message GetWorkerBuildIdOrderingRequest {
     uint32 max_depth = 3;
 }
 message GetWorkerBuildIdOrderingResponse {
-    // The currently established default worker build id
-    WorkerBuildIdNode current_default = 1;
-    // Other current latest-compatible versions who are not the overall default
-    repeated WorkerBuildIdNode compatible_leaves = 2;
+    // The currently established default ids. There will be one per version type as defined in
+    // the `VersionId` message.
+    repeated VersionIdNode current_defaults = 1;
+    // Other current latest-compatible versions who are not the overall default. These are the
+    // versions that will be used when generating new tasks by following the graph from the
+    // version of the last task out to a leaf.
+    repeated VersionIdNode compatible_leaves = 2;
 }
 
-message WorkerBuildIdNode {
-    string worker_build_id = 1;
-    WorkerBuildIdNode compatible_with = 2;
-    WorkerBuildIdNode previous_incompatible = 3;
+message VersionIdNode {
+    VersionId version = 1;
+    VersionIdNode compatible_with = 2;
+    VersionIdNode previous_incompatible = 3;
+}
+
+message VersionId {
+    oneof version {
+        // An opaque whole-worker identifier
+        string worker_build_id = 1;
+        // Exists to support possible future dynamic bundle downloading. Versions a bundle of
+        // workflows.
+        string workflow_bundle_id = 2;
+    }
 }
 
 // Additionally, some way to limit version DAG depth is necessary - likely
