@@ -145,7 +145,7 @@ Notes:
 * `@workflow.defn`
   * Must be on class and accepts an optional workflow `name` which defaults to class `__name__`
   * This is required to clearly mark the class as a workflow
-  * No base classes can have this value
+  * This is not inherited from any base classes, it must be explicitly present on this final class
 * `@workflow.run`
   * Must be on a single async method (regardless of inheritance level) and accepts no params
   * The params represent the workflow params and the response represents the workflow response
@@ -715,8 +715,10 @@ Notes:
 class Info:
     pass
 
-def is_replaying() -> bool:
-    pass
+class unsafe:
+    @staticmethod
+    def is_replaying() -> bool:
+        pass
 
 def info() -> Info:
     pass
@@ -731,7 +733,7 @@ Notes:
 
 * Fields of `Info` not shown, but notably absent is `is_replaying` so it can remain immutable
   * Instead, like Java and Go, we move that to the package level
-* Should we move `is_replaying` to a place that makes it more clear it's unsafe?
+* We may move `is_replaying` to a separate module altogether instead of just in a class
 * It's clearer to require uses of `temporalio.workflow.now()` than to wait for and require overriding `datetime.now()`
   when a deterministic sandbox appears. It is clearer to disallow deterministic calls than implicitly replace some.
 * `logger` uses a special adapter that is skipped during replay
@@ -828,3 +830,167 @@ Notes:
 * A full workflow execution sandbox may not occur until phase 3
   * Some work on doing this via `eval` are at https://github.com/cretz/python-determinism-runner
 * We will, however, go ahead and abstract the "runner" so that we can make it pluggable/opt-out if the caller chooses
+
+## Additional API Concerns
+
+### Activities as Methods
+
+It is very normal to want to have activities as methods instead of top-level functions. For example, say you have:
+
+```python
+class ActivityClass:
+    def __init__(self, some_init_arg: int) -> None:
+        pass
+    
+    @activity.defn
+    def some_activity(self, arg1: str) -> List[str]:
+        return ["Yay"]
+```
+
+You cannot just `workflow.execute_activity(ActivityClass.some_activity, "foo")` because technically the first parameter
+is `self` there. But sometimes they may want to call
+`workflow.execute_activity(ActivityClass.some_activity, ActivityClass("init-arg1"), "foo")` and who are we to say they
+can't pass in the self arg explicitly?
+
+What do we do? Here are the notes/options (activity options left off of calls for brevity):
+
+* Cannot use something like `functools.partial(ActivityClass.some_activity, None)` because `partial` removes our
+  attributes which are set in the decorator
+* Don't want to init an instance of the class like this:
+
+    ```python
+    workflow.execute_activity(ActivityClass("init-arg").some_activity, "foo")
+    ```
+* Can create the activity class without initializing it like this:
+
+    ```python
+    activities = ActivityClass.__new__(ActivityClass)
+    workflow.execute_activity(activities.some_activity, "foo")
+    ```
+  This is nice because it doesn't require the Python SDK to care (and people have been doing this in class methods for
+  factories for a while now). We can even provide a helper that does basically this like so:
+
+    ```python
+    activities = workflow.proxy_activity_class(ActivityClass)
+    workflow.execute_activity(activities.some_activity, "foo")
+    ```
+* We can make it possible to pass `None` as the `self` parameter like this:
+
+    ```python
+    workflow.execute_activity(ActivityClass.some_activity, None, "foo")
+    ```
+  And then we could check for that being self and ignore it. However, due to Mypy not yet supporting all of `ParamSpec`,
+  that requires us to have a two-parameter overload version of `execute_activity` _and_ to make the first param optional
+  like so:
+  
+    ```python
+    @overload
+    async def execute_activity(
+        activity: Callable[[LocalParamType, LocalParamType2], LocalReturnType],
+        arg: Optional[LocalParamType],
+        arg2: LocalParamType2,
+        /,
+        *,
+    ```
+  This means if you had a real two-param activity, you'd now be able to have an optional first parameter. Also, I am not
+  yet confident how this will look when we remove all of these overloads once Mypy gets their `ParamSpec` support.
+* We could have a completely separate call like so:
+
+    ```python
+    workflow.execute_activity_method(ActivityClass.some_activity, "foo")
+    ```
+* Instead of having `@activity.defn` set an attribute on the function (which is then transitively transferred for others
+  using `functools.wraps`), we could have it return something like `ActivityDefinition[ParamTypes, ReturnType]` (which
+  does not get the transitive benefits). The reason we might want this is then we can have `@activity.method_defn` or
+  similar that is smart enough to convert to an activity definition. I have been trying to avoid actually wrapping
+  functions so far.
+* We could support the following with an overload:
+
+    ```python
+    workflow.execute_activity(ActivityClass.some_activity, "foo", method=True)
+    ```
+  This would work with a special overload like:
+
+    ```python
+    @overload
+    async def execute_activity(
+        activity: Callable[[Any, LocalParamType], LocalReturnType],
+        arg: LocalParamType,
+        /,
+        *,
+        method: Literal[True],
+    ```
+  This seems like a fairly sane way, but requires callers pass a special parameter to call
+* Another outstanding question - is there added benefit _at this time_ to support registering a class full of activity
+  methods instead of individually? I am thinking not (yet).
+
+### Workflow Contracts
+
+Sometimes users may want to separate the workflow into a contract and an impl so that they can be separated. We will
+support this approach.
+
+Here is what it looks like with `typing.Protocol`s:
+
+```python
+@workflow.defn
+class MyWorkflow(Protocol):
+    @workflow.run
+    def run(self, arg: str) -> List[str]:
+        ...
+
+@workflow.defn(name=MyWorkflow.__name__)
+class MyWorkflowImpl:
+    @workflow.run
+    def run(self, arg: str) -> List[str]:
+        return [arg]
+
+async def run_workflow(client: Client) -> List[str]:
+    return await client.execute_workflow(MyWorkflow.run)
+
+def create_worker(client: Client) -> Worker:
+    return Worker(workflows=[MyWorkflowImpl])
+```
+
+And here's what it looks like with abstract classes:
+
+```python
+@workflow.defn
+class MyWorkflow(ABC):
+  @workflow.run
+  @abstractmethod
+  def run(self, arg: str) -> List[str]:
+    raise NotImplementedError
+
+@workflow.defn(name=MyWorkflow.__name__)
+class MyWorkflowImpl(MyWorkflow):
+    @workflow.run
+    def run(self, arg: str) -> List[str]:
+        return [arg]
+
+async def run_workflow(client: Client) -> List[str]:
+    return await client.execute_workflow(MyWorkflow.run)
+
+def create_worker(client: Client) -> Worker:
+    return Worker(workflows=[MyWorkflowImpl])
+```
+
+Notes:
+
+* This has no special logic to handle this approach. The same approach can be used to separate activity class method
+  contracts from their impls.
+* It is unfortunate that we require a `@workflow.defn` on both the base and impl classes.
+  * We want to require this decorator at client-side _and_ worker-side to ensure name sharing
+  * With `Protocol` it is obvious why, there is technically no code shared
+  * With abstract base classes, we maybe could support `@workflow.defn(extends=MyWorkflow)` but that doesn't give you
+    much
+  * I am hesitant to try to implicitly derive the base name because there are other use cases for inheritance besides
+    just contract/impl separation
+* It is unfortunate that we require a `@workflow.run` on both the base and impl classes.
+  * I can't necessarily assume the base-class's run is overridden the exact same way in the child class
+* I suppose I could do this: Always inherit decorators and if there are decorators on the same method/class in the tree
+  but they don't match, raise an error. But allow `inherit=False` to work around.
+  * Yes, this might be a cleaner approach. I see no reason why people need to have different decorator values for the
+    same item.
+  * But this means that it may no longer be obvious something is a workflow or a signal or whatever since the decorator
+    may only be on the base class.
+  * Looking for feedback here and if we decide otherwise, I'll remove the no-decorator-inheritance rule.
