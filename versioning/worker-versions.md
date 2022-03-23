@@ -138,9 +138,11 @@ message SetWorkerBuildIdOrderingRequest {
     // a DAG, any build id can only be the "next compatible" version for one
     // other ID at a time, and any setting which would create a cycle is invalid.
     string is_compatible_with = 4;
-    // When set, establishes the specified `workerBuildId` as the latest
+    // When set, establishes the specified `workerBuildId` as the default
     // for the queue. Those workers will begin processing new workflow executions.
-    bool latest = 5
+    // The existing default will be marked as a previous incompatible version
+    // to this one, assuming it is not also in `is_compatible_with`.
+    bool default = 5
 }
 message SetWorkerBuildIdOrderingResponse {}
 
@@ -149,13 +151,13 @@ message GetWorkerBuildIdOrderingRequest {
     // Must be set, the task queue to interrogate about worker id ordering
     string task_queue = 2;
     // Limits how deep the returned DAG will go. 1 will return only the
-    // latest build id.
+    // default build id.
     uint32 max_depth = 3;
 }
 message GetWorkerBuildIdOrderingResponse {
-    // The currently established latest worker build id
-    WorkerBuildIdNode current_latest = 1;
-    // Other current latest-compatible versions who are not the overall latest
+    // The currently established default worker build id
+    WorkerBuildIdNode current_default = 1;
+    // Other current latest-compatible versions who are not the overall default
     repeated WorkerBuildIdNode compatible_leaves = 2;
 }
 
