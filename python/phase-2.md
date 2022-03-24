@@ -4,7 +4,8 @@ The Python SDK will be implemented in three loosely defined phases:
 
 * Phase 1 - Initial project, activity worker, and client
 * Phase 2 - Workflow worker, local activities, async activity completion, etc
-* Phase 3 - Deterministic workflow sandbox, replayer, test suite (some parts may be combined with phase 2)
+* Phase 3 - Deterministic workflow sandbox, replayer, test suite, versioning, helpers (some parts may be combined with
+  phase 2)
 
 This proposal is for phase 2. It is intentionally loosely defined and all aspects are subject to discussion/change.
 
@@ -923,6 +924,47 @@ What do we do? Here are the notes/options (activity options left off of calls fo
   This seems like a fairly sane way, but requires callers pass a special parameter to call
 * Another outstanding question - is there added benefit _at this time_ to support registering a class full of activity
   methods instead of individually? I am thinking not (yet).
+* Another option that was requested to be shown is to disallow `@activity.defn` on methods and make an easy way to
+  externally define those as callable. Here's the easiest way I can think of making that look:
+
+    ```python
+    class ActivityClass:
+        def __init__(self, some_init_arg: int) -> None:
+            pass
+
+        def some_activity1(self, arg: str) -> List[str]:
+            ...
+
+        def some_activity2(self, arg: int) -> List[int]:
+            ...
+
+    some_activity1 = workflow.activity_method_reference(ActivityClass.some_activity1)
+    some_activity2 = workflow.activity_method_reference(ActivityClass.some_activity2, name="some_other_name")
+
+    def new_worker(client: Client) -> Worker:
+        return Worker(client, activities=[ActivityClass.some_activity1, ActivityClass.some_activity2])
+
+    @workflow.defn
+    class MyWorkflow:
+        @workflow.run
+        async def run(self):
+            res1 = await workflow.execute_activity(some_activity1, "arg")
+            res2 = await workflow.execute_activity(some_activity2, 123)
+    ```
+    It works but it's a bit ugly compared to `execute_activity_method`. At that point, technically they could just
+    hand-write stubs like:
+
+    ```python
+    @activity.defn
+    def some_activity1(arg: str) -> List[str]:
+        raise RuntimeError("Cannot call stub directly!")
+    ```
+    Ant it has the same effect from inside the workflow.
+
+#### Result
+
+After discussion we have decided to use the `execute_activity_method` approach. Of course people can still do the
+`ActivityClass.__new__(ActivityClass)` approach if they want, but that's now how we'll me suggesting to do it.
 
 ### Workflow Contracts
 
@@ -994,3 +1036,191 @@ Notes:
   * But this means that it may no longer be obvious something is a workflow or a signal or whatever since the decorator
     may only be on the base class.
   * Looking for feedback here and if we decide otherwise, I'll remove the no-decorator-inheritance rule.
+
+#### Result
+
+After discussion, we have decided it is this for `@workflow.defn`:
+
+```python
+ClassType = TypeVar("ClassType", bound=Type)
+
+@overload
+def defn(*, implements: ClassType) -> DefnDecorator[ClassType]:
+    pass
+
+@overload
+def defn(*, name: Optional[str] = None) -> DefnDecorator[Any]:
+    pass
+
+@overload
+def defn(cls: ClassType) -> ClassType:
+    pass
+
+def defn(cls: Optional[ClassType] = None, *, name: Optional[str] = None, implements: Optional[ClassType] = None):
+    if cls is None:
+        # TODO(cretz): Do stuff with name/implements
+        return defn
+    return cls
+
+class DefnDecorator(Protocol[ClassType]):
+    def __call__(self, cls: ClassType) -> ClassType:
+        raise NotImplemented
+```
+
+Notes:
+
+* Every worker-registered or called-called workflow must have `@workflow.defn` of course
+* `@workflow.defn` will have a parameter called `implements` that accepts either a `Protocol` or a base class. This
+  parameter is mostly only used for aligning names and not for general inheritance-based code reuse
+  * The implements does enforce that the class actually does implement that
+  * Cannot provide a name if you provide `implements=` (that base one provides the name)
+* Rules for general inheritance:
+  * There can be only one `@workflow.run` (but it can be overridden)
+  * Every method override of a `@workflow.<x>` _must_ have the same decorator and decorator args and method args
+    * So overridding, say, run or a signal handler or whatever must have the same
+    * We probably can't easily confirm the arg type annotations are equivalent due to so many possibilities with
+      generics and such
+* This means that classes marked as workflows will be typed as their `implements`, _not_ their actual class type, which
+  should be ok
+
+### Dynamic Signals/Queries
+
+There is a concern that we won't allow easy runtime signal/query handler management from inside the workflow. Currently,
+we allow catch-all signal and query handlers like so:
+
+```python
+@workflow.defn
+class MyWorkflow:
+    @workflow.run
+    async def run(self):
+        ...
+
+    @workflow.signal(dynamic=True)
+    async def default_signal_handler(self, signal_name: str, *args: Any) -> None:
+        ...
+
+    @workflow.query(dynamic=True)
+    def default_query_handler(self, query_name: str, *args: Any) -> Any:
+        ...
+```
+
+So technically you could have a runtime mixin helper like so:
+
+```python
+class DynamicHandlerMixin:
+    def __init__(self, *args, **kwargs) -> None:
+        ...
+
+    def set_signal_handler(self, signal_name: str, callback: Callable) -> None:
+        ...
+
+    @workflow.signal(dynamic=True)
+    async def default_signal_handler(self, signal_name: str, *args: Any) -> None:
+        ...
+
+    def set_query_handler(self, signal_name: str, callback: Callable) -> None:
+        ...
+
+    @workflow.query(dynamic=True)
+    def default_query_handler(self, query_name: str, *args: Any) -> Any:
+        ...
+```
+
+Which could be used like:
+
+```python
+@workflow.defn
+class MyWorkflow(DynamicHandlerMixin):
+    def __init__(self) -> None:
+        ...
+
+    @workflow.run
+    async def run(self):
+        if some_conditional():
+            self.set_signal_handler("my signal name", self.some_signal_handler)
+
+    def some_signal_handler(s: str) -> None:
+        ...
+```
+
+But there are downsides, namely:
+
+* This would require user-land to buffer the signals instead of us
+* This would require user-land to throw on missing query instead of our error
+  which includes known registered names
+* You have to opt-in to this
+
+Instead, we can offer this in the `temporalio.workflow` package:
+
+```python
+def set_signal_handler(name: str, handler: Callable) -> None:
+    ...
+
+def set_query_handler(name: str, handler: Callable) -> None:
+    ...
+```
+
+Notes:
+
+* This will be in addition to the catch-all handler, but we will suggest use of this less than the explicit
+  `@workflow.signal`/`@workflow.query` approach
+* Like other SDKs, we'll buffer unhandled signals and return query error on unhandled queries
+* What should we do if there is already a handler for that item's name?
+  * I'm thinking latest wins
+* Should we offer a `set_default_signal_handler`/`set_default_query_handler` that is runtime equivalent of
+  `dynamic=True`?
+  * I'm thinking yes
+
+### Dynamic Signal Args
+
+A request for a use case has been made to show "A RPC-like system that accepts different arg types for the same signal
+name". Here's how such a thing may look in Python:
+
+```python
+@workflow.defn
+class MyWorkflow:
+
+    @workflow.run
+    async def run(self) -> None:
+        ...
+
+    @overload
+    async def do_call(self, arg: SomeClass1) -> None:
+        ...
+
+    @overload
+    async def do_call(self, arg: SomeClass2) -> None:
+        ...
+
+    @workflow.signal
+    async def do_call(self, arg: Any) -> None:
+        # Python 3.10+ for switches
+        match type(arg):
+            case SomeClass1:
+                self.do_some_class1_call()
+            case SomeClass2:
+                self.do_some_class1_call()
+
+async def make_some_calls(client: Client):
+    handle = client.get_workflow_handle_for(MyWorkflow, "some id")
+    # Passes type checker
+    await handle.signal(MyWorkflow.signal, SomeClass1())
+    # Passes type checker
+    await handle.signal(MyWorkflow.signal, SomeClass2())
+    # Fails type checker
+    await handle.signal(MyWorkflow.signal, SomeClass3())
+```
+
+Notes:
+
+* All of this is supported out of the box.
+* You can do the same thing for queries, activities, or even the primary `@workflow.run` entrypoint meaning you can have
+  a workflow accept different param types but have the type checker still keep it limited
+* You could get the same thing with just a function like:
+
+    ```python
+    @workflow.signal
+    async def do_call(self, arg: Union[SomeClass1, SomeClass2]) -> None:
+        ...
+    ```
+  But for some maybe this is easier
