@@ -71,7 +71,7 @@ const client = await WorkflowClient.create({ connectionOptions: { address }, nam
 - Implicit connection sharing is non-obvious
 - No way to opt out of connection sharing (can be addressed if needed)
 
-### Mix of options and explicit clients (recommended)
+### Mix of options and explicit clients
 
 Support a variant of both approaches listed above with no implicit connection reuse
 
@@ -97,6 +97,35 @@ const connection = await Connection.create({ address });
 const client = new WorkflowClient({ connection, namespace });
 ```
 
+#### Pros
+
+- Explicit sharing model
+- Only verbose when sharing is required
+
+#### Cons
+
+- 2 connection types are confusing
+
+### Typed connection options
+
+Here we'll assume that `WorkflowClient` and `AsyncCompletionClient` have been merged into a single `Client` type.
+
+```ts
+// worker.ts
+import { Worker } from '@temporalio/worker';
+import { Client } from '@temporalio/client';
+
+const client = await Client.create({ connection: { type: 'native', address }, namespace });
+const worker = await Worker.create({ client, namespace, taskQueue });
+
+// starter.ts
+import { Client } from '@temporalio/client';
+
+const client = await Client.create({ connection: { type: 'native', address }, namespace });
+// - OR -
+const client = await Client.create({ connection: { type: 'grpc-js', address, interceptors }, namespace });
+```
+
 ### Python SDK approach
 
 ```ts
@@ -104,9 +133,8 @@ const client = new WorkflowClient({ connection, namespace });
 import { Worker, WorkflowClient } from '@temporalio/worker';
 // WorkflowClient is re-exported from the worker package
 
-// worker1 and worker2 share the same underlying connection based on given options
 const client = await WorkflowClient.create({ connectionOptions: { address }, namespace });
-const worker = await Worker.create({ client, namespace, taskQueue: 'tq1' });
+const worker = await Worker.create({ client, taskQueue: 'tq1' });
 
 // starter.ts
 import { WorkflowClient } from '@temporalio/client';
@@ -123,6 +151,36 @@ const client = await WorkflowClient.create({ connectionOptions: { address }, nam
 
 - Connnection isn't really reused (not possible)
 - Not all options are apply to worker connection (e.g. grpc interceptors and channel args)
+
+### Python SDK approach with different client types
+
+Here we'll assume that `WorkflowClient` and `AsyncCompletionClient` have been merged into a single `Client` type.
+
+```ts
+// worker.ts
+import { Worker } from '@temporalio/worker';
+import { Client } from '@temporalio/client';
+
+const client = await Client.create({ connection: { type: 'native', address }, namespace });
+const worker = await Worker.create({ client, taskQueue });
+
+// starter.ts
+import { Client } from '@temporalio/client';
+
+const client = await Client.create({ connection: { type: 'native', address }, namespace });
+// - OR -
+const client = await Client.create({ connection: { type: 'grpc-js', address, interceptors }, namespace });
+```
+
+- In the current state of the SDK, `grpc-js` connection cannot be passed to `Worker`s.
+- If / when Core supports external client implementations, the `grpc-js` connection could be used for `Worker`s.
+- If / when we reach the point above, we could decide to get rid of the `native` connection type.
+- The cons mentioned above are _not_ relevant with this approach, connections can be shared between clients and workers and connection options would apply when passing a `Client` to a `Worker`.
+
+#### Pros
+
+- All of the above pros
+- Future proof
 
 ## Notes
 
