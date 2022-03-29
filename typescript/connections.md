@@ -13,7 +13,7 @@ await Core.install({ serverOptions: { address, namespace } });
 const worker = await Worker.create({ taskQueue });
 ```
 
-## Proposals
+## Proposal
 
 ### Explicit `Connection` objects
 
@@ -39,11 +39,23 @@ const client = new WorkflowClient(connection.service, { namespace });
 #### Pros
 
 - Explicit connection reuse
+- Guides developers to reuse connections
 
 #### Cons
 
 - Verbose
 - Confusing when to use each connection type
+
+#### Summary
+
+After weighing the pros and cons of the alternatives below this approach was selected for the following reasons:
+
+- Connection sharing is explicit
+- Connection sharing is the default and not opt-in
+- Future proof for supporting different connection types for both Worker and WorkflowClient
+- Flexible - e.g. the [Mix of options and clients](#mix-of-options-and-explicit-clients) alternative could be added later (though unlikely)
+
+## Alternatives considered
 
 ### Implicit connection reuse with similar options
 
