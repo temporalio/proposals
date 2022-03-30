@@ -33,7 +33,7 @@ const worker = await Worker.create({ connection, namespace, taskQueue });
 import { Connection, WorkflowClient } from '@temporalio/client';
 
 const connection = await Connection.create({ address });
-const client = new WorkflowClient(connection.service, { namespace });
+const client = new WorkflowClient(connection, { namespace });
 ```
 
 #### Pros
