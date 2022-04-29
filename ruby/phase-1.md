@@ -524,9 +524,9 @@ Notes:
 
 Ruby SDK will use the model proposed [here](https://docs.temporal.io/docs/concepts/what-is-a-data-converter/)
 to facilitate conversion between SDK inputs and payloads. Basically there will be two extension
-points on the `Temporal::Configuration` object allowing to add either a DataConverter or a Codec.
+points on the `Temporal::Configuration` object allowing to add either a Converter or a Codec.
 
-The main difference is that a DataConverter translates between any Ruby object and a Payload, while
+The main difference is that a Converter translates between any Ruby object and a Payload, while
 a Codec is a lower level construct that encodes/decodes from a Payloads protobuf to a Payloads
 protobuf. The former is intended to support specific serialisation formats, while the later is for
 modifying a binary that is transmitted over the wire.
@@ -534,17 +534,17 @@ modifying a binary that is transmitted over the wire.
 ```ruby
 config = Temporal::Configuration.new(url: 'localhost:7933')
 
-config.add_data_converter(MyProtobufConverter.new)
-config.add_data_converter(MyThriftConverter) # can be a class/module based on duck-typing
+config.add_payload_converter(MyProtobufConverter.new)
+config.add_payload_converter(MyThriftConverter) # can be a class/module based on duck-typing
 
-config.add_codec(EncryptionCodec.new(KEY_ID))
-config.add_codec(CompressionCodec)
+config.add_payload_codec(EncryptionCodec.new(KEY_ID))
+config.add_payload_codec(CompressionCodec)
 ```
 
-A data converter is expected to have this interface:
+A payload converter is expected to have this interface:
 
 ```ruby
-class Temporal::DataConverter::Base
+class Temporal::PayloadConverter::Base
   # Returns mime-type of the payload
   def encoding() -> String
 
@@ -556,10 +556,10 @@ class Temporal::DataConverter::Base
 end
 ```
 
-And a code is expected to have this interface:
+And a codec is expected to have this interface:
 
 ```ruby
-class Temporal::Codec::Base
+class Temporal::PayloadCodec::Base
   # Takes Payloads object and returns a modified Payloads object
   def encode(payloads: [Temporal::Payload]) -> [Temporal::Payload]
 
@@ -572,4 +572,4 @@ end
 
 While some other SDKs combine these two constructs into one with a broader interface we think that
 these are different enough concepts that deserve first-class separation. Otherwise implementing
-Codecs becomes a tricky task where each Codec needs to be aware of all the DataConverters available.
+Codecs becomes a tricky task where each Codec needs to be aware of all the Converters available.
