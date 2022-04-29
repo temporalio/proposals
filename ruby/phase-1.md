@@ -230,9 +230,13 @@ client.start_workflow(MyWorkflow, 'Alice', options: {
   task_queue: 'my-queue'
 })
 
-worker = Temporal::Worker.new(config, 'my-namespace', 'my-queue')
-worker.register_workflow(MyWorkflow)
-worker.register_activity(MyActivity)
+worker = Temporal::Worker.new(
+  config,
+  'my-namespace',
+  'my-queue',
+  workflows: [MyWorkflow],
+  activities: [MyActivity]
+)
 worker.run
 ```
 
@@ -339,14 +343,20 @@ will then be polled for on the specified namespaces & task queues and executed.
 ```ruby
 config = Temporal::Configuration.new(url: 'localhost:7233')
 
-worker_1 = Temporal::Worker.new(config, 'my-namespace', 'my-task-queue')
-worker_1.register_workflow(MyWorkflow) # uses 'MyWorkflow' as a name
-worker_1.register_activity(MyActivity) # uses 'MyActivity' as a name
+worker_1 = Temporal::Worker.new(
+  config,
+  'my-namespace',
+  'my-task-queue',
+  workflows: [MyWorkflow], # uses 'MyWorkflow' as a name
+  activities: [MyActivity] # uses 'MyActivity' as a name
+)
 worker_1.start
 
-worker_2 = Temporal::Worker.new(config, 'my-namespace', 'another-task-queue')
-worker_2.register_workflow(MyWorkflow, name: 'my-workflow') # uses 'my-workflow' as a name
-worker_2.register_activity(MyActivity, name: 'my-activity') # uses 'my-activity' as a name
+# To register workflows/activities with a custom name (and other options), you can pass in a block:
+worker_2 = Temporal::Worker.new(config, 'my-namespace', 'my-task-queue') do |w|
+  w.register_workflow(MyWorkflow, name: 'my-workflow') # uses 'my-workflow' as a name
+  w.register_activity(MyActivity, name: 'my-activity') # uses 'my-activity' as a name
+end
 worker_2.start
 
 # later
@@ -370,7 +380,13 @@ And here is the `Worker` interface:
 ```ruby
 class Worker
   # Create a new instance of a Worker
-  def self.new(config: Temporal::Configuration, namespace: String, task_queue: String, **options) -> Worker
+  def self.new(
+    config: Temporal::Configuration,
+    namespace: String,
+    task_queue: String, **options,
+    workflows: [Workflow],
+    activities: [Activity]
+  ) -> Worker
 
   # Register a workflow with an optional :name
   def register_workflow(Class, name: nil) -> void
