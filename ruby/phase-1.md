@@ -226,6 +226,7 @@ config = Temporal::Configuration.new(
 
 client = Temporal::Client.new(config)
 client.start_workflow(MyWorkflow, 'Alice', workflow: {
+  id: 'my-workflow-id',
   namespace: 'my-namespace',
   task_queue: 'my-queue'
 })
