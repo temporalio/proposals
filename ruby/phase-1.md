@@ -548,14 +548,20 @@ protobuf. The former is intended to support specific serialisation formats, whil
 modifying a binary that is transmitted over the wire.
 
 ```ruby
-config = Temporal::Configuration.new(url: 'localhost:7933')
+config = Temporal::Configuration.new(url: 'localhost:7933') do |c|
+  c.payload_converters << MyProtobufConverter.new
+  c.payload_converters << MyThriftConverter # can be a class/module based on duck-typing
 
-config.add_payload_converter(MyProtobufConverter.new)
-config.add_payload_converter(MyThriftConverter) # can be a class/module based on duck-typing
-
-config.add_payload_codec(EncryptionCodec.new(KEY_ID))
-config.add_payload_codec(CompressionCodec)
+  c.payload_codecs = [EncryptionCodec.new(KEY_ID), CompressionCodec]
+end
 ```
+
+Notes:
+
+- Using a block here allows for flexible converter/codec setup, while keeping the configuration
+  object itself immutable after initialization
+- Both `#payload_converters` and `#payload_codecs` are Arrays and allow easy manipulation
+- By calling `<<` we don't force the SDK users to reinitialize default converters
 
 A payload converter is expected to have this interface:
 
