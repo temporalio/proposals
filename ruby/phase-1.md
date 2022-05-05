@@ -359,16 +359,13 @@ config = Temporal::Configuration.new(url: 'localhost:7233', namespace: 'my-names
 worker_1 = Temporal::Worker.new(
   config,
   task_queue: 'my-task-queue',
-  workflows: [MyWorkflow], # uses 'MyWorkflow' as a name
-  activities: [MyActivity] # uses 'MyActivity' as a name
+  workflows: [MyWorkflow], # uses 'MyWorkflow' as a name unless specified in the workflow class
+  activities: [MyActivity] # uses 'MyActivity' as a name unless specified in the workflow class
 )
 worker_1.start
 
-# To register workflows/activities with a custom name (and other options), you can pass in a block:
-worker_2 = Temporal::Worker.new(config, task_queue: 'my-task-queue') do |w|
-  w.register_workflow(MyWorkflow, name: 'my-workflow') # uses 'my-workflow' as a name
-  w.register_activity(MyActivity, name: 'my-activity') # uses 'my-activity' as a name
-end
+# example of an activity-only worker
+worker_2 = Temporal::Worker.new(config, task_queue: 'my-task-queue-2', activities: [MyActivity])
 worker_2.start
 
 # later
@@ -399,12 +396,6 @@ class Worker
     activities: [Activity], # list of activity to handle
     thread_pool: Temporal::ThreadPool # optional thread-pool for sharing between multiple workers
   ) -> Worker
-
-  # Register a workflow with an optional :name
-  def register_workflow(Class, name: nil) -> void
-
-  # Register an activity with an optional :name
-  def register_activity(Class, name: nil) -> void
 
   # Start the worker and block until the process exits
   def run() -> void
@@ -472,6 +463,8 @@ we'll use the method `#execute` as the primary entrypoint for executing user cod
 
 ```ruby
 class MyActivity < Temporal::Activity
+  activity 'my-activity' # custom name
+
   def execute(arg_1, arg_2: nil)
     loop do
       sleep 1
@@ -489,7 +482,9 @@ end
 
 Notes:
 
-- `activity` is an instance of `Temporal::Activity::Context`
+- A custom activity name can be specified using `activity 'my-activity'` call (we can't use name,
+  because it is reserved to the actual class name in Ruby)
+- `activity` within `#execute` is an instance of `Temporal::Activity::Context`
 - `activity.logger` will use a logging adapter configure via `Temporal::Configuration` (more on
   this in the 2nd phase)
 - Common logging context can be configured by using middleware (more on this in the 2nd phase)
