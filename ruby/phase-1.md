@@ -221,20 +221,19 @@ class MyWorkflow < Temporal::Workflow
 end
 
 config = Temporal::Configuration.new(
-  url: 'localhost:7233'
+  url: 'localhost:7233',
+  namespace: 'my-namespace'
 )
 
 client = Temporal::Client.new(config)
 client.start_workflow(MyWorkflow, 'Alice', workflow: {
   id: 'my-workflow-id',
-  namespace: 'my-namespace',
   task_queue: 'my-queue'
 })
 
 worker = Temporal::Worker.new(
   config,
-  'my-namespace',
-  'my-queue',
+  task_queue: 'my-queue',
   workflows: [MyWorkflow],
   activities: [MyActivity]
 )
@@ -249,17 +248,18 @@ managing namespaces. A client is created with a configuration object that specif
 between a worker and a client.
 
 ```ruby
-config = Temporal::Configuration.new(url: 'localhost:7233')
+config = Temporal::Configuration.new(url: 'localhost:7233', namespace: 'my-namespace')
 client = Temporal::Client.new(config)
+
 client.start_workflow(MyWorkflow, 'arg_1', kwarg_2: 'foo', workflow: {
-  namespace: 'my-namespace',
+  id: 'my-id',
   task_queue: 'my-queue'
 })
 ```
 
 Notes:
 
-- Client is intended to be multi-tenant capable (no limit on a single namespace)
+- Client is bound to a namespace provided through the configuration
 - Configuration will provide defaults where possible (avoiding extensive upfront configuration)
 - Configuration will be used for other more advanced options such as logger, metrics, payload
   converters, middleware, etc
@@ -275,7 +275,7 @@ class Temporal::Client
     workflow, # workflow class or a name
     *args, # any args to be passed as the input to the workflow
     workflow: {}, # execution options
-    **kwargs # keyword arguments as inputs are also supported
+    **kwargs # keyword arguments as inputs will be supported later
   ) -> Temporal::WorkflowHandle
 
   # Start the workflow and block awaiting it's completion
@@ -283,18 +283,19 @@ class Temporal::Client
     workflow, # workflow class or a name
     *args, # any args to be passed as the input to the workflow
     workflow: {}, # execution options
-    **kwargs # keyword arguments as inputs are also supported
+    **kwargs # keyword arguments as inputs will be supported later
   ) -> Any
 
-  # Generate a handle object from a namespace, workflow_id and a run_id
-  def workflow_handle(namespace, workflow_id, run_id = nil) -> Temporal::WorkflowHandle
+  # Generate a handle object from a workflow_id and a run_id
+  def workflow_handle(workflow_id, run_id = nil) -> Temporal::WorkflowHandle
 end
 ```
 
 Notes:
 
 - This is not a complete definition of the client
-- Both positional arguments and keyword arguments are supported, except for the reserved `options:`
+- Only positional arguments are supported in Phase 1
+- Keyword arguments will be supported in the future, except for the reserved `options:`
 - Conventions similar to Python SDK are used here:
   - `Client` is a general purpose interface, not limited workflow-only interactions
   - Due to this method names are more descriptive than just `#start`, `#execute`, etc
@@ -302,10 +303,22 @@ Notes:
 
 Once a workflow is started all the interactions will be going through the handle object returned to
 the caller. The handle can of course be created from a workflow_id/run_id combination using the
-`Client#workflow_handle` method. Here the interface of the handle:
+`Client#workflow_handle` method. Example:
+
+
+```ruby
+handle = client.start_workflow(MyWorkflow, workflow: { id: 'my-id', task_queue: 'my-queue' })
+execution_info = handle.describe
+handle.result
+```
+
+Here the interface of the handle:
 
 ```ruby
 class Temporal::WorkflowHandle
+  attr_reader id: String
+  attr_reader run_id: String
+
   # Return the result of the workflow execution or raise if a workflow is still running after
   #   waiting for for up to :timeout seconds.
   # Passing timeout: nil will not wait if the working is still running
@@ -330,10 +343,9 @@ end
 
 ### Alternatives considered
 
-We thought about configuring the `Temporal::Client` with a namespace, similar to the Python SDK.
-It does bring the benefit of avoiding namespace to subsequent calls to the client. However we feel
-like it is an unjustified and artificial limitation that will impact some multi-tenant applications.
-Besides this can always be brought in the shape of a `NamespacedClient` if there's a need for it.
+After a few discussions we have settled on a namespaced `Client` being the default client to
+maintain consistency with other SDKs. This however should not prevent someone from building other
+types of Clients (e.g. multi-tenant that is not bound to a single namespace).
 
 
 ## Worker
@@ -342,19 +354,18 @@ The worker interface allows SDK users to start processing registered workflow an
 will then be polled for on the specified namespaces & task queues and executed.
 
 ```ruby
-config = Temporal::Configuration.new(url: 'localhost:7233')
+config = Temporal::Configuration.new(url: 'localhost:7233', namespace: 'my-namespace')
 
 worker_1 = Temporal::Worker.new(
   config,
-  'my-namespace',
-  'my-task-queue',
+  task_queue: 'my-task-queue',
   workflows: [MyWorkflow], # uses 'MyWorkflow' as a name
   activities: [MyActivity] # uses 'MyActivity' as a name
 )
 worker_1.start
 
 # To register workflows/activities with a custom name (and other options), you can pass in a block:
-worker_2 = Temporal::Worker.new(config, 'my-namespace', 'my-task-queue') do |w|
+worker_2 = Temporal::Worker.new(config, task_queue: 'my-task-queue') do |w|
   w.register_workflow(MyWorkflow, name: 'my-workflow') # uses 'my-workflow' as a name
   w.register_activity(MyActivity, name: 'my-activity') # uses 'my-activity' as a name
 end
@@ -383,7 +394,6 @@ class Worker
   # Create a new instance of a Worker
   def self.new(
     config: Temporal::Configuration,
-    namespace: String,
     task_queue: String, **options,
     workflows: [Workflow],
     activities: [Activity]
