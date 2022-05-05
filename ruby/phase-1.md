@@ -321,8 +321,10 @@ class Temporal::WorkflowHandle
 
   # Return the result of the workflow execution or raise if a workflow is still running after
   #   waiting for for up to :timeout seconds.
-  # Passing timeout: nil will not wait if the working is still running
-  def result(timeout: Integer) -> Any
+  # - follow_runs is set to true by default and will loop through all executions in a chain until it
+  #   finds the last one returning its result
+  # - Passing timeout: nil will not wait if the working is still running
+  def result(follow_runs: Bool, timeout: Integer) -> Any
 
   # Returns more information about a workflow
   def describe() -> Temporal::WorkflowExecutionInfo
