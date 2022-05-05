@@ -394,9 +394,10 @@ class Worker
   # Create a new instance of a Worker
   def self.new(
     config: Temporal::Configuration,
-    task_queue: String, **options,
-    workflows: [Workflow],
-    activities: [Activity]
+    task_queue: String, # a task queue for polling workflow and activity tasks from
+    workflows: [Workflow], # list of workflows to handle
+    activities: [Activity], # list of activity to handle
+    thread_pool: Temporal::ThreadPool # optional thread-pool for sharing between multiple workers
   ) -> Worker
 
   # Register a workflow with an optional :name
@@ -417,10 +418,11 @@ end
 ```
 
 Internally each worker will create a thread for task polling as well as a thread pool of a given
-size (passed to the initializer as an optional `:threads` argument). Then each activity task will be
-dispatched to an available thread (via an in-memory queue). To make sure a polling worker always has
-processing capacity a polling request will only be dispatched if there is an available thread in the
-pool (in other words the pool will have no buffer).
+size (passed to the initializer as an optional `:threads` argument). A thread pool can optionally be
+provided by the caller allowing to share the same thread pool between multiple workers. Then each
+activity task will be dispatched to an available thread (via an in-memory queue). To make sure a
+polling worker always has processing capacity a polling request will only be dispatched if there is
+an available thread in the pool (in other words the pool will have no buffer).
 
 A very similar model will be used for workflow tasks, with an added complexity of wrapping each
 workflow in its own Fiber (inside a thread). This serves two purposes:
