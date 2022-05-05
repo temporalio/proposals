@@ -216,7 +216,7 @@ end
 class MyWorkflow < Temporal::Workflow
   def execute(name)
     # This part is outside of the scope of the 1st phase of the proposal
-    MyActivity.execute!(name, activity: { task_queue: 'my-queue' })
+    MyActivity.execute!(name, options: { task_queue: 'my-queue' })
   end
 end
 
@@ -226,7 +226,7 @@ config = Temporal::Configuration.new(
 )
 
 client = Temporal::Client.new(config)
-client.start_workflow(MyWorkflow, 'Alice', workflow: {
+client.start_workflow(MyWorkflow, 'Alice', options: {
   id: 'my-workflow-id',
   task_queue: 'my-queue'
 })
@@ -251,7 +251,7 @@ between a worker and a client.
 config = Temporal::Configuration.new(url: 'localhost:7233', namespace: 'my-namespace')
 client = Temporal::Client.new(config)
 
-client.start_workflow(MyWorkflow, 'arg_1', kwarg_2: 'foo', workflow: {
+client.start_workflow(MyWorkflow, 'arg_1', kwarg_2: 'foo', options: {
   id: 'my-id',
   task_queue: 'my-queue'
 })
@@ -274,7 +274,7 @@ class Temporal::Client
   def start_workflow(
     workflow, # workflow class or a name
     *args, # any args to be passed as the input to the workflow
-    workflow: {}, # execution options
+    options: {}, # execution options
     **kwargs # keyword arguments as inputs will be supported later
   ) -> Temporal::WorkflowHandle
 
@@ -282,7 +282,7 @@ class Temporal::Client
   def execute_workflow(
     workflow, # workflow class or a name
     *args, # any args to be passed as the input to the workflow
-    workflow: {}, # execution options
+    options: {}, # execution options
     **kwargs # keyword arguments as inputs will be supported later
   ) -> Any
 
@@ -307,7 +307,7 @@ the caller. The handle can of course be created from a workflow_id/run_id combin
 
 
 ```ruby
-handle = client.start_workflow(MyWorkflow, workflow: { id: 'my-id', task_queue: 'my-queue' })
+handle = client.start_workflow(MyWorkflow, options: { id: 'my-id', task_queue: 'my-queue' })
 execution_info = handle.describe
 handle.result
 ```
