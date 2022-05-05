@@ -557,9 +557,15 @@ modifying a binary that is transmitted over the wire.
 
 ```ruby
 config = Temporal::Configuration.new(url: 'localhost:7933') do |c|
-  c.payload_converters << MyProtobufConverter.new
-  c.payload_converters << MyThriftConverter # can be a class/module based on duck-typing
-
+  # Use your own converter
+  c.payload_converter = MarshallConverter # can be a class/module based on duck-typing
+  # Or combine your own converter with the ones provided
+  c.payload_converter = Temporal::Converters::Composite.new(
+    Temporal::Converters::Null,
+    Temporal::Converters::Bytes,
+    MyProtobufConverter.new
+  )
+  # The codecs will be applied in the exact order they were provided
   c.payload_codecs = [EncryptionCodec.new(KEY_ID), CompressionCodec]
 end
 ```
@@ -568,15 +574,14 @@ Notes:
 
 - Using a block here allows for flexible converter/codec setup, while keeping the configuration
   object itself immutable after initialization
-- Both `#payload_converters` and `#payload_codecs` are Arrays and allow easy manipulation
 - By calling `<<` we don't force the SDK users to reinitialize default converters
 
 A payload converter is expected to have this interface:
 
 ```ruby
 class Temporal::PayloadConverter::Base
-  # Returns mime-type of the payload
-  def encoding() -> String
+  # Returns whether or not it can decode a given Payload
+  def can_decode?(payload: Temporal::Payload) -> Bool
 
   # Takes any Ruby object and returns a Payload object or nil if unable to convert
   def to_payload(data: Any) -> Temporal::Payload
@@ -603,3 +608,7 @@ end
 While some other SDKs combine these two constructs into one with a broader interface we think that
 these are different enough concepts that deserve first-class separation. Otherwise implementing
 Codecs becomes a tricky task where each Codec needs to be aware of all the Converters available.
+
+We also considered hiding the `Composite` converter from the SDK users and only allow them to
+provide concrete converters. This was rejected because there might be a use-case when a top-level
+converter needs to be fully replaced.
