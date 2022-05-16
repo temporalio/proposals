@@ -286,8 +286,9 @@ class Temporal::Client
     **kwargs # keyword arguments as inputs will be supported later
   ) -> Any
 
-  # Generate a handle object from a workflow_id and a run_id
-  def workflow_handle(workflow_id, run_id = nil) -> Temporal::WorkflowHandle
+  # Generate a handle object from a workflow_id and an optional run_id or first_execution_run_id
+  def workflow_handle(workflow_id, run_id: nil, first_execution_run_id: nil)
+    -> Temporal::WorkflowHandle
 end
 ```
 
