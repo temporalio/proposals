@@ -72,7 +72,7 @@ const schedule = await client.create({
   searchAttributes,
 })
 
-const schedule = await client.getHandle('schedule-biz-id')
+const schedule = client.getHandle('schedule-biz-id')
 
 const scheduleDescription = await schedule.describe()
 
