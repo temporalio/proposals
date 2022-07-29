@@ -40,11 +40,10 @@ const schedule = await client.create({
   },
   action: {
     startWorkflow: {
-      // type: WorkflowStartOptions & { workflowId: string }
       workflowId: 'wf-biz-id',
       type: myWorkflow,
       args: ['sorry this is the only thing reused, chad 😄'],
-      // ... other WorkflowOptions
+      // ...WorkflowOptions + header - followRuns
       // https://typescript.temporal.io/api/interfaces/client.WorkflowOptions
     },
   },
