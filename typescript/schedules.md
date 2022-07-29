@@ -17,7 +17,7 @@ import { myWorkflow } from './workflows'
 const client = new ScheduleClient()
 
 const schedule = await client.create({
-  id: 'biz-id',
+  id: 'schedule-biz-id',
   spec: {
     // every hour at minute 5
     interval: {
@@ -41,7 +41,7 @@ const schedule = await client.create({
   action: {
     startWorkflow: {
       // type: WorkflowStartOptions & { workflowId: string }
-      workflowId: 'biz-id',
+      workflowId: 'wf-biz-id',
       type: myWorkflow,
       args: ['sorry this is the only thing reused, chad 😄'],
       // ... other WorkflowOptions
@@ -72,6 +72,8 @@ const schedule = await client.create({
   memo,
   searchAttributes,
 })
+
+const schedule = await client.getHandle('schedule-biz-id')
 
 const scheduleDescription = await schedule.describe()
 
