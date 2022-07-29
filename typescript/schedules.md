@@ -9,15 +9,12 @@
 
 ## TS API
 
-Usage:
-
 ```ts
+import { ScheduleClient, ScheduleOverlapPolicy } from '@temporalio/client'
+import { addWeeks } from 'date-fns'
+import { myWorkflow } from './workflows'
+
 const client = new ScheduleClient()
-// or for languages with higher level clients:
-// client = new TemporalClient()
-// client.schedule.create()
-// or
-// client.createSchedule()
 
 const schedule = await client.create({
   id: 'biz-id',
@@ -37,7 +34,7 @@ const schedule = await client.create({
       hour: 23,
       minute: 5,
     },
-    endAt: addWeeks(new Date(), 4),
+    endAt: addWeeks(new Date(), 4), 
     jitter: '30s',
     timezone: 'US/Eastern',
   },
@@ -99,10 +96,15 @@ const { schedules, nextPageToken } = await client.list({
 })
 ```
 
-Types:
+### Higher-level client
 
 ```ts
-interface ScheduleHandle {
-  id: string
-}
+import { Client } from '@temporalio/client'
+
+const client = new Client()
+
+client.schedule.create()
+client.workflow.start() 
+client.asyncCompletion.heartbeat()
+client.operator.addSearchAttributes()
 ```
