@@ -20,20 +20,20 @@ const schedule = await client.create({
   id: 'schedule-biz-id',
   spec: {
     // every hour at minute 5
-    interval: {
+    intervals: [{
       every: '1h',
       at: '5m',
-    },
+    }],
     // every 20 days since epoch at day 2
-    // interval: {
+    // intervals: [{
     //   every: '20d',
     //   at: '2d'
-    // }
-    exclude: {
+    // }]
+    exclude: [{
       // skip 11:05 pm
       hour: 23,
       minute: 5,
-    },
+    }],
     endAt: addWeeks(new Date(), 4), 
     jitter: '30s',
     timezone: 'US/Eastern',
