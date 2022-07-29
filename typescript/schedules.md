@@ -101,10 +101,57 @@ const { schedules, nextPageToken } = await client.list({
 ```ts
 import { Client } from '@temporalio/client'
 
-const client = new Client()
+const client = new Client(options)
 
 client.schedule.create()
 client.workflow.start() 
 client.asyncCompletion.heartbeat()
 client.operator.addSearchAttributes()
+
+interface ClientOptions {
+  dataConverter?: DataConverter;
+  interceptors?: {
+    workflow: WorkflowClientInterceptors,
+    schedule: ScheduleClientInterceptors,
+  };
+  identity?: string;
+  connection?: ConnectionLike;
+  namespace?: string;
+  queryRejectCondition?: temporal.api.enums.v1.QueryRejectCondition;
+}
+```
+
+### Interceptors
+
+```ts
+interface ScheduleClientCallsInterceptor {
+  /**
+   * Intercept a service call to CreateSchedule
+   */
+  create?: (input: ScheduleStartInput, next: Next<this, 'create'>) => Promise<string /* conflictToken */>;
+  describe
+  listMatchingTimes
+  update
+  patch
+  delete
+  list
+}
+
+interface ScheduleClientCallsInterceptorFactoryInput {
+  id: string;
+}
+
+/**
+ * A function that takes a {@link ScheduleClientCallsInterceptorFactoryInput} and returns an interceptor
+ */
+export interface ScheduleClientCallsInterceptorFactory {
+  (input: ScheduleClientCallsInterceptorFactoryInput): ScheduleClientCallsInterceptor;
+}
+
+/**
+ * A mapping of interceptor type of a list of factory functions
+ */
+export interface ScheduleClientInterceptors {
+  calls?: ScheduleClientCallsInterceptorFactory[];
+}
 ```
