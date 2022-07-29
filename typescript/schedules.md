@@ -42,7 +42,7 @@ const schedule = await client.create({
     startWorkflow: {
       workflowId: 'biz-id',
       type: myWorkflow,
-      input: ['sorry this is the only thing reused, chad 😄'],
+      args: ['sorry this is the only thing reused, chad 😄'],
     },
   },
   policies: {
@@ -72,7 +72,7 @@ const schedule = await client.create({
 
 const scheduleDescription = await schedule.describe()
 
-await schedule.listMatchingTimes({ start: new Date(), end: new Date() })
+const matchingStartTimes = await schedule.listMatchingTimes({ start: new Date(), end: new Date() })
 
 await schedule.update({
   spec,
