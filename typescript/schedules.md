@@ -47,27 +47,20 @@ const schedule = await client.create({
       // https://typescript.temporal.io/api/interfaces/client.WorkflowOptions
     },
   },
-  policies: {
-    overlap: ScheduleOverlapPolicy.BUFFER_ONE,
-    catchupWindow: '2m',
-    pauseOnFailure: true,
-  },
-  state: {
-    note: 'started schedule',
-    paused: true,
-    limitedActions: 10,
-  },
-  patch: {
-    triggerImmediately: true,
-    backfill: [
-      {
-        start: new Date(),
-        end: new Date(),
-        overlap: ScheduleOverlapPolicy.ALLOW_ALL,
-      },
-    ],
-    pause: true, // redundant with state.paused above (can use either)
-  },
+  overlap: ScheduleOverlapPolicy.BUFFER_ONE,
+  catchupWindow: '2m',
+  pauseOnFailure: true,
+  note: 'started schedule',
+  pause: true, // this sets `state.paused: true` (default false)
+  limitedActions: 10,
+  triggerImmediately: true,
+  backfill: [
+    {
+      start: new Date(),
+      end: new Date(),
+      overlap: ScheduleOverlapPolicy.ALLOW_ALL,
+    },
+  ],
   memo,
   searchAttributes,
 })
@@ -86,11 +79,10 @@ await schedule.update({
   conflictToken: scheduleDescription.conflictToken,
 })
 
-await schedule.patch({
-  triggerImmediately: true,
-  backfill,
-  unpause: true,
-})
+await schedule.trigger()
+await schedule.backfill(backfill) // also takes array
+await schedule.pause('note: pausing')
+await schedule.unpause('now unpause')
 
 await schedule.delete()
 
@@ -98,6 +90,12 @@ const { schedules, nextPageToken } = await client.list({
   pageSize: 50,
   nextPageToken: 'base64',
 })
+
+for await (const schedule: ScheduleListEntry of client.list()) {
+  const { id, memo, searchAttributes, info } = schedule
+  // ...
+}
+
 ```
 
 ### Higher-level client
