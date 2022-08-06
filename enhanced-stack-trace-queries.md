@@ -40,7 +40,13 @@ export interface SDKInfo {
  * Represents a slice of a file starting at lineOffset
  */
 export interface FileSlice {
+  /**
+   * slice of a file with `\n` (newline) line terminator.
+   */
   content: string;
+  /**
+   * Only used possible to trim the file without breaking syntax highlighting.
+   */
   lineOffset: number;
 }
 
@@ -52,14 +58,20 @@ export interface FileLocation {
    * Path to source file (absolute or relative).
    * When using a relative path, make sure all paths are relative to the same root.
    */
-  filepath: string;
-  line: number;
-  column: number;
+  filePath: string;
   /**
-   * function/goroutine/thread/greenlet/whatever name, if it exists.
-   * (Not sure if this will be used but doesn't hurt to have some more information)
+   * If possible, SDK should send this, required for displaying the code location.
    */
-  context?: string;
+  line?: number;
+  /**
+   * If possible, SDK should send this.
+   */
+  column?: number;
+  /**
+   * Function name this line belongs to (if applicable).
+   * Used for falling back to stack trace view.
+   */
+  functionName?: string;
 }
 
 export interface StackTrace {
@@ -72,7 +84,9 @@ export interface StackTrace {
 export interface EnhancedStackTrace {
   sdk: SDKInfo;
   /**
-   * Mapping of file name to file contents
+   * Mapping of file path to file contents.
+   * SDK may choose to send no, some or all sources.
+   * Sources might be trimmed, and some time only the file(s) of the top element of the trace will be sent.
    */
   sources: Record<string, FileSlice[]>;
   stacks: StackTrace[];
@@ -80,6 +94,11 @@ export interface EnhancedStackTrace {
 ```
 
 ## Details
+
+### Opt-in to sending sources
+
+Even though the user's payload codec applies to the response, they may not want to send code to the UI for security
+reasons. User should opt-in to this feature.
 
 ### TS SDK
 
