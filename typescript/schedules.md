@@ -40,6 +40,7 @@ const schedule = await client.create({
     ],
     endAt: addWeeks(new Date(), 4),
     jitter: '30s',
+    timezone: 'US/Pacific',
   },
   action: {
     workflowId: 'wf-biz-id',
@@ -487,11 +488,11 @@ export enum ScheduleOverlapPolicy {
    * Allow any number of Actions to start immediately.
    *
    * This is the only policy under which multiple Actions can run concurrently.
-   *
-   * {@link lastCompletionResult} and {@link lastFailure} will not be available.
    */
   AllowAll,
 }
+
+checkExtends<temporal.api.enums.v1.schedule.ScheduleOverlapPolicy, ScheduleOverlapPolicy>();
 
 export interface Backfill {
   start: Date;
@@ -629,8 +630,7 @@ export type ZeroTo23 =
 
 export type Hour = Range<ZeroTo23> | ZeroTo23;
 
-export type ZeroTo30 =
-  | 0
+export type OneTo31 =
   | 1
   | 2
   | 3
@@ -660,11 +660,12 @@ export type ZeroTo30 =
   | 27
   | 28
   | 29
-  | 30;
+  | 30
+  | 31;
 
-export type DayOfMonth = Range<ZeroTo30> | ZeroTo30;
+export type DayOfMonth = Range<OneTo31> | OneTo31;
 
-export type ZeroTo11 = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+export type OneTo12 = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export type MonthName =
   | 'JAN'
@@ -691,7 +692,7 @@ export type MonthName =
   | 'DEC'
   | 'DECEMBER';
 
-export type MonthValue = ZeroTo11 | MonthName;
+export type MonthValue = OneTo12 | MonthName;
 
 export type Month = Range<MonthValue> | MonthValue;
 
@@ -941,9 +942,17 @@ export interface ScheduleSpec {
    */
   jitter?: Milliseconds;
 
+  /**
+   * IANA timezone name, for example `US/Pacific`.
+   * 
+   * https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+   * 
+   * @default UTC
+   */
+  timezone?: string;
+
   // Add to SDK if requested by users:
   //
-  // string timezone_name = 10;
   // bytes timezone_data = 11;
   //
   // Time zone to interpret all CalendarSpecs in.
