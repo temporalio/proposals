@@ -94,7 +94,7 @@ await schedule.delete();
 
 const { schedules, nextPageToken } = await client.listByPage({
   pageSize: 50,
-  nextPageToken: 'base64',
+  nextPageToken: 'string',
 });
 
 for await (const schedule: Schedule of client.list()) {
@@ -210,8 +210,6 @@ export interface ScheduleHandle {
   readonly client: ScheduleClient;
 }
 
-export type Base64 = string;
-
 export interface Schedule {
   /**
    * Schedule Id
@@ -244,7 +242,7 @@ export interface Schedule {
  * - the schedule may have been modified by {@link ScheduleHandle.update} or
  *   {@link ScheduleHandle.pause}/{@link ScheduleHandle.unpause}
  */
-export interface ScheduleDescription {
+export type ScheduleDescription = Schedule & {
   /** When Actions should be taken */
   spec: RequireAtLeastOne<ScheduleSpec, 'calendars' | 'intervals'>;
 
@@ -313,19 +311,18 @@ export interface ScheduleDescription {
 
 export interface ScheduleListPage {
   schedules: Schedule[];
-  nextPageToken?: Base64;
 
   /**
    * Token to use to when calling {@link ScheduleClient.listByPage}.
    *
    * If `undefined`, there are no more Schedules.
    */
-  nextPageToken?: Base64;
+  nextPageToken?: string;
 }
 
 export type WorkflowExecution = Required<temporal.api.common.v1.IWorkflowExecution>;
 
-export type ScheduleInfo = Schedule & {
+export interface ScheduleInfo {
   /** Number of Actions taken so far. */
   numActionsTaken: number;
   // TODO or numberOfActionsTaken etc?
@@ -358,7 +355,7 @@ export type ScheduleInfo = Schedule & {
   createdAt: Date;
   lastUpdatedAt: Date;
 
-  isValid(): boolean;
+  isValid: boolean;
 
   /** Error for invalid schedule. If this is present, no actions will be taken. */
   invalidScheduleError?: string;
@@ -898,12 +895,17 @@ export interface CalendarSpec {
  * instead.
  */
 export interface IntervalSpec {
-  every: Seconds;
+  /**
+   * Value is rounded to the nearest second.
+   */
+  every: Milliseconds;
 
   /**
+   * Value is rounded to the nearest second.
+   * 
    * @default 0
    */
-  at?: Seconds;
+  at?: Milliseconds;
 }
 
 /**
@@ -1118,7 +1120,7 @@ export interface ListScheduleOptions {
   pageSize?: number;
 
   /** Token to get the next page of results */
-  nextPageToken?: Base64;
+  nextPageToken?: string;
 }
 
 /**
