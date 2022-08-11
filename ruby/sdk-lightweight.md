@@ -13,7 +13,7 @@ will be revisited when Ruby's typing system matures to support non-basic use-cas
 
 ## Defining an activity
 
-Activities are defined as classes ([a very common practise](https://guides.rubyonrails.org/active_job_basics.html)
+Activities are defined as classes ([a very common practice](https://guides.rubyonrails.org/active_job_basics.html)
 given that the language is object-oriented).
 
 `sum_activity.rb`
@@ -34,7 +34,7 @@ end
 
 - It is possible to allow multiple activities per class, for example:
 
-'calculator_activities.rb'
+`calculator_activities.rb`
 
 ```ruby
 class CalculatorActivities < Temporal::Activity
@@ -136,7 +136,7 @@ worker.run
 
 #### Alternative approach
 
-To support passing additional context to the activity classes a worker can be initialized with an
+To support passing additional context to the activity classes a worker can be initialised with an
 instance of the activity class (only available for activities).
 
 ```ruby
@@ -148,7 +148,7 @@ Temporal::Worker.new(
 )
 ```
 
-*NOTE: This however will come with a heavy warning — the activity must be strcitly thread-safe as
+*NOTE: This however will come with a heavy warning — the activity must be strictly thread-safe as
 the provided instance will be called from multiple threads (and possibly at the same exact time).*
 
 
@@ -168,7 +168,7 @@ end
 ```
 
 This approach uses `Thread#raise` that will eject the execution out of the current context. In cases
-where this is not acceptable we will allow to ewither wrap a critical code in an `activity.shield`
+where this is not acceptable we will allow to either wrap a critical code in an `activity.shield`
 block (that will not raise until the block has executed) or opt-out of this default behaviour
 altogether and use `activity.cancelled?` flag to determine when an activity was cancelled.
 
@@ -269,7 +269,7 @@ class CalculatorWorkflow < Temporal::Workflow
   signals :add, 'my.signal.subtract' => :subtract
   queries :get_value, 'my.query.value' => :get_value
 
-  # It is preferrable in this case to initialize the values before the execution to
+  # It is preferable in this case to initialize the values before the execution to
   # support starting a workflow with a signal
   def initialize
     @value = 0
