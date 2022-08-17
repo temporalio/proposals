@@ -581,8 +581,6 @@ export interface CalendarSpec {
    * @default 0
    */
   second?: Second | Second[] | '*';
-  // TODO or:
-  // second?: Second[];
 
   /**
    * @default 0
