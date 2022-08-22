@@ -1,3 +1,9 @@
+**Problems:**
+
+- [Long term solution for cross namespace calls](#long-term-solution-for-cross-namespace-calls)
+- [Expose generic APIs natively from Temporal](#expose-generic-apis-natively-from-temporal)
+- [Arbitrary length operations](#arbitrary-length-operations)
+
 # Long term solution for cross namespace calls
 
 **TL;DR;** *Cross Namespace (X-Namespace) calls are critical for the adoption of Temporal and today they provide a limited and confusing experience. We want to make X-Namespace calls straightforward and powerful.*

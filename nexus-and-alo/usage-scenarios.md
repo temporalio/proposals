@@ -1,5 +1,12 @@
 > Note: Some of these scenarios are forward looking and will not be supported for some time. 
 
+**Contents:**
+
+- [Exposing Temporal application to a non-Temporal consumer (Nexus + ALO)](#exposing-temporal-application-to-a-non-temporal-consumer-nexus--alo)
+- [Exposing Temporal application to a Temporal consumer (Nexus)](#exposing-temporal-application-to-a-temporal-consumer-nexus)
+- [Exposing non-Temporal application with Temporal-esque calling semantics (ALO)](#exposing-non-temporal-application-with-temporal-esque-calling-semantics-alo)
+- [Exposing non-Temporal application via Nexus](#exposing-non-temporal-application-via-nexus)
+
 ## Exposing Temporal application to a non-Temporal consumer (Nexus + ALO)
 
 **Problem statement:** One of the most common patterns we see from Temporal users is the need to expose a generic API for internal consumers who are not familiar with Temporal. The most common solution for this problem today is to stand up a separate infrastructure dependency in front of Temporal (such as a load balancer, HTTP server, GRPC Gateway) which defines the formal API & contract for consumers.
