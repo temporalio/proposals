@@ -98,12 +98,9 @@ const newSimilarSchedule = await client.create(scheduleDescription.copyOptions({
 await schedule.update(
   (schedule) => {
     schedule.spec.intervals[0].every = '1d';
-    // unset with:
-    // delete schedule.spec.intervals;
     return schedule
     // to not update or stop retrying early:
-    // import { CancelUpdate } from '@temporalio/client'
-    // `throw CancelUpdate` 
+    // return
   },
   { maximumAttempts: 10 }
 );
@@ -119,15 +116,6 @@ for await (const schedule: Schedule of client.list()) {
   const { id, memo, searchAttributes } = schedule;
   // ...
 }
-
-const calender = fromCronStringToCalendarSpec('0 0 12 * * MON-WED,FRI')
-// calendar = {
-//   hour: 12,
-//   dayOfWeek: [{
-//     start: 'MONDAY'
-//     end: 'WEDNESDAY'
-//   }, 'FRIDAY']
-// }
 ```
 
 ### Types
@@ -141,7 +129,7 @@ import {
   Replace,
   RetryPolicy,
   SearchAttributes,
-  Workflow,
+  Workflow, // type Workflow = (...args: any[]) => WorkflowReturnType;
 } from '@temporalio/internal-workflow-common';
 import { temporal } from '@temporalio/proto';
 import os from 'os';
@@ -161,11 +149,6 @@ export interface UpdateScheduleOptions {
   maximumAttempts?: number;
 }
 
-class CancelUpdate extends Error {
-  public readonly name: string = 'CancelUpdate';
-}
-export const CancelUpdate = new CancelUpdate()
-
 /**
  * Handle to a single Schedule
  */
@@ -182,9 +165,9 @@ export interface ScheduleHandle {
    * between the time of `.describe()` and the update, the Server throws an error, and the SDK retries, up to 
    * {@link UpdateScheduleOptions.maximumAttempts}.
    * 
-   * If, inside `updateFn`, you no longer want the SDK to try sending the update to the Server, `throw CancelUpdate`. 
+   * If, inside `updateFn`, you no longer want the SDK to try sending the update to the Server, return undefined. 
    */
-  update(updateFn: (schedule: ScheduleDescription) => ScheduleDescription, options?: UpdateScheduleOptions): Promise<void>;
+  update(updateFn: (schedule: ScheduleDescription) => ScheduleDescription | undefined, options?: UpdateScheduleOptions): Promise<void>;
 
   /**
    * Delete the Schedule
@@ -260,7 +243,6 @@ export interface Schedule {
 
   /** Number of Actions taken so far. */
   numActionsTaken: number;
-  // TODO or numberOfActionsTaken?
 
   /** Number of times a scheduled Action was skipped due to missing the catchup window. */
   numActionsMissedCatchupWindow: number;
@@ -296,7 +278,7 @@ export interface Schedule {
  */
 export type ScheduleDescription = Schedule & {
   /** When Actions should be taken */
-  spec: RequireAtLeastOne<ScheduleSpec, 'calendars' | 'intervals'>;
+  spec: RequireAtLeastOne<ScheduleSpecDescription, 'calendars' | 'intervals'>;
 
   /**
    * Which Action to take
@@ -522,8 +504,8 @@ export interface Backfill {
  * {start, end, step} -> from start to end, by step
  * {step} -> all values, by step (implies start and end are full range for this field)
  * {end} and {end, step} are not allowed
- * ```
  * TODO is there a way to express not allowed ^ in type?
+ * ```
  *
  * For example:
  *
@@ -543,34 +525,19 @@ export interface Range<Unit> {
   step?: PositiveInteger;
 }
 
-export type Second = Range<number> | number;
-export type Minute = Range<number> | number;
-export type Hour = Range<number> | number;
+export type NumberRange = Range<number> | number
+export type NumberSpec = NumberRange | NumberRange[] | string;
+export type NumberSpecDescription = Range<number>[];
 
-/**
- * Valid values: 1-31
- */
-export type DayOfMonth = Range<number> | number;
+export type Month = 'JANUARY' | 'FEBRUARY' | 'MARCH' | 'APRIL' | 'MAY' | 'JUNE' | 'JULY' | 'AUGUST' | 'SEPTEMBER' | 'OCTOBER' | 'NOVEMBER' | 'DECEMBER';
+export type MonthRange = Range<Month> | Month;
+export type MonthSpec = MonthRange | MonthRange[] | string;
+export type MonthSpecDescription = Range<Month>[];
 
-/**
- * Recommend using these strings: JANUARY | FEBRUARY | MARCH | APRIL | MAY | JUNE | JULY | AUGUST | SEPTEMBER | OCTOBER | NOVEMBER | DECEMBER
- * 
- * Currently, the server accepts variations, but this may change in future.
- */
-export type Month = Range<string> | string;
-// TODO we could throw error from SDK if not one of recommended values ?
-
-/**
- * Use full years, like 2030
- */
-export type Year = Range<number> | number;
-
-/**
- * Recommend using these strings: SUNDAY | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY | SATURDAY
- * 
- * Currently, the server accepts variations, but this may change in future.
- */
-export type DayOfWeek = Range<string> | string;
+export type Day = 'SUNDAY' | 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';
+export type DayRange = Range<Day> | Day;
+export type DaySpec = DayRange | DayRange[] | string;
+export type DaySpecDescription = Range<Day>[];
 
 /**
  * An event specification relative to the calendar, similar to a traditional cron specification.
@@ -579,43 +546,99 @@ export type DayOfWeek = Range<string> | string;
  */
 export interface CalendarSpec {
   /**
+   * Valid values: 0–59
+   * 
    * @default 0
    */
-  second?: Second | Second[] | '*';
+  second?: NumberSpec;
 
   /**
+   * Valid values: 0–59
+   * 
    * @default 0
    */
-  minute?: Minute | Minute[] | '*';
+  minute?: NumberSpec;
 
   /**
+   * Valid values: 0–59
+   * 
    * @default 0
    */
-  hour?: Hour | Hour[] | '*';
+  hour?: NumberSpec;
+
+  /**
+   * Valid values: 1–31
+   * 
+   * @default '*'
+   */
+  dayOfMonth?: NumberSpec;
 
   /**
    * @default '*'
    */
-  dayOfMonth?: DayOfMonth | DayOfMonth[] | '*';
+  month?: MonthSpec;
+
+  /**
+   * Use full years, like `2030`
+   * 
+   * @default '*'
+   */
+  year?: NumberSpec;
 
   /**
    * @default '*'
    */
-  month?: Month | Month[] | '*';
-
-  /**
-   * @default '*'
-   */
-  year?: Year | Year[] | '*';
-
-  /**
-   * @default '*'
-   */
-  dayOfWeek?: DayOfWeek | DayOfWeek[] | '*';
+  dayOfWeek?: DaySpec;
 }
 
-export function fromCronStringToCalendarSpec(cron: string): CalendarSpec { 
-  ... 
+/**
+ * The version of {@link CalendarSpec} that you get back from {@link ScheduleHandle.describe}
+ */
+export interface CalendarSpecDescription {
+  /**
+   * Valid values: 0–59
+   * 
+   * @default `[{ start: 0 }]`
+   */
+  second?: NumberSpecDescription;
+
+  /**
+   * Valid values: 0–59
+   * 
+   * @default `[{ start: 0 }]`
+   */
+  minute?: NumberSpecDescription;
+
+  /**
+   * Valid values: 0–59
+   * 
+   * @default `[{ start: 0 }]`
+   */
+  hour?: NumberSpecDescription;
+
+  /**
+   * Valid values: 1–31
+   * 
+   * @default `[{ start: 1, end: 31 }]`
+   */
+  dayOfMonth?: NumberSpecDescription;
+
+  /**
+   * @default `[{ start: 'JANUARY' , end: 'DECEMBER' }]`
+   */
+  month?: MonthSpecDescription;
+
+  /**
+   * Use full years, like `2030`
+   * 
+   * @default All possible values
+   */
+  year?: NumberSpecDescription;
+
+  /**
+   * @default `[{ start: 'SUNDAY' , end: 'SATURDAY' }]`
+   */
+  dayOfWeek?: DaySpecDescription;
 }
 
 /**
@@ -648,7 +671,27 @@ export interface IntervalSpec {
 }
 
 /**
- * A complete description of a set of absolute timestamps (possibly infinite) that an Action should occur at. These times
+ * The version of {@link IntervalSpec} that you get back from {@link ScheduleHandle.describe}
+ */
+export interface IntervalSpecDescription {
+  /**
+   * Value is rounded to the nearest second.
+   * 
+   * @format number of milliseconds
+   */
+  every: number;
+
+  /**
+   * Value is rounded to the nearest second.
+   * 
+   * @default 0
+   * @format number of milliseconds
+   */
+  offset?: number;
+}
+
+/**
+ * A complete description of a set of absolute times (possibly infinite) that an Action should occur at. These times
  * never change, except that the definition of a time zone can change over time (most commonly, when daylight saving
  * time policy changes for an area). To create a totally self-contained `ScheduleSpec`, use UTC.
  */
@@ -659,25 +702,42 @@ export interface ScheduleSpec {
   /** Interval-based specifications of times. */
   intervals?: IntervalSpec[];
 
-  /** Any timestamps matching any of the exclude_calendar specs will be skipped. */
+  /**
+   * [Cron expressions](https://crontab.guru/)
+   * 
+   * For example, `0 12 * * MON-WED,FRI` is every M/Tu/W/F at noon, and is equivalent to this {@link CalendarSpec}:
+   * 
+   * ```ts
+   * {
+   *   hour: 12,
+   *   dayOfWeek: [{
+   *     start: 'MONDAY'
+   *     end: 'WEDNESDAY'
+   *   }, 'FRIDAY']
+   * }
+   * ```
+   */ 
+  cronExpressions?: string[];
+
+  /** Any matching times will be skipped. */
   skip?: CalendarSpec[];
 
   /**
-   * Any timestamps before `startAt` will be skipped. Together, `startAt` and `endAt` make an inclusive interval.
+   * Any times before `startAt` will be skipped. Together, `startAt` and `endAt` make an inclusive interval.
    *
    * @default The beginning of time
    */
   startAt?: Date;
 
   /**
-   * Any timestamps after `endAt` will be skipped.
+   * Any times after `endAt` will be skipped.
    *
    * @default The end of time
    */
   endAt?: Date;
 
   /**
-   * All timestamps will be incremented by a random value from 0 to this amount of jitter.
+   * All times will be incremented by a random value from 0 to this amount of jitter.
    *
    * @default 1 second
    * @format number of milliseconds or {@link https://www.npmjs.com/package/ms | ms-formatted string}
@@ -719,10 +779,43 @@ export interface ScheduleSpec {
   // fires at 1:30am will be triggered twice on the day that has two 1:30s.
 }
 
+/**
+ * The version of {@link ScheduleSpec} that you get back from {@link ScheduleHandle.describe}
+ */
+export type ScheduleSpecDescription = Omit<ScheduleSpec, 'calendars' | 'intervals' | 'cronExpressions' | 'skip' | 'jitter' > & {
+  /** Calendar-based specifications of times. */
+  calendars?: CalendarSpecDescription[];
+
+  /** Interval-based specifications of times. */
+  intervals?: IntervalSpecDescription[];
+
+  /** Any matching times will be skipped. */
+  skip?: CalendarSpecDescription[];
+
+  /**
+   * All times will be incremented by a random value from 0 to this amount of jitter.
+   *
+   * @default 1 second
+   * @format number of milliseconds
+   */
+  jitter?: number;
+}
+
 export type StartWorkflowAction<Action extends Workflow> = Omit<
   WorkflowStartOptions<Action>,
   'workflowIdReusePolicy' | 'cronSchedule' | 'followRuns'
 > & {
+  // This is most convenient for TS typing. Other SDKs may want to implement this differently, for example nesting:
+  // action: {
+  //   startWorkflow: {
+  //     workflowId: 'wf-biz-id',
+  //     ...
+  //   }
+  // }
+  type: 'startWorkflow',
+
+  workflowType: string | Action;
+
   /**
    * Metadata that's propagated between workflows and activities? TODO someone explain headers to me so I can improve
    * this apidoc and maybe:
@@ -739,15 +832,12 @@ export type ScheduleActionType = Workflow;
  */
 export type ScheduleActionOptions<Action extends ScheduleActionType = ScheduleActionType> = StartWorkflowAction<Action>;
 // in future:
-// type SomethingElse = 'hi'
-// type ScheduleAction = Workflow | SomethingElse
+// type SomethingElse = { fieldFoo: string, type: 'startFoo' }
+// type ScheduleActionType = Workflow | SomethingElse
 // type ExpectsSomethingElse<Action extends SomethingElse> = Action extends SomethingElse ? Action : number;
 // type StartSomethingElseAction<Action extends SomethingElse> = ExpectsSomethingElse<Action>
-// type ScheduleActionOptions<Action extends ScheduleAction> = Action extends Workflow
-//   ? StartWorkflowAction<Action>
-//   : Action extends SomethingElse
-//     ? StartSomethingElseAction<Action>
-//     : never;
+// type ScheduleActionOptions<Action extends ScheduleActionType> = 
+//   StartWorkflowAction<Action> | StartSomethingElseAction<Action>
 
 export type HandleFor<T> = T extends Workflow ? WorkflowHandle<T> : never;
 
