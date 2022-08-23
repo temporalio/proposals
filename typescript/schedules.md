@@ -54,8 +54,9 @@ const schedule = await client.create({
     timezone: 'US/Pacific',
   },
   action: {
+    type: 'startWorkflow',
     workflowId: 'wf-biz-id',
-    type: myWorkflow,
+    workflowType: myWorkflow,
     args: ['arg1', 'arg2'],
   },
   overlap: ScheduleOverlapPolicy.BUFFER_ONE,
