@@ -16,12 +16,12 @@ The current belief is that ALO should never become a generic Durable Object and 
 ### Proposal for initial interface of the ALO
 
 ```protobuf
-// An ALO is started via a
+// An ALO is started via the Start method
 message AloInfo {
   string id = 1;
   Status status = 2;
   map<string, string> metadata = 3;
-  repeated string http_result_urls = 4;
+  repeated string http_result_urls = 4; // used for providing webhook/callback URLs for async completion of ALO
 
   enum Status {
     STATUS_UNSPECIFIED = 0;
@@ -48,7 +48,7 @@ Considering ALOs represent the eventual completion of an operation, its impossib
 
 ![Full client Id flow](./images/full-client-id-flow.png)
 
-Because of this, ALOs will also be required to have a unique Id. Furthermore, because server side generation of unique Ids is inherently lossy, ALO **will be required to be created with a client-side generated unique Id**.
+Because of this, ALOs will also be required to have a unique Id. Furthermore, because server side generation of unique Ids is inherently lossy, an ALO `StartRequest` **must include a client-side generated unique Id**.
 
 ### A non-Temporal example of ALOs
 

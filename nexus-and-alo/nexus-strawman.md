@@ -25,7 +25,7 @@
 
 ### Hosting a Nexus Service
 
-1. User instantiates Nexus Service Instance using provided `nexus` CLI commands (also possible via SDK or API).
+1. User instantiates Nexus Service Instance using provided `nexus` CLI commands (also possible via SDK or API) and receives an Instance ID. Nexus is now able to receive requests to its frontend endpoint (though they don't get processed until step 4).
 1. User defines a Nexus Task Handler that will handle the processing of Nexus Tasks for the instantiated Nexus Service Instance.
 1. User hosts their Nexus Task Handler using a Nexus Worker. They must specify the Nexus Service Instance ID when starting the Nexus Worker.
 
@@ -63,19 +63,19 @@
         // Worker definition...
     }
     ```
-1. Nexus is now able to receive and process traffic on its frontend endpoint.
+1. Nexus is now able to process requests to its frontend endpoint.
 
 ### Consuming a Nexus Service from Temporal
 
 1. User asks the Nexus Service author for the endpoint of the Nexus Service Instance they are trying to consume. For Temporal based Nexus Service Instances, the endpoint will not be HTTP or gRPC but rather a custom uri formulation.
-2. User registers provided endpoint to Nexus Worker, similarly to how you would register Workflows and Activities with a Worker. 
+2. User registers provided endpoint with their SDK to avoid hardcoding the endpoint into all of their application logic. 
 3. User calls the external Nexus Service using a Workflow-specific Nexus API which is provided by Temporal.
     ```go
     // calling a Nexus from a Temporal Workflow
     func MyWorkflow(ctx workflow.Context, name string) (string, error) {
-        client := temporalnexus.NewWorkflowClient(temporalnexus.WorkflowClientOptions{Endpoint: "temporal:72aA64A0jhOL99B2"})
-        // Start some alo
-        alo, err := client.StartALO(ctx, temporalnexus.WorkflowStartALOOptions{
+        client := temporalnexus.NewAloClient(temporalnexus.AloClientOptions{Endpoint: "temporal:72aA64A0jhOL99B2"})
+        // Start some ALO
+        alo, err := client.StartAlo(ctx, temporalnexus.StartAloOptions{
             Name: "foo",
             ID:   "my-id",
             Arg:  name,
@@ -97,7 +97,7 @@ Instantiating a Nexus Service makes it possible for the Nexus Backend to receive
 
 For the sake of this proposal, we will only consider the case where Nexus is registered via `nexus` CLI. In the future we may evaluate and consider alternative methods of registering a Nexus Service Instance. Registering a Nexus Service Instance would be done with the following command structure:
 
-`nexus service register --service-name my-service --service-description "My service" --backend nexus-backend.example.com` 
+`nexus service register --name my-service --description "My service" --backend nexus-backend.example.com` 
 
 This would result in the following output being displayed
 

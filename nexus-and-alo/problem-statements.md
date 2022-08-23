@@ -23,17 +23,17 @@ Even if none of these are confusing questions for you, the current solution leak
 - Task Queues
 - Retries
 
-Everyday we see more and more companies holistically embracing Temporal. After a certain critical mass is reached within these companies, the need for X-Namespace functionality becomes a given. In addition to wanting a better version of the existing experience, there are often requests for fundamentally new capabilities such as running X-Namespace Activities. If you thought the DX for X-Namespace Child Workflows is complicated, Activities would make that look like 1st grade math.
+Every day we see more and more companies holistically embracing Temporal. After a certain critical mass is reached within these companies, the need for X-Namespace functionality becomes a given. In addition to wanting a better version of the existing experience, there are often requests for fundamentally new capabilities such as running X-Namespace Activities. If you thought the DX for X-Namespace Child Workflows is complicated, Activities would make that look like 1st grade math.
 
 As a cherry on top, today X-Namespace calls become even more complicated when calling a Namespace in a different cluster and they are completely broken in the Global Namespace scenario. Considering that our Cloud abstracts the concept of clusters and pushes the concept of “Namespace as a Service” this problem is a fundamental blocker for any practical X-Namespace Cloud usage.
 
-# Expose generic APIs natively from Temporal
+# Expose application-specific APIs natively from Temporal
 
-**TL;DR;** *Developers should be able to natively surface Temporal backends using standard procotols (GRPC, HTTP) and IDLS (OpenAPI, Proto) without requiring an external proxy, loadbalancer or API server in front.*
+**TL;DR;** *Developers should be able to natively surface Temporal backends using standard protocols (gRPC, HTTP) and IDLs (OpenAPI, Proto, GraphQL) without requiring an external proxy, load balancer, or API server in front.*
 
 The second issue we are trying to tackle, are the deficits around integrating a Temporal backend into a broader application architecture. 
 
-After talking to hundreds of users and companies about how Temporal fits into their broader technology story, a very clear pattern emerged. Almost any company with significant Temporal usage eventually ended up putting their Temporal applications behind a “dumb” proxy layer, load balancer, transformer, etc. To be clear, this is not about providing a REST (or other specification) version of the already well established Temporal API (StartWorkflow, CreateNamespace, ListOpenWorkflows etc) but rather enabling users to expose their application specific APIs directly via Temporal.
+After talking to hundreds of users and companies about how Temporal fits into their broader technology story, a very clear pattern emerged. Almost any company with significant Temporal usage eventually ended up putting their Temporal applications behind a “dumb” proxy layer, load balancer, transformer, etc. To be clear, this is not about providing a REST (or other specification) version of the already well established Temporal API (StartWorkflow, CreateNamespace, ListOpenWorkflows etc) but rather enabling users to expose their application specific APIs directly via Temporal (ProcessOrder, UpdatePrice, etc).
 
 At first the working assumption was that this is due to a lack of perceived security or resiliency from Temporal itself. Instead what became clear is that while Temporal developers within these companies were happy to think in Temporal terms, non-Temporal developers were not. So in order to surface the work they had done with Temporal, developers at these companies would design the external API as a traditional GRPC Service or REST (OpenAPI) Application. This approach meant that non-Temporal developers did not even know they were calling a Temporal application at all. 
 
@@ -69,16 +69,14 @@ Regardless of whether you want Temporal to be used as an API Gateway, you’re a
 
 In the previous section we discussed the need for Temporal developers to expose their Temporal applications using well known formats and approaches. One of the biggest benefits of using something like gRPC is that it abstracts away the implementation details and leaves you only with the contract. In most cases, the underlying implementation is no more expressive than gRPC and even though the semantics may change no fundamental expressivity is lost. In fact, in many cases gRPC is more expressive than the underlying implementation itself. 
 
-When looking at Workflows through this lens, the ideology generally holds true. There is one case where things are not as clear and thats when it comes to invoking stateful operations of an arbitrary length. To be completely and totally accurate, I’m specifically talking about operations (RPC calls that result in compute) that are both:
+However, gRPC does not make it clear how to invoke stateful operations of an arbitrary length—that is, calls that are:
 
 - Arbitrary length - the potential duration is completely unbounded (aka any call over a network)
 - Identifiable - if you can’t get back to it, why are we even talking about it?
 
-I will note that for the sake of practicality I’m over simplifying things. Technically speaking there is potential entropy even within local calls on your OS, but the chances are so low and the behavior is so well defined that its not worth addressing. 
-
 Assuming we align on what an ALO (Arbitrary length operation) is, it should be immediately clear that todays Workflow primitive is already a perfect vehicle for ALOs. Workflows can durably and reliably run for an unbounded period of time without worrying about faults, old age disease etc. They persist even outside of the RPC that initially led to their creation and can be accessed even if the client which started the RPC fails. 
 
-It is absolutely possible to model an API with these semantics using existing standards like protobuf but any such solution would be an informal representation at best. There have been attempts to formally represent something similar, such as Googles Long Running Operation (LRO) extension to proto ([Google's long running operations](https://cloud.google.com/service-infrastructure/docs/service-management/reference/rpc/google.longrunning)). 
+It is absolutely possible to model an API with these semantics using existing standards like protobuf but any such solution would be an informal representation at best. There have been attempts to formally represent something similar, such as Google's Long-Running Operation (LRO) extension to proto ([Google's long-running operations](https://cloud.google.com/service-infrastructure/docs/service-management/reference/rpc/google.longrunning)) and Microsoft's [Windows Communication Foundation](https://docs.microsoft.com/en-us/dotnet/framework/wcf/whats-wcf). 
 
 Specifically in the case of Googles LRO, we believe it is only addressing a small slice of the broader problem. Even its namesake (Long running…) indicates that the duration of the operation is key to the abstractions applicability. I would argue that the problems Workflows solve in this regard have little do with the length of the actual operation and far more with the uncertainty in how long it will run. In other words, Workflows could run for milliseconds, seconds or years. It’s the uncertainty about the duration that’s interesting, not the duration itself. 
 
