@@ -215,7 +215,7 @@ class AnotherAsyncWorkflow < Temporal::Workflow
     wait_and_sum(5, 6, delay: 5) # => 11
 
     # Block execution until any promise is resolved
-    workflow.wait_for_any(promise_1, promise_2)
+    async.wait_for(async.any(promise_1, promise_2))
 
     promise_1.result # => 3
 
