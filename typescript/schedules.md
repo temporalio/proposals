@@ -208,9 +208,7 @@ export interface ScheduleHandle {
    */
   describe(): Promise<ScheduleDescription>;
 
-  /**
-   * Get a handle to the most recent Action started
-   */
+  // we won't have this helper in TS because it involves an implicit client, but other SDKs may want this
   lastAction<T extends ScheduleActionType>(): Promise<HandleFor<T>>;
 
   /**
