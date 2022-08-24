@@ -248,7 +248,6 @@ class MyActivity < Temporal::Activity
       activity.heartbeat('ping')
     end
   rescue Temporal::Error::ActivityCancelled
-    # The
     raise 'this activity is cancelled'
   end
 end
@@ -260,7 +259,7 @@ Here is what it will look like from a workflow perspective:
 class MyWorkflow < Temporal::Activity
   def execute
     # Async blocks double as cancellation scopes
-    promise = async { workflow.start_activity(LongRunningActivity) }
+    promise = async { workflow.execute_activity(LongRunningActivity) }
 
     workflow.sleep(10)
 
@@ -277,6 +276,32 @@ cancellations.*
 
 - Overall using `Thread#raise` is considered bad practice because it might raise in the
   middle of some process. We might want to consider opting in to this behaviour instead
+
+
+## Workflow cancellations
+
+To handle external workflow cancellations (requested by a client or another workflow) we will use a
+similar approach to activities. By default the cancellation will attempt to cancel all currently
+executing fibers. To protect critical functionality from cancellations a `workflow.shield` method
+can be used. In which case cancellation will raise after the block is executed:
+
+
+```ruby
+class MyWorkflow < Temporal::Activity
+  def execute
+    workflow.execute_activity(SomeActivity)
+
+    workflow.shield do
+      promise_1 = async { workflow.execute_activity(AnotherActivity) }
+      promise_2 = async { workflow.execute_activity(SomeOtherActivity) }
+
+      workflow.wait_for(promise_1, promise_2)
+    end
+  rescue Temporal::Error::WorkflowCancelled
+    ...
+  end
+end
+```
 
 
 ## Register signal and query handlers
