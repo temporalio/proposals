@@ -167,7 +167,7 @@ export interface ScheduleHandle {
    * 
    * If, inside `updateFn`, you no longer want the SDK to try sending the update to the Server, return undefined. 
    */
-  update(updateFn: (schedule: ScheduleDescription) => ScheduleDescription | undefined, options?: UpdateScheduleOptions): Promise<void>;
+  update(updateFn: (schedule: Schedule) => Schedule | undefined, options?: UpdateScheduleOptions): Promise<void>;
 
   /**
    * Delete the Schedule
@@ -190,7 +190,7 @@ export interface ScheduleHandle {
   /**
    * Pause the Schedule
    * 
-   * @param note A new {@link ScheduleDescription.note}. Defaults to `"Paused via TypeScript SDK"`
+   * @param note A new {@link Schedule.note}. Defaults to `"Paused via TypeScript SDK"`
    * @throws {@link ValueError} if empty string is passed
    */
   pause(note?: string): Promise<void>;
@@ -198,7 +198,7 @@ export interface ScheduleHandle {
   /**
    * Unpause the Schedule
    * 
-   * @param note A new {@link ScheduleDescription.note}. Defaults to `"Unpaused via TypeScript SDK"`
+   * @param note A new {@link Schedule.note}. Defaults to `"Unpaused via TypeScript SDK"`
    * @throws {@link ValueError} if empty string is passed
    */
   unpause(note?: string): Promise<void>;
@@ -206,7 +206,7 @@ export interface ScheduleHandle {
   /**
    * Fetch the Schedule's description from the Server
    */
-  describe(): Promise<ScheduleDescription>;
+  describe(): Promise<Schedule>;
 
   // we won't have this helper in TS because it involves an implicit client, but other SDKs may want this
   lastAction<T extends ScheduleActionType>(): Promise<HandleFor<T>>;
@@ -217,13 +217,16 @@ export interface ScheduleHandle {
   readonly client: ScheduleClient;
 }
 
-export interface Schedule {
+export interface ListScheduleEntry {
   /**
    * Schedule Id
    *
    * We recommend using a meaningful business identifier.
    */
   id: string;
+
+  /** When Actions are taken */
+  spec: RequireAtLeastOne<ScheduleSpecDescription, 'calendars' | 'intervals'>;
 
   /**
    * Additional non-indexed information attached to the Schedule. The values can be anything that is
@@ -239,20 +242,24 @@ export interface Schedule {
    */
   searchAttributes: SearchAttributes;
 
-  /** Number of Actions taken so far. */
-  numActionsTaken: number;
-
-  /** Number of times a scheduled Action was skipped due to missing the catchup window. */
-  numActionsMissedCatchupWindow: number;
-
-  /** Number of Actions skipped due to overlap. */
-  numActionsSkippedOverlap: number;
+  /**
+   * Informative human-readable message with contextual notes, e.g. the reason
+   * a Schedule is paused. The system may overwrite this message on certain
+   * conditions, e.g. when pause-on-failure happens.
+   */
+  note?: string;
 
   /**
-   * Currently-running workflows started by this schedule. (There might be
-   * more than one if the overlap policy allows overlaps.)
+   * Whether Schedule is currently paused.
+   * 
+   * @default false
    */
-  runningWorkflows: WorkflowExecutionWithFirstExecutionRunId[];
+  paused: boolean;
+
+  /**
+   * Present if action is a {@link StartWorkflowAction}.
+   */
+  workflowType?: string;
 
   /**
    * Most recent 10 Actions started (including manual triggers).
@@ -263,9 +270,6 @@ export interface Schedule {
 
   /** Next 10 scheduled Action times */
   nextActionTimes: Date[];
-
-  createdAt: Date;
-  lastUpdatedAt: Date;
 }
 
 /**
@@ -274,10 +278,7 @@ export interface Schedule {
  * - the schedule may have been modified by {@link ScheduleHandle.update} or
  *   {@link ScheduleHandle.pause}/{@link ScheduleHandle.unpause}
  */
-export type ScheduleDescription = Schedule & {
-  /** When Actions should be taken */
-  spec: RequireAtLeastOne<ScheduleSpecDescription, 'calendars' | 'intervals'>;
-
+export type Schedule = ListScheduleEntry & {
   /**
    * Which Action to take
    */
@@ -315,20 +316,6 @@ export type ScheduleDescription = Schedule & {
   pauseOnFailure: boolean;
 
   /**
-   * Informative human-readable message with contextual notes, e.g. the reason
-   * a Schedule is paused. The system may overwrite this message on certain
-   * conditions, e.g. when pause-on-failure happens.
-   */
-  note?: string;
-
-  /**
-   * Is currently paused.
-   * 
-   * @default false
-   */
-  paused: boolean;
-
-  /**
    * The Actions remaining in this Schedule. Once this number hits `0`, no further Actions are taken (unless {@link 
    * ScheduleHandle.trigger} is called).
    * 
@@ -336,8 +323,27 @@ export type ScheduleDescription = Schedule & {
    */
   remainingActions?: number;
 
+
+  /** Number of Actions taken so far. */
+  numActionsTaken: number;
+
+  /** Number of times a scheduled Action was skipped due to missing the catchup window. */
+  numActionsMissedCatchupWindow: number;
+
+  /** Number of Actions skipped due to overlap. */
+  numActionsSkippedOverlap: number;
+
   /**
-   * Create a {@link ScheduleOptions} object based on this `ScheduleDescription` to use with {@link ScheduleClient.create}.
+   * Currently-running workflows started by this schedule. (There might be
+   * more than one if the overlap policy allows overlaps.)
+   */
+  runningWorkflows: WorkflowExecutionWithFirstExecutionRunId[];
+
+  createdAt: Date;
+  lastUpdatedAt: Date;
+
+  /**
+   * Create a {@link ScheduleOptions} object based on this `Schedule` to use with {@link ScheduleClient.create}.
    */
   copyOptions<Action extends ScheduleActionType>(overrides: ScheduleOptionsOverrides<Action>): ScheduleOptions;
 }
@@ -737,7 +743,7 @@ export interface ScheduleSpec {
   /**
    * All times will be incremented by a random value from 0 to this amount of jitter.
    *
-   * @default 1 second
+   * @default 0
    * @format number of milliseconds or {@link https://www.npmjs.com/package/ms | ms-formatted string}
    */
   jitter?: number | string;
@@ -746,6 +752,16 @@ export interface ScheduleSpec {
    * IANA timezone name, for example `US/Pacific`.
    * 
    * https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+   * 
+   * The definition will be loaded by Temporal Server from the environment it runs in.
+   * 
+   * Calendar spec matching is based on literal matching of the clock time
+   * with no special handling of DST: if you write a calendar spec that fires
+   * at 2:30am and specify a time zone that follows DST, that action will not
+   * be triggered on the day that has no 2:30am. Similarly, an action that
+   * fires at 1:30am will be triggered twice on the day that has two 1:30s.
+   *
+   * Also note that no actions are taken on leap-seconds (e.g. 23:59:60 UTC).
    * 
    * @default UTC
    */
@@ -757,9 +773,6 @@ export interface ScheduleSpec {
   //
   // Time zone to interpret all CalendarSpecs in.
   //
-  // If unset, defaults to UTC. We recommend using UTC for your application if
-  // at all possible, to avoid various surprising properties of time zones.
-  //
   // Time zones may be provided by name, corresponding to names in the IANA
   // time zone database (see https://www.iana.org/time-zones). The definition
   // will be loaded by the Temporal server from the environment it runs in.
@@ -769,12 +782,6 @@ export interface ScheduleSpec {
   // from the time zone database. If present, this will be used instead of
   // loading anything from the environment. You are then responsible for
   // updating timezone_data when the definition changes.
-  //
-  // Calendar spec matching is based on literal matching of the clock time
-  // with no special handling of DST: if you write a calendar spec that fires
-  // at 2:30am and specify a time zone that follows DST, that action will not
-  // be triggered on the day that has no 2:30am. Similarly, an action that
-  // fires at 1:30am will be triggered twice on the day that has two 1:30s.
 }
 
 /**
@@ -860,7 +867,8 @@ export interface ScheduleOptions<Action extends ScheduleActionType> {
 
   /**
    * Controls what happens when an Action would be started by a Schedule at the same time that an older Action is still
-   * running.
+   * running. This can be changed after a Schedule has taken some Actions, and some changes might produce 
+   * unintuitive results. In general, the later policy overrides the earlier policy.
    *
    * @default {@link ScheduleOverlapPolicy.SKIP}
    */
@@ -1026,7 +1034,7 @@ export class ScheduleClient {
    * await { schedules, nextPageToken } = client.scheduleService.listSchedules()
    * ```
    */
-  public list(options?: ListScheduleOptions): AsyncIterator<Schedule> {}
+  public list(options?: ListScheduleOptions): AsyncIterator<ListScheduleEntry> {}
 
   /**
    * Get a handle to a Schedule
