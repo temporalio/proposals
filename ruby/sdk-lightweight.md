@@ -23,7 +23,7 @@ method that will be called to execute an activity.
 # The activity class name will be used as activity name unless overridden
 class SumActivity < Temporal::Activity
   # Optionally override the name
-  activity 'sum-activity'
+  activity_name 'sum-activity'
 
   # return value of the #execute method will be used as an activity result
   def execute(a, b)
@@ -55,7 +55,7 @@ require 'sum_activity'
 # Similar to activities the class name will be used as a workflow name unless overridden
 class SumWorkflow < Temporal::Workflow
   # Optionally override the name
-  workflow 'sum-workflow'
+  workflow_name 'sum-workflow'
 
   def execute(a, b)
     # - Positional arguments passed to activity (inline with other SDKs)
@@ -85,7 +85,8 @@ end
 require 'temporal/client'
 require 'sum_workflow'
 
-connection = Temporal::Connection.new('localhost:7233')
+# Connections are eager and a lazy option will be introduced later
+connection = Temporal::Connection.connect('localhost:7233')
 client = Temporal::Client.new(connection, namespace: 'demo')
 
 # workflow is referenced by the class
@@ -106,7 +107,7 @@ client.start_workflow('sum-workflow', 1, 2, id: 'id-1', task_queue: 'demo')
 ```ruby
 class MyWorkflow < Temporal::Workflow
   # Optionally override the name of the workflow
-  workflow 'my.workflow'
+  workflow_name 'my.workflow'
 end
 
 client.start_workflow(MyWorkflow, 1, 2, id: 'id-1', task_queue: 'demo')
@@ -122,7 +123,7 @@ require 'some_other_workflow'
 require 'sum_activity'
 require 'some_other_activity'
 
-connection = Temporal::Connection.new('localhost:7233')
+connection = Temporal::Connection.connect('localhost:7233')
 worker = Temporal::Worker.new(
   connection,
   namespace: 'demo',
@@ -165,7 +166,7 @@ end
 
 class ParentWorkflow < Temporal::Workflow
   def execute
-    workflow.execute_workflow(ChildWorkflow, 'parent', id: 'id-2')
+    workflow.execute_child_workflow(ChildWorkflow, 'parent', id: 'id-2')
   end
 end
 ```
@@ -192,13 +193,20 @@ require 'sum_activity'
 class AsyncWorkflow < Temporal::Workflow
   def execute
     activity_promise = async { workflow.execute_activity(SumActivity, 1, 2) }
-    workflow_promise = async { workflow.execute_workflow(ChildWorkflow, 'parent') }
+    workflow_promise = async { workflow.execute_child_workflow(ChildWorkflow, 'parent') }
 
     # Block execution until both promises are resolved
-    workflow.wait_for(activity_promise, workflow_promise)
+    activity_result, workflow_result = async.all(activity_promise, workflow_promise).await
 
-    activity_promise.result # => 3
-    workflow_promise.result # => 'Hello, parent!'
+    activity_result # => 3
+    workflow_result # => 'Hello, parent!'
+    
+    promise = async { workflow.execute_activity(SumActivity, 3, 4) }
+    
+    # individual promises can also be waited on
+    result = promise.await
+    
+    result # => 7
   end
 end
 ```
@@ -208,19 +216,20 @@ A bit more involved example:
 ```ruby
 class AnotherAsyncWorkflow < Temporal::Workflow
   def execute
-    promise_1 = async { wait_and_sum(1, 2, delay: 10) }
-    promise_2 = async { wait_and_sum(3, 4, delay: 15) }
+    promise_1 = async { wait_and_sum(1, 2, delay: 15) }
+    promise_2 = async { wait_and_sum(3, 4, delay: 10) }
 
     # The same exact method can be called in a blocking fashion
     wait_and_sum(5, 6, delay: 5) # => 11
 
     # Block execution until any promise is resolved
-    async.wait_for(async.any(promise_1, promise_2))
+    async.any(promise_1, promise_2).await
 
-    promise_1.result # => 3
-
-    # Because of the longest delay this would block until resolved
+    # Returns immediately because it will already be resolved (shorter delay)
     promise_2.result # => 7
+
+    # This would block until the promise is resolved (longer delay)
+    promise_1.result # => 3
   end
 
   private
@@ -232,6 +241,11 @@ class AnotherAsyncWorkflow < Temporal::Workflow
 end
 ```
 
+Methods `async.all` and `async.any` return promises themselves, so they can be used just like the
+promises returned by an `async {}` call.
+
+Also worth noting that `async {}` calls can be nested to model more complex business logic.
+
 
 ## Activity heartbeats & cancellations
 
@@ -241,9 +255,9 @@ block (that will not raise until the block has executed) or opt-out of this defa
 altogether and use `activity.cancelled?` flag to determine when an activity was cancelled.
 
 ```ruby
-class MyActivity < Temporal::Activity
+class LongRunningActivity < Temporal::Activity
   def execute
-    loop do
+    10.times do
       sleep 1
       activity.heartbeat('ping')
     end
@@ -256,21 +270,24 @@ end
 Here is what it will look like from a workflow perspective:
 
 ```ruby
-class MyWorkflow < Temporal::Activity
+class InnerCancelWorkflow < Temporal::Workflow
   def execute
-    # Async blocks double as cancellation scopes
-    promise = async { workflow.execute_activity(LongRunningActivity) }
+    # the block supplies an optional argument
+    async do |outer_promise|
+      async do
+        workflow.sleep(30)
+        outer_promise.cancel
+      end
 
-    workflow.sleep(10)
-
-    # Blocking call
-    promise.cancel
+      # One of these blocking activities will end up getting cancelled 
+      #   unless they all finish within 30 seconds
+      workflow.execute_activity(LongRunningActivity)
+      workflow.execute_activity(LongRunningActivity)
+      workflow.execute_activity(LongRunningActivity)
+    end.await
   end
 end
 ```
-
-*NOTE: While `promise.cancel` is blocking, it can be wrapped in an `async` block for non-blocking
-cancellations.*
 
 #### Alternative approaches
 
@@ -289,14 +306,17 @@ can be used. In which case cancellation will raise after the block is executed:
 ```ruby
 class MyWorkflow < Temporal::Activity
   def execute
-    workflow.execute_activity(SomeActivity)
+    # Can get cancelled
+    workflow.execute_activity(NonCriticalActivity)
 
-    workflow.shield do
-      promise_1 = async { workflow.execute_activity(AnotherActivity) }
-      promise_2 = async { workflow.execute_activity(SomeOtherActivity) }
-
-      workflow.wait_for(promise_1, promise_2)
-    end
+    # This block will delay any cancellations until it is finished
+    async(shield: true) do
+      workflow.execute_activity(CriticalActivity)
+      workflow.execute_activity(OtherCriticalActivity)
+    end.await
+    
+    # Can get cancelled
+    workflow.execute_activity(AnotherNonCriticalActivity)
   rescue Temporal::Error::WorkflowCancelled
     ...
   end
@@ -311,32 +331,40 @@ end
 ```ruby
 class CalculatorWorkflow < Temporal::Workflow
   # Both signal and query handlers can be defined as Symbols (when the name matches the
-  # method) or a Hash when name is different (or cannot be used as a method name)
-  signals :add, 'my.signal.subtract' => :subtract
-  queries :get_value, 'my.query.value' => :get_value
+  # method) or overriden when the name is different (or cannot be used as a method name)
+  signal :add
+  signal :subtract, name: 'my.signal.subtract'
+  
+  query :value # can use a getter here
+  query :get_previous_value, name: 'my.query.previous_value'
 
   # It is preferable in this case to initialize the values before the execution to
   # support starting a workflow with a signal
   def initialize
     @value = 0
+    @previous_value = 0
   end
 
   def execute
-    workflow.wait_for { @value >= 42 }
+    async.await_for { @value >= 42 }
   end
 
   private
+  
+  attr_reader :value
 
   def add(val)
+    @previous_value = @value
     @value += val
   end
 
   def subtract(val)
+    @previous_value = @value
     @value -= val
   end
 
-  def get_value
-    @value
+  def get_previous_value
+    @previous_value
   end
 end
 ```
@@ -351,20 +379,20 @@ class CalculatorWorkflow < Temporal::Workflow
   def execute
     value = 0
 
-    workflow.on_signal('add') do |val|
+    workflow.on_signal(:add) do |val|
       value += val
     end
 
-    workflow.on_signal('subtract') do |val|
+    workflow.on_signal('my.signal.subtract') do |val|
       value -= val
     end
 
-    workflow.on_query('get_value') do
+    workflow.on_query(:value) do
       value
     end
 
     # A condition block will pause until the enclosed statement returns true
-    workflow.wait_for { value >= 42 }
+    async.await_for { value >= 42 }
   end
 end
 ```
@@ -375,7 +403,7 @@ end
 ```ruby
 require 'calculator_workflow'
 
-connection = Temporal::Connection.new('localhost:7233')
+connection = Temporal::Connection.connect('localhost:7233')
 client = Temporal::Client.new(connection, namespace: 'demo')
 
 handle = client.start_workflow(SumWorkflow, 1, 2, id: 'id-1', task_queue: 'demo')
@@ -398,11 +426,8 @@ class ParentWorkflow < Temporal::Workflow
 
     # All these calls are blocking, but can be executed in an async block
     handle.signal(:add, 34)
-    handle.query(:get_value) # => 34
     handle.signal(:subtract, 4) # This will send a 'my.signal.subtract' signal as defined
-    handle.query(:get_value) # => 30
     handle.signal(:add, 12)
-    handle.query(:get_value) # => 42
 
     # Block until workflow finishes
     handle.result
