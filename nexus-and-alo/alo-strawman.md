@@ -21,7 +21,6 @@ message AloInfo {
   string id = 1;
   Status status = 2;
   map<string, string> metadata = 3;
-  repeated string http_result_urls = 4; // used for providing webhook/callback URLs for async completion of ALO
 
   enum Status {
     STATUS_UNSPECIFIED = 0;
