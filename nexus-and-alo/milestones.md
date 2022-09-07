@@ -7,7 +7,7 @@
 **Requirements:**
 
 * Existing Temporal users
-* Only target scenarios where Temporal Namespace is calling to another Temporal Namespace
+* Only target scenarios where Temporal Namespace is calling to another Temporal Namespace. To be explicit, we will not initially support client-to-Temporal-ALO calls. 
 * Minimum additional authentication and authorization requirements
 * Relatively latency insensitive use cases
 * Works in single and cross cluster scenarios

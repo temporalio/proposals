@@ -30,9 +30,9 @@ message AloInfo {
   }
 }
 
-service ALOHandler {
+service AloHandler {
   rpc Start(StartRequest) returns (StartResponse);
-  rpc GetInfo(GetInfoRequest) returns (AloInfo);
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
   rpc GetResult(GetResultRequest) (GetResultResponse);
   rpc Cancel(CancelRequest) returns (CancelRepsonse);
 }
