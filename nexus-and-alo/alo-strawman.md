@@ -8,12 +8,14 @@ You can imagine the minimal Promise inspired ALO API having the following capabi
 
 - Start
 - Get Result
-- Get Status (ie: Rejected, Resolved, Fulfilled)
+- Get Info (returns metadata such as status ie: Rejected, Resolved, Fulfilled)
 - Cancellation
 
 The current belief is that ALO should never become a generic Durable Object and therefore it will never be possible to surface arbitrary methods as part of the ALO itself. Instead you would surface those endpoints as either stateless short lived API methods, or as top level ALOs themselves. That being said, there is significant room for extension in the ALO surface area such a Listing & Filtering, and the ability to Pause and Resume.
 
 ### Proposal for initial interface of the ALO
+
+**Note:** Proto is merely a medium for conveying a contract and is not a requirement or key aspect of this sample.
 
 ```protobuf
 // An ALO is started via the Start method
@@ -48,3 +50,12 @@ Considering ALOs represent the eventual completion of an operation, its impossib
 ![Full client Id flow](./images/full-client-id-flow.png)
 
 Because of this, ALOs will also be required to have a unique Id. Furthermore, because server side generation of unique Ids is inherently lossy, an ALO `StartRequest` **must include a client-side generated unique Id**. To be clear, the id must be unique for that specific ALO endpoint.
+
+
+### Placeholder (Retention)
+
+Based on the stateful nature of ALOs, its unavoidable that we will need a retention-like concept as part of the standard. We have not yet defined the specifics of this but it will be represented in the future. 
+
+This is not a novel problem and Microsoft does a good job talking about it here:
+
+https://github.com/microsoft/api-guidelines/blob/vNext/Guidelines.md#133-retention-policy-for-operation-results
