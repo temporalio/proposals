@@ -1,4 +1,4 @@
-# Nexus & ALOs
+# Nexus
 
 ## What is being proposed? (TL;DR;)
 
