@@ -36,3 +36,10 @@ It's highly recommended to read the ALO strawman before reading the Nexus strawm
 * Minimum additional authentication and authorization requirements
 * Relatively latency insensitive use cases
 * Works in single and cross cluster scenarios
+
+## What is the rough working timeline?
+
+- **August 20 - September 16**: high level proposal on product requirements and experience
+- **September 19 - October 14**: technical design
+- **October 17 - October 21st**: planning
+- **October 24 - December 15th**: mvp implementation
