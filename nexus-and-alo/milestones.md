@@ -2,6 +2,9 @@
 
 ## MVP - Phase 0 (Namespace to Namespace)
 
+**Usage scenarios**:
+- Exposing Temporal application to a Temporal consumer (Nexus)
+
 **Rationale:** Keeps requirements as minimal as possible and makes the primary focus unblocking X-Namespace calls.
 
 **Requirements:**
@@ -13,6 +16,10 @@
 * Works in single and cross cluster scenarios
 
 ## Phase 1 (Supporting internal HTTP APIs)
+
+**Usage scenarios**:
+- Exposing Temporal application to a Temporal consumer (Nexus)
+- Exposing Temporal application to a non-Temporal consumer (Nexus + ALO)
 
 **Rationale:** Internal APIs will offer a low risk entrypoint into the problem space, giving us time and feedback needed to deliver a killer public facing solution.
 
@@ -31,6 +38,11 @@
 * Works in single and cross cluster scenarios
 
 ## Phase 2 (Supporting external APIs)
+
+**Usage scenarios**:
+- Exposing Temporal application to a Temporal consumer (Nexus)
+- Exposing Temporal application to a non-Temporal consumer (Nexus + ALO)
+- Exposing non-Temporal application with Temporal-esque calling semantics (ALO) // this is technically possible in P1 but will not be encouraged
 
 **Rationale:** Assuming we have learned significant lessons from internal APIs during Phase 1, we are now ready to target services which are leveraged by external consumers and not just internal ones. This will bring in significantly higher security requirements as exposing something publicly is far more risky than exposing something internally.
 
