@@ -635,7 +635,7 @@ export interface CalendarSpecDescription {
   /**
    * Use full years, like `2030`
    *
-   * @default `[{ start: 2000, step: 1 }]`
+   * @default `undefined` (meaning any year)
    */
   year?: NumberSpecDescription;
 
