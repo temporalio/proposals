@@ -81,7 +81,7 @@ const scheduleDescription = await schedule.describe();
 
 const sameSchedule = client.getHandle('schedule-biz-id');
 
-const newSimilarSchedule = await client.create(scheduleDescription.copyOptions({ 
+const newSimilarSchedule = await client.create(scheduleDescription.copyOptions({
   id: 'new-id',
   action: {
     workflowId: 'wf-biz-id-2',
@@ -120,7 +120,7 @@ for await (const schedule: Schedule of client.list()) {
 
 ### Types
 
-```ts
+````ts
 import { DataConverter, LoadedDataConverter } from '@temporalio/common';
 import { loadDataConverter } from '@temporalio/internal-non-workflow-common';
 import {
@@ -141,9 +141,9 @@ import { WorkflowHandle, WorkflowStartOptions } from './workflow-client';
 export interface UpdateScheduleOptions {
   /**
    * How many times to retry the update.
-   * 
+   *
    * Set to `1` if you don't want to retry.
-   * 
+   *
    * @default 3
    */
   maximumAttempts?: number;
@@ -160,12 +160,12 @@ export interface ScheduleHandle {
 
   /**
    * Update the Schedule
-   * 
-   * This function calls `.describe()` and then tries to send the update to the Server. If the Schedule has changed 
-   * between the time of `.describe()` and the update, the Server throws an error, and the SDK retries, up to 
+   *
+   * This function calls `.describe()` and then tries to send the update to the Server. If the Schedule has changed
+   * between the time of `.describe()` and the update, the Server throws an error, and the SDK retries, up to
    * {@link UpdateScheduleOptions.maximumAttempts}.
-   * 
-   * If, inside `updateFn`, you no longer want the SDK to try sending the update to the Server, return undefined. 
+   *
+   * If, inside `updateFn`, you no longer want the SDK to try sending the update to the Server, return undefined.
    */
   update(updateFn: (schedule: Schedule) => Schedule | undefined, options?: UpdateScheduleOptions): Promise<void>;
 
@@ -176,7 +176,7 @@ export interface ScheduleHandle {
 
   /**
    * Trigger an Action to be taken immediately
-   * 
+   *
    * @param overlap Override the Overlap Policy for this one trigger. Defaults to {@link ScheduleOverlapPolicy.ALLOW_ALL}.
    */
   trigger(overlap?: ScheduleOverlapPolicy;): Promise<void>;
@@ -189,7 +189,7 @@ export interface ScheduleHandle {
 
   /**
    * Pause the Schedule
-   * 
+   *
    * @param note A new {@link Schedule.note}. Defaults to `"Paused via TypeScript SDK"`
    * @throws {@link ValueError} if empty string is passed
    */
@@ -197,7 +197,7 @@ export interface ScheduleHandle {
 
   /**
    * Unpause the Schedule
-   * 
+   *
    * @param note A new {@link Schedule.note}. Defaults to `"Unpaused via TypeScript SDK"`
    * @throws {@link ValueError} if empty string is passed
    */
@@ -251,7 +251,7 @@ export interface ListScheduleEntry {
 
   /**
    * Whether Schedule is currently paused.
-   * 
+   *
    * @default false
    */
   paused: boolean;
@@ -316,9 +316,9 @@ export type Schedule = ListScheduleEntry & {
   pauseOnFailure: boolean;
 
   /**
-   * The Actions remaining in this Schedule. Once this number hits `0`, no further Actions are taken (unless {@link 
+   * The Actions remaining in this Schedule. Once this number hits `0`, no further Actions are taken (unless {@link
    * ScheduleHandle.trigger} is called).
-   * 
+   *
    * @default undefined (unlimited)
    */
   remainingActions?: number;
@@ -349,8 +349,8 @@ export type Schedule = ListScheduleEntry & {
 }
 
 /**
- * Make all properties optional. 
- * 
+ * Make all properties optional.
+ *
  * If original Schedule is deleted, okay to use same `id`.
  */
 export type ScheduleOptionsOverrides<Action> = Partial<ScheduleOptions<Action>>
@@ -360,7 +360,7 @@ export interface WorkflowExecutionWithFirstExecutionRunId {
   workflowId: string;
 
   /**
-   * The Run Id of the original execution that was started by the Schedule. If the Workflow retried, did 
+   * The Run Id of the original execution that was started by the Schedule. If the Workflow retried, did
    * Continue-As-New, or was Reset, the following runs would have different Run Ids.
    */
   firstExecutionRunId: string;
@@ -440,11 +440,11 @@ export function defaultScheduleClientOptions(): ScheduleClientOptionsWithDefault
 export enum ScheduleOverlapPolicy {
   /**
    * Use server default (currently SKIP).
-   * 
+   *
    * TODO remove this field if this issue is implemented: https://github.com/temporalio/temporal/issues/3240
    */
   UNSPECIFIED = 0,
-  
+
   /**
    * Don't start a new Action.
    */
@@ -551,28 +551,28 @@ export type DaySpecDescription = Range<Day>[];
 export interface CalendarSpec {
   /**
    * Valid values: 0–59
-   * 
+   *
    * @default 0
    */
   second?: NumberSpec;
 
   /**
    * Valid values: 0–59
-   * 
+   *
    * @default 0
    */
   minute?: NumberSpec;
 
   /**
    * Valid values: 0–59
-   * 
+   *
    * @default 0
    */
   hour?: NumberSpec;
 
   /**
    * Valid values: 1–31
-   * 
+   *
    * @default '*'
    */
   dayOfMonth?: NumberSpec;
@@ -584,7 +584,7 @@ export interface CalendarSpec {
 
   /**
    * Use full years, like `2030`
-   * 
+   *
    * @default '*'
    */
   year?: NumberSpec;
@@ -601,28 +601,28 @@ export interface CalendarSpec {
 export interface CalendarSpecDescription {
   /**
    * Valid values: 0–59
-   * 
+   *
    * @default `[{ start: 0 }]`
    */
   second?: NumberSpecDescription;
 
   /**
    * Valid values: 0–59
-   * 
+   *
    * @default `[{ start: 0 }]`
    */
   minute?: NumberSpecDescription;
 
   /**
    * Valid values: 0–59
-   * 
+   *
    * @default `[{ start: 0 }]`
    */
   hour?: NumberSpecDescription;
 
   /**
    * Valid values: 1–31
-   * 
+   *
    * @default `[{ start: 1, end: 31 }]`
    */
   dayOfMonth?: NumberSpecDescription;
@@ -634,7 +634,7 @@ export interface CalendarSpecDescription {
 
   /**
    * Use full years, like `2030`
-   * 
+   *
    * @default `[{ start: 2000, step: 1 }]`
    */
   year?: NumberSpecDescription;
@@ -660,14 +660,14 @@ export interface CalendarSpecDescription {
 export interface IntervalSpec {
   /**
    * Value is rounded to the nearest second.
-   * 
+   *
    * @format number of milliseconds or {@link https://www.npmjs.com/package/ms | ms-formatted string}
    */
   every: number | string;
 
   /**
    * Value is rounded to the nearest second.
-   * 
+   *
    * @default 0
    * @format number of milliseconds or {@link https://www.npmjs.com/package/ms | ms-formatted string}
    */
@@ -680,14 +680,14 @@ export interface IntervalSpec {
 export interface IntervalSpecDescription {
   /**
    * Value is rounded to the nearest second.
-   * 
+   *
    * @format number of milliseconds
    */
   every: number;
 
   /**
    * Value is rounded to the nearest second.
-   * 
+   *
    * @default 0
    * @format number of milliseconds
    */
@@ -708,9 +708,9 @@ export interface ScheduleSpec {
 
   /**
    * [Cron expressions](https://crontab.guru/)
-   * 
+   *
    * For example, `0 12 * * MON-WED,FRI` is every M/Tu/W/F at noon, and is equivalent to this {@link CalendarSpec}:
-   * 
+   *
    * ```ts
    * {
    *   hour: 12,
@@ -720,12 +720,12 @@ export interface ScheduleSpec {
    *   }, 'FRIDAY']
    * }
    * ```
-   */ 
+   */
   cronExpressions?: string[];
 
-  /** 
-   * Any matching times will be skipped. 
-   * 
+  /**
+   * Any matching times will be skipped.
+   *
    * All aspects of the CalendarSpec—including seconds—must match a time for the time to be skipped.
    */
   skip?: CalendarSpec[];
@@ -756,11 +756,11 @@ export interface ScheduleSpec {
 
   /**
    * IANA timezone name, for example `US/Pacific`.
-   * 
+   *
    * https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-   * 
+   *
    * The definition will be loaded by Temporal Server from the environment it runs in.
-   * 
+   *
    * Calendar spec matching is based on literal matching of the clock time
    * with no special handling of DST: if you write a calendar spec that fires
    * at 2:30am and specify a time zone that follows DST, that action will not
@@ -768,7 +768,7 @@ export interface ScheduleSpec {
    * fires at 1:30am will be triggered twice on the day that has two 1:30s.
    *
    * Also note that no actions are taken on leap-seconds (e.g. 23:59:60 UTC).
-   * 
+   *
    * @default UTC
    */
   timezone?: string;
@@ -847,7 +847,7 @@ export type ScheduleActionOptions<Action extends ScheduleActionType = ScheduleAc
 // type ScheduleActionType = Workflow | SomethingElse
 // type ExpectsSomethingElse<Action extends SomethingElse> = Action extends SomethingElse ? Action : number;
 // type StartSomethingElseAction<Action extends SomethingElse> = ExpectsSomethingElse<Action>
-// type ScheduleActionOptions<Action extends ScheduleActionType> = 
+// type ScheduleActionOptions<Action extends ScheduleActionType> =
 //   StartWorkflowAction<Action> | StartSomethingElseAction<Action>
 
 export type HandleFor<T> = T extends Workflow ? WorkflowHandle<T> : never;
@@ -873,7 +873,7 @@ export interface ScheduleOptions<Action extends ScheduleActionType> {
 
   /**
    * Controls what happens when an Action would be started by a Schedule at the same time that an older Action is still
-   * running. This can be changed after a Schedule has taken some Actions, and some changes might produce 
+   * running. This can be changed after a Schedule has taken some Actions, and some changes might produce
    * unintuitive results. In general, the later policy overrides the earlier policy.
    *
    * @default {@link ScheduleOverlapPolicy.SKIP}
@@ -967,7 +967,7 @@ export interface ListScheduleOptions {
  * Thrown from {@link ScheduleClient.create} if there's a running (not deleted) Schedule with the given `id`.
  */
 export class ScheduleAlreadyRunning extends Error {
-  public readonly name: string = 'ScheduleAlreadyRunning';  
+  public readonly name: string = 'ScheduleAlreadyRunning';
 
   constructor(message: string, public readonly scheduleId: string) {
     super(message);
@@ -1019,7 +1019,7 @@ export class ScheduleClient {
 
   /**
    * Create a new Schedule.
-   * 
+   *
    * @throws {@link ScheduleAlreadyRunning} if there's a running (not deleted) Schedule with the given `id`
    */
   public async create<Action extends ScheduleActionType>(options: ScheduleOptions<Action>): Promise<ScheduleHandle> {  }
@@ -1033,9 +1033,9 @@ export class ScheduleClient {
    *   // ...
    * }
    * ```
-   * 
+   *
    * To list one page at a time, instead use the raw gRPC method {@link WorkflowService.listSchedules}:
-   * 
+   *
    * ```ts
    * await { schedules, nextPageToken } = client.scheduleService.listSchedules()
    * ```
@@ -1050,7 +1050,7 @@ export class ScheduleClient {
    */
   public getHandle(scheduleId: string): ScheduleHandle {  }
 }
-```
+````
 
 ### Higher-level TS client
 
@@ -1060,20 +1060,20 @@ import { Client } from '@temporalio/client'
 const client = new Client(options)
 
 client.schedule.create()
-client.workflow.start() 
+client.workflow.start()
 client.asyncCompletion.heartbeat()
 client.operator.addSearchAttributes()
 
 interface ClientOptions {
-  dataConverter?: DataConverter;
+  dataConverter?: DataConverter
   interceptors?: {
-    workflow: WorkflowClientInterceptors,
-    schedule: ScheduleClientInterceptors,
-  };
-  identity?: string;
-  connection?: ConnectionLike;
-  namespace?: string;
-  queryRejectCondition?: temporal.api.enums.v1.QueryRejectCondition;
+    workflow: WorkflowClientInterceptors
+    schedule: ScheduleClientInterceptors
+  }
+  identity?: string
+  connection?: ConnectionLike
+  namespace?: string
+  queryRejectCondition?: temporal.api.enums.v1.QueryRejectCondition
 }
 ```
 
@@ -1084,24 +1084,29 @@ interface ScheduleClientCallsInterceptor {
   /**
    * Intercept a service call to CreateSchedule
    */
-  create?: (input: ScheduleStartInput, next: Next<this, 'create'>) => Promise<string /* conflictToken */>;
+  create?: (
+    input: ScheduleStartInput,
+    next: Next<this, 'create'>
+  ) => Promise<string /* conflictToken */>
 }
 
 interface ScheduleClientCallsInterceptorFactoryInput {
-  id: string;
+  id: string
 }
 
 /**
  * A function that takes a {@link ScheduleClientCallsInterceptorFactoryInput} and returns an interceptor
  */
 export interface ScheduleClientCallsInterceptorFactory {
-  (input: ScheduleClientCallsInterceptorFactoryInput): ScheduleClientCallsInterceptor;
+  (
+    input: ScheduleClientCallsInterceptorFactoryInput
+  ): ScheduleClientCallsInterceptor
 }
 
 /**
  * A mapping of interceptor type of a list of factory functions
  */
 export interface ScheduleClientInterceptors {
-  calls?: ScheduleClientCallsInterceptorFactory[];
+  calls?: ScheduleClientCallsInterceptorFactory[]
 }
 ```
