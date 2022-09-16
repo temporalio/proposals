@@ -635,12 +635,12 @@ export interface CalendarSpecDescription {
   /**
    * Use full years, like `2030`
    * 
-   * @default All possible values
+   * @default `[{ start: 2000, step: 1 }]`
    */
   year?: NumberSpecDescription;
 
   /**
-   * @default `[{ start: 'SUNDAY' , end: 'SATURDAY' }]`
+   * @default `[{ start: 'SUNDAY', end: 'SATURDAY' }]`
    */
   dayOfWeek?: DaySpecDescription;
 }
@@ -723,8 +723,14 @@ export interface ScheduleSpec {
    */ 
   cronExpressions?: string[];
 
-  /** Any matching times will be skipped. */
+  /** 
+   * Any matching times will be skipped. 
+   * 
+   * All aspects of the CalendarSpec—including seconds—must match a time for the time to be skipped.
+   */
   skip?: CalendarSpec[];
+  // TODO see if users want to be able to skip an IntervalSpec
+  // https://github.com/temporalio/api/pull/230/files#r956434347
 
   /**
    * Any times before `startAt` will be skipped. Together, `startAt` and `endAt` make an inclusive interval.
