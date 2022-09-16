@@ -74,7 +74,7 @@
     // calling a Nexus from a Temporal Workflow
     func MyWorkflow(ctx workflow.Context, name string) (string, error) {
         // Start some ALO
-        alo, err := client.NexusOp(ctx, temporalnexus.StartAloOptions{
+        alo, err := client.ALO(ctx, temporalnexus.StartAloOptions{
             Nexus: "production", // maps to temporal:72aA64A0jhOL99B2 because it was registered with the server
             Name: "foo",
             ID:   "my-id",
@@ -197,7 +197,7 @@ import (
 // Example of a workflow calling ALOs and sync calls
 func MyParentWorkflow(ctx workflow.Context, name string) (string, error) {
 	// Start foo ALO
-	alo, err := client.NexusOp(ctx, temporalnexus.Options{
+	alo, err := client.ALO(ctx, temporalnexus.Options{
 		Nexus: "production", // maps to 'temporal:72aA64A0jhOL99B2' on the server
 		Name: "foo",
 		ID:   "my-id",
@@ -216,7 +216,7 @@ func MyParentWorkflow(ctx workflow.Context, name string) (string, error) {
 
 	// Send a query and confirm it is the default foo
 	var resultStr string
-	res, err := client.NexusOp(ctx, temporalnexus.Options{
+	res, err := client.ALO(ctx, temporalnexus.Options{
 		Nexus: "production", // maps to 'temporal:72aA64A0jhOL99B2' on the server
 		Name: "foo/get",
 		ALOID: "my-id"
@@ -231,7 +231,7 @@ func MyParentWorkflow(ctx workflow.Context, name string) (string, error) {
 
 	// Send a signal to update the prefix, then another signal to finish the
 	// workflow
-	_, err = client.NexusOp(ctx, temporalnexus.Options{
+	_, err = client.ALO(ctx, temporalnexus.Options{
 		Nexus: "production", // maps to 'temporal:72aA64A0jhOL99B2' on the server
 		Name:  "foo/update-prefix",
 		ALOID: "my-id",
@@ -240,7 +240,7 @@ func MyParentWorkflow(ctx workflow.Context, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, err = client.NexusOp(ctx, temporalnexus.Options{
+	_, err = client.ALO(ctx, temporalnexus.Options{
 		Nexus: "production", // maps to 'temporal:72aA64A0jhOL99B2' on the server
 		Name: "foo/finish",
 		ALOID: "my-id"
@@ -304,7 +304,7 @@ func main() {
 	}
 
 	// Add workflow
-	err = builder.AddNexusOp("foo", temporalnexus.WorkflowALOHandlerOptions{
+	err = builder.AddALO("foo", temporalnexus.WorkflowALOHandlerOptions{
 		Workflow: SayHelloWorkflow,
 		Options:  temporalclient.StartWorkflowOptions{TaskQueue: "my-task-queue"},
 	})
@@ -313,19 +313,19 @@ func main() {
 	}
 
 	// Add queries and signals
-	err = builder.AddNexusOp("foo/get", temporalnexus.QuerySyncHandlerOptions{
+	err = builder.AddALO("foo/get", temporalnexus.QuerySyncHandlerOptions{
 		Query: "get-foo",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = builder.AddNexusOp("foo/update-prefix", temporalnexus.SignalSyncHandlerOptions{
+	err = builder.AddALO("foo/update-prefix", temporalnexus.SignalSyncHandlerOptions{
 		Signal: "update-prefix",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = builder.AddNexusOp("foo/finish", temporalnexus.SignalSyncHandlerOptions{
+	err = builder.AddALO("foo/finish", temporalnexus.SignalSyncHandlerOptions{
 		Signal: "finish-workflow",
 	})
 	if err != nil {
