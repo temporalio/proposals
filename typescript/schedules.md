@@ -530,17 +530,17 @@ export interface Range<Unit> {
 }
 
 export type NumberRange = Range<number> | number
-export type NumberSpec = NumberRange | NumberRange[] | string;
+export type NumberSpec = NumberRange | NumberRange[] | '*';
 export type NumberSpecDescription = Range<number>[];
 
 export type Month = 'JANUARY' | 'FEBRUARY' | 'MARCH' | 'APRIL' | 'MAY' | 'JUNE' | 'JULY' | 'AUGUST' | 'SEPTEMBER' | 'OCTOBER' | 'NOVEMBER' | 'DECEMBER';
 export type MonthRange = Range<Month> | Month;
-export type MonthSpec = MonthRange | MonthRange[] | string;
+export type MonthSpec = MonthRange | MonthRange[] | '*';
 export type MonthSpecDescription = Range<Month>[];
 
 export type Day = 'SUNDAY' | 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY';
 export type DayRange = Range<Day> | Day;
-export type DaySpec = DayRange | DayRange[] | string;
+export type DaySpec = DayRange | DayRange[] | '*';
 export type DaySpecDescription = Range<Day>[];
 
 /**
@@ -593,6 +593,11 @@ export interface CalendarSpec {
    * @default '*'
    */
   dayOfWeek?: DaySpec;
+
+  /**
+   * Description of the intention of this spec.
+   */
+  comment?: string;
 }
 
 /**
@@ -643,6 +648,11 @@ export interface CalendarSpecDescription {
    * @default `[{ start: 'SUNDAY', end: 'SATURDAY' }]`
    */
   dayOfWeek?: DaySpecDescription;
+
+  /**
+   * Description of the intention of this spec.
+   */
+  comment?: string;
 }
 
 /**
@@ -708,7 +718,8 @@ export interface ScheduleSpec {
   intervals?: IntervalSpec[];
 
   /**
-   * [Cron expressions](https://crontab.guru/)
+   * [Cron expressions](https://crontab.guru/). This is provided for easy migration from legacy Cron Workflows. For new
+   * use cases, we recommend using {@link calendars} or {@link intervals} for readability and maintainability.
    *
    * For example, `0 12 * * MON-WED,FRI` is every M/Tu/W/F at noon, and is equivalent to this {@link CalendarSpec}:
    *
@@ -1134,24 +1145,3 @@ export interface ScheduleClientInterceptors {
   calls?: ScheduleClientCallsInterceptorFactory[]
 }
 ```
-
-- cron_string holds a traditional cron specification as a string. It
-- accepts 5, 6, or 7 fields, separated by spaces, and interprets them the
-- same way as CalendarSpec.
-- 5 fields: minute, hour, day_of_month, month, day_of_week
-- 6 fields: minute, hour, day_of_month, month, day_of_week, year
-- 7 fields: second, minute, hour, day_of_month, month, day_of_week, year
-- If year is not given, it defaults to \*. If second is not given, it
-- defaults to 0.
-- Shorthands @yearly, @monthly, @weekly, @daily, and @hourly are also
-- accepted instead of the 5-7 time fields.
-- Optionally, the string can be preceded by CRON_TZ=<timezone name> or
-- TZ=<timezone name>, which will get copied to timezone_name. (There must
-- not also be a timezone_name present.)
-- Optionally "#" followed by a comment can appear at the end of the string.
-- Note that the special case that some cron implementations have for
-- treating day_of_month and day_of_week as "or" instead of "and" when both
-- are set is not implemented.
-- @every <interval>[/<phase>] is accepted and gets compiled into an
-- IntervalSpec instead. <interval> and <phase> should be a decimal integer
-- with a unit suffix s, m, h, or d.
