@@ -695,7 +695,8 @@ export interface IntervalSpecDescription {
 }
 
 /**
- * A complete description of a set of absolute times (possibly infinite) that an Action should occur at. These times
+ * A complete description of a set of absolute times (possibly infinite) that an Action should occur at.
+ * The times are the union of `calendars`, `intervals`, and `cronExpressions`, minus the `skip` times. These times
  * never change, except that the definition of a time zone can change over time (most commonly, when daylight saving
  * time policy changes for an area). To create a totally self-contained `ScheduleSpec`, use UTC.
  */
@@ -720,6 +721,29 @@ export interface ScheduleSpec {
    *   }, 'FRIDAY']
    * }
    * ```
+   *
+   * The string can have 5, 6, or 7 fields, separated by spaces, and they are interpreted in the
+   * same way as a {@link CalendarSpec}.
+   *
+   * - 5 fields:         minute, hour, day_of_month, month, day_of_week
+   * - 6 fields:         minute, hour, day_of_month, month, day_of_week, year
+   * - 7 fields: second, minute, hour, day_of_month, month, day_of_week, year
+   *
+   * Notes:
+   *
+   * - If year is not given, it defaults to *.
+   * - If second is not given, it defaults to 0.
+   * - Shorthands @yearly, @monthly, @weekly, @daily, and @hourly are also
+   * accepted instead of the 5-7 time fields.
+   * - @every <interval>[/<phase>] is accepted and gets compiled into an
+   * IntervalSpec instead. <interval> and <phase> should be a decimal integer
+   * with a unit suffix s, m, h, or d.
+   * - Optionally, the string can be preceded by CRON_TZ=<timezone name> or
+   * TZ=<timezone name>, which will get copied to {@link timezone}. (In which case the {@link timezone} field should be left empty.)
+   * - Optionally, "#" followed by a comment can appear at the end of the string.
+   * - Note that the special case that some cron implementations have for
+   * treating day_of_month and day_of_week as "or" instead of "and" when both
+   * are set is not implemented.
    */
   cronExpressions?: string[];
 
@@ -1110,3 +1134,24 @@ export interface ScheduleClientInterceptors {
   calls?: ScheduleClientCallsInterceptorFactory[]
 }
 ```
+
+- cron_string holds a traditional cron specification as a string. It
+- accepts 5, 6, or 7 fields, separated by spaces, and interprets them the
+- same way as CalendarSpec.
+- 5 fields: minute, hour, day_of_month, month, day_of_week
+- 6 fields: minute, hour, day_of_month, month, day_of_week, year
+- 7 fields: second, minute, hour, day_of_month, month, day_of_week, year
+- If year is not given, it defaults to \*. If second is not given, it
+- defaults to 0.
+- Shorthands @yearly, @monthly, @weekly, @daily, and @hourly are also
+- accepted instead of the 5-7 time fields.
+- Optionally, the string can be preceded by CRON_TZ=<timezone name> or
+- TZ=<timezone name>, which will get copied to timezone_name. (There must
+- not also be a timezone_name present.)
+- Optionally "#" followed by a comment can appear at the end of the string.
+- Note that the special case that some cron implementations have for
+- treating day_of_month and day_of_week as "or" instead of "and" when both
+- are set is not implemented.
+- @every <interval>[/<phase>] is accepted and gets compiled into an
+- IntervalSpec instead. <interval> and <phase> should be a decimal integer
+- with a unit suffix s, m, h, or d.
