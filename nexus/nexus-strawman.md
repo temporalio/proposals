@@ -97,7 +97,7 @@ Instantiating a Nexus Service makes it possible for the Nexus Backend to receive
 
 **Registration:**
 
-For the sake of this proposal, we will only consider the case where Nexus is registered via `nexus` CLI. In the future we may evaluate and consider alternative methods of registering a Nexus Service Instance. Registering a Nexus Service Instance would be done with the following command structure:
+For the sake of this proposal, we will only consider the case where Nexus is registered via `nexus` CLI (which will be possible via an API that is exposed). In the future we may evaluate and consider alternative methods of registering a Nexus Service Instance. Registering a Nexus Service Instance would be done with the following command structure:
 
 `tctl nexus register --name my-service --description "My service" --backend nexus-backend.example.com`
 
