@@ -29,7 +29,6 @@
 1. User defines a Nexus Request Handler that will handle the processing of Nexus Requests for the instantiated Nexus Service Instance.
 1. User hosts their Nexus Request Handler using a Nexus Worker. They must specify the Nexus Service Instance URI when starting the Nexus Worker.
 
-    // TODO (Chad): show how registration would work for generic handler
     ```go
     func main() {
         ctx := context.TODO()
