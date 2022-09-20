@@ -498,27 +498,25 @@ export interface Backfill {
 }
 
 /**
- * The range of values depends on which, if any, fields are set:
+ * Example Ranges:
  *
  * ```
- * {} -> all values
- * {start} -> start
- * {start, end} -> every value from start to end (implies step = 1)
- * {start, step} -> from start, by step (implies end is max for this field)
- * {start, end, step} -> from start to end, by step
- * {step} -> all values, by step (implies start and end are full range for this field)
- * {end} and {end, step} are not allowed
- * TODO is there a way to express not allowed ^ in type?
- * ```
- *
- * For example:
- *
- * ```
- * {start: 2, end: 10, step: 3} -> 2, 5, 8
+ * { start: 2 } ➡️ 2
+ * { start: 2, end: 4 } ➡️ 2, 3, 4
+ * { start: 2, end: 10, step: 3 } ➡️ 2, 5, 8
  * ```
  */
 export interface Range<Unit> {
-  start?: Unit;
+  /**
+   * Start of range (inclusive)
+   */
+  start: Unit;
+
+  /**
+   * End of range (inclusive)
+   *
+   * @default `start`
+   */
   end?: Unit;
 
   /**
@@ -601,7 +599,8 @@ export interface CalendarSpec {
 }
 
 /**
- * The version of {@link CalendarSpec} that you get back from {@link ScheduleHandle.describe}
+ * The version of {@link CalendarSpec} that you get back from {@link ScheduleHandle.describe} and 
+ * {@link ScheduleClient.list}
  */
 export interface CalendarSpecDescription {
   /**
@@ -861,14 +860,6 @@ export type StartWorkflowAction<Action extends Workflow> = Omit<
   type: 'startWorkflow',
 
   workflowType: string | Action;
-
-  /**
-   * Metadata that's propagated between workflows and activities? TODO someone explain headers to me so I can improve
-   * this apidoc and maybe:
-   * - remove from here and only expose to interceptor?
-   * - or make it Record<string, unknown> and apply client's data converter?
-   */
-  headers: Headers;
 };
 
 export type ScheduleActionType = Workflow;
@@ -1123,6 +1114,11 @@ interface ScheduleClientCallsInterceptor {
     input: ScheduleStartInput,
     next: Next<this, 'create'>
   ) => Promise<string /* conflictToken */>
+}
+
+interface ScheduleStartInput extends StartOptions {
+  ...StartOptions todo see other interceptors
+  headers: Headers
 }
 
 interface ScheduleClientCallsInterceptorFactoryInput {
