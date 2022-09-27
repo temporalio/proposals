@@ -1110,15 +1110,16 @@ interface ScheduleClientCallsInterceptor {
   /**
    * Intercept a service call to CreateSchedule
    */
-  create?: (
-    input: ScheduleStartInput,
+  create?: <Action extends ScheduleActionType>(
+    input: CreateScheduleInput<Action>,
     next: Next<this, 'create'>
   ) => Promise<string /* conflictToken */>
 }
 
-interface ScheduleStartInput extends StartOptions {
-  ...StartOptions todo see other interceptors
-  headers: Headers
+/** Input for {@link ScheduleClientCallsInterceptor.create} */
+interface CreateScheduleInput<Action> {
+  readonly headers: Headers
+  readonly options: ScheduleOptions<Action>;
 }
 
 interface ScheduleClientCallsInterceptorFactoryInput {
