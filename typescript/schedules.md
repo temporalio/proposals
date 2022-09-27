@@ -606,47 +606,50 @@ export interface CalendarSpecDescription {
   /**
    * Valid values: 0–59
    *
-   * @default `[{ start: 0 }]`
+   * If the default input it used, the default output will be `[{}]`.
    */
   second?: NumberSpecDescription;
 
   /**
    * Valid values: 0–59
    *
-   * @default `[{ start: 0 }]`
+   * If the default input it used, the default output will be `[{}]`.
    */
   minute?: NumberSpecDescription;
 
   /**
    * Valid values: 0–59
    *
-   * @default `[{ start: 0 }]`
+   * If the default input it used, the default output will be `[{}]`.
    */
   hour?: NumberSpecDescription;
 
   /**
    * Valid values: 1–31
    *
-   * @default `[{ start: 1, end: 31 }]`
+   * If the default input it used, the default output will be `[{ start: 1, end: 31, step: 1 }]`.
    */
   dayOfMonth?: NumberSpecDescription;
+  // step will be 0/default over wire
 
   /**
-   * @default `[{ start: 'JANUARY' , end: 'DECEMBER' }]`
+   * If the default input it used, the default output will be `[{ start: 'JANUARY' , end: 'DECEMBER', step: 1 }]`.
    */
   month?: MonthSpecDescription;
+  // will get { start: 1, end: 12, step 0 } from server
 
   /**
    * Use full years, like `2030`
    *
-   * @default `undefined` (meaning any year)
+   * If the default input it used, the default output will be `undefined` (meaning any year).
    */
   year?: NumberSpecDescription;
 
   /**
-   * @default `[{ start: 'SUNDAY', end: 'SATURDAY' }]`
+   * If the default input it used, the default output will be `[{ start: 'SUNDAY', end: 'SATURDAY', step: 1 }]`.
    */
   dayOfWeek?: DaySpecDescription;
+  // will get { start: 0, end: 6, step 0 } from server
 
   /**
    * Description of the intention of this spec.
