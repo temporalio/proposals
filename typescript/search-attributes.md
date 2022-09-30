@@ -15,14 +15,17 @@ registration.
 `workflows.ts`
 
 ```ts
-import { searchAttributes } from '@temporalio/common';
+import { defineAttribute, Keyword, Text } from '@temporalio/common/search-attributes';
 
-export const customerAttribute = searchAttributes.defineAttribute(searchAttributes.Text, 'customer');
-export const dateOfPurchaseAttribute = searchAttributes.defineAttribute(Date, 'dateOfPurchase');
+export const tagsAttribute = defineAttribute(Keyword, 'tags');
+export const customerAttribute = defineAttribute(Text, 'customer');
+export const dateOfPurchaseAttribute = defineAttribute(Date, 'dateOfPurchase');
 
 export async function myWorkflow() {
   // Get the value of a search attribute - returns string | undefined here
   const customer = customerAttribute.value();
+  // Get the value of a search attribute - returns string[] (which will be empty if unset)
+  const tags = tagsAttribute.value();
   // ... random workflow logic ...
 
   // Set the value of a search attribute, all set and unset calls are buffered and flushed out as a single command at
@@ -37,9 +40,9 @@ export async function myWorkflow() {
 `client.ts`
 
 ```ts
-import { searchAttributes } from '@temporalio/common';
+import { WorkflowType } from '@temporalio/common/search-attributes';
 import { Client, Q } from '@temporalio/client';
-import { customerAttribute, dateOfPurchaseAttribute, myWorkflow } from './workflows';
+import { customerAttribute, dateOfPurchaseAttribute, myWorkflow, tagsAttribute } from './workflows';
 
 const client = new Client(/* options */);
 
@@ -50,7 +53,7 @@ await client.operator.registerSearchAttributes(customerAttribute, dateOfPurchase
 const iterator = client.workflow.list({
   query: Q.filter(
     // WorkflowType is a pre-defined search attribute
-    Q.and(searchAttributes.WorkflowType.eq(myWorkflow.name), customerAttribute.eq('customer-id-1234')).orderBy(
+    Q.and(WorkflowType.eq(myWorkflow.name), customerAttribute.eq('customer-id-1234')).orderBy(
       dateOfPurchaseAttribute,
       'ASC' // Optionally specify DESC | ASC
     )
@@ -67,9 +70,19 @@ for await (const { workflowId, ...rest } of iterator) {
 
 const handle = client.getHandle(someWorkflowId);
 const info = await handle.describe();
-const customer = info.getAttribute(customerAttribute); // includes runtime validation - returns string | undefined
+const customer = info.getSearchAttribute(customerAttribute); // includes runtime validation - returns string | undefined
+const tags = info.getSearchAttribute(tagsAttribute);
+// ^ includes runtime validation - returns string[] (empty if not set)
+
+// TODO: should we have a string based API? Will it return single or multiple values?
+// It could look like this:
+
+const customer = info.getSearchAttribute<string>('customer'); // no runtime validation - may return undefined
+const tag = info.getSearchAttribute<string>('tags'); // no runtime validation - returns first tag or undefined
+
 // -- OR --
-const customer = info.getAttribute<string>(customer); // no runtime validation - returns string | undefined
+const [customer] = info.getSearchAttribute<string>('customer'); // returns an array that may be empty
+const tags = info.getSearchAttribute<string>('tags');
 ```
 
 ### What about the current APIs?
