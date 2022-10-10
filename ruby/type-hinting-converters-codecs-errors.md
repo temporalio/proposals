@@ -112,14 +112,10 @@ A payload converter is expected to implement the following interface:
 
 ```ruby
 interface _PayloadConverter[U]
-  # Returns whether or not it can decode a given Payload
-  def can_decode?: (Temporal::Payload) -> Bool
-
   # Takes any Ruby object and returns a Payload object
   def to_payload: (U) -> Temporal::Payload
 
   # Takes a Payload object and returns a Ruby object
-  # Only called after a positive response from the #can_decode? method
   def from_payload: (Temporal::Payload) -> U
 end
 ```
@@ -129,9 +125,26 @@ bytes) and JSON (using the `oj` gem and potentially allowing the SDK user to spe
 [mode](https://github.com/ohler55/oj/blob/develop/pages/Modes.md)). We will also provide a
 `Composite` converter to combine multiple converters behind the same interface.
 
-To signal the `Composite` converter that a converter is unable to encode provided data it should
-throw a `Temporal::IncompatibleData` error. In this case the `Composite` converter will try the
-other converters it was initialized with.
+In most cases the SDK users are expected to use the `Composite` converter and add their custom
+converters to it. These are expected to have a slightly different interface:
+
+```ruby
+interface _EncodingPayloadConverter[U]
+  # Returns a MIME type that this converter provides
+  def encoding: -> String
+
+  # Takes any Ruby object and returns a Payload object or nil
+  # A nil response indicates that this converter was unable to convert the given value
+  def to_payload: (U) -> Temporal::Payload?
+
+  # Takes a Payload object and returns a Ruby object
+  def from_payload: (Temporal::Payload) -> U
+end
+```
+
+While a top-level converter is expected to convert any value to a Payload and back (or throw an
+error otherwise), an encoding payload converter (the one used with the `Composite` converter) is
+only expected to handle values and Payload matching it's specified encoding.
 
 
 ### Codecs
@@ -189,6 +202,7 @@ Notes:
 
 - Converters and codecs both can be classes and class instances as long as the given object
   implements the required interface
+- The order of both the `Composite` encoding converters and payload codecs matters
 - This API is still being figured out to accommodate future features and configuration params
 
 
