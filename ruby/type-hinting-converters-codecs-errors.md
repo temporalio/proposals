@@ -115,10 +115,11 @@ interface _PayloadConverter[U]
   # Returns whether or not it can decode a given Payload
   def can_decode?: (Temporal::Payload) -> Bool
 
-  # Takes any Ruby object and returns a Payload object or nil if unable to convert
+  # Takes any Ruby object and returns a Payload object
   def to_payload: (U) -> Temporal::Payload
 
-  # Takes a Payload object and returns a Ruby object. Only called on a matching encoding
+  # Takes a Payload object and returns a Ruby object
+  # Only called after a positive response from the #can_decode? method
   def from_payload: (Temporal::Payload) -> U
 end
 ```
@@ -127,6 +128,10 @@ The SDK will provide an implementation of basic converters — Null (for `nil`s)
 bytes) and JSON (using the `oj` gem and potentially allowing the SDK user to specify the
 [mode](https://github.com/ohler55/oj/blob/develop/pages/Modes.md)). We will also provide a
 `Composite` converter to combine multiple converters behind the same interface.
+
+To signal the `Composite` converter that a converter is unable to encode provided data it should
+throw a `Temporal::IncompatibleData` error. In this case the `Composite` converter will try the
+other converters it was initialized with.
 
 
 ### Codecs
@@ -215,12 +220,10 @@ module Temporal
   # superclass for all errors within the SDK itself
   class InternalError < Error
 
-  class ClientError < InternalError # errors specific to Client
-  class MissingNamespace < ClientError
+  class ClientError < Error # errors specific to Client
   ...
 
   class WorkerError < InternalError # errors specific to Worker
-  class TooManyStickyWorkflows < WorkerError
   ...
 
   # superclass for connection and network errors
@@ -233,22 +236,19 @@ module Temporal
   # superclass for errors related to the server and it's responses
   class ServerError < Error
 
-  class MissingWorkflowHistory < ServerError
-  class ExpectedSingleCloseEvent < ServerError
+  class UnexpectedError < ServerError
   ...
 
   # superclass for all API failure responses
   class APIError < ServerError
 
   class WorkflowExecutionAlreadyStarted < APIError
+  class NamespaceNotFound < APIError
   class NamespaceNotActive < APIError
   ...
 
-  # superclass for type hinting errors
+  # type hinting errors
   class TypeError < Error
-
-  class WrongType < TypeError
-  class UnsupportedType < TypeError
   ...
 
   # superclass for workflow errors
@@ -263,7 +263,6 @@ module Temporal
   class ActivityError < Error
 
   class MissingActivity < ActivityError
-  class MissingHeartbeat < ActivityError
   ...
 ```
 
