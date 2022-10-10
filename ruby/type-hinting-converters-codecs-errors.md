@@ -141,9 +141,11 @@ And a payload codec is expected to implement this interface:
 ```ruby
 interface _PayloadCodec
   # Takes an array of Payload objects and returns an array of encoded Payload object
+  # The resulting Array is expected to hold at least one Payload
   def encode: (Array[Temporal::Payload]) -> Array[Temporal::Payload]
 
   # Takes an array of Payloads object and returns an array of decoded Payload object
+  # The resulting Array is expected to hold at least one Payload
   def decode: (Array[Temporal::Payload]) -> Array[Temporal::Payload]
 end
 ```
