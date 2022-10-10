@@ -222,53 +222,33 @@ module Temporal
   # superclass for all errors within the SDK itself
   class InternalError < Error
 
-  class ClientError < Error # errors specific to Client
-  ...
+  # errors specific to Client
+  class ClientError < Error
 
-  class WorkerError < InternalError # errors specific to Worker
-  ...
+  # errors specific to Worker
+  class WorkerError < InternalError
 
   # superclass for connection and network errors
-  class NetworkError < Error
-
-  class TimeoutError < NetworkError
-  class HostUnreachable < NetworkError
-  ...
+  class RPCError < Error
 
   # superclass for errors related to the server and it's responses
   class ServerError < Error
-
   class UnexpectedError < ServerError
-  ...
 
   # superclass for all API failure responses
   class APIError < ServerError
 
-  class WorkflowExecutionAlreadyStarted < APIError
-  class NamespaceNotFound < APIError
-  class NamespaceNotActive < APIError
-  ...
-
   # type hinting errors
   class TypeError < Error
-  ...
 
   # superclass for workflow errors
   class WorkflowError < Error
 
-  class Cancelled < WorkflowError
-  class UnsupportedQuery < WorkflowError
-  class DeadLockDetected < WorkflowError
-  ...
-
   # superclass for activity errors
   class ActivityError < Error
-
-  class MissingActivity < ActivityError
-  ...
 ```
 
 Notes:
 
-- This is just an example, but obviously more error types are expected
+- This list is not exhaustive, more errors will be added as parts of the SDK are getting built
 - Some concrete error class placement might be confusing and will be clarified later in the process
