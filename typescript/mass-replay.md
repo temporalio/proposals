@@ -16,17 +16,17 @@ the base level APIs proposed are (in order):
 See https://github.com/temporalio/proposals/pull/67
 
 Which includes functions for listing workflows according to some query params.
-Those functions return something like `Iterable<WorkflowExecutionInformation>`
+Those functions return something like `AsyncIterable<WorkflowExecutionInformation>`
 
 ## Downloading
 This is simply a matter of (lazily) mapping the iterable:
-`Iterable<WorkflowExecutionInformation> -> AsyncIterable<WorkflowIDAndHistory>`
+`AsyncIterable<WorkflowExecutionInformation> -> AsyncIterable<WorkflowIDAndHistory>`
 
 Preserving the workflow id is important, since history does not include it
 by itself.
 
 By itself, this would look something like:
-`const historyIterator = client.workflow.downloadLazily(workflowIds)`
+`const historyIterator = client.workflow.downloadLazily(workflowIds, { concurrency: 10 })`
 
 Which would be sugar for creating a returning an async iterator which calls
 `getExecutionHistory` on each id. This might include doing so concurrently
@@ -72,7 +72,7 @@ const iterator = client.workflow.list({
   pageSize: 100,
 });
 const histories = client.workflow.downloadLazily(iterator);
-const result = worker.runReplayHistories({ whatever: 'options' }, histories).await;
+const result = await Worker.runReplayHistories({ whatever: 'options' }, histories);
 ```
 
 ## But wait there's more
@@ -80,9 +80,9 @@ Arguably, the above is still a bit too manual. We could, in addition to the
 base APIs, provide a more "all-in-one" approach:
 
 ```typescript
-const result = worker.validateCompatabilityWithQueue(
-    client, 'task_queue_foo', { sample_strategy: mostRecent(500) }
-).await;
+const result = await Worker.validateCompatabilityWithQueue(
+    client, 'task_queue_foo', { sampleStrategy: mostRecent(500) }
+);
 ```
 
 Which wraps up all of the above. Different strategies can be introduced over
