@@ -242,12 +242,9 @@ module Temporal
   # errors specific to Worker
   class WorkerError < InternalError
 
-  # superclass for connection and network errors
+  # superclass for connection, network and response errors
   class RPCError < Error
-
-  # superclass for errors related to the server and it's responses
-  class ServerError < Error
-  class UnexpectedError < ServerError
+  class UnexpectedError < RPCError
 
   # superclass for all API failure responses
   class APIError < ServerError
@@ -257,12 +254,151 @@ module Temporal
 
   # superclass for workflow errors
   class WorkflowError < Error
-
-  # superclass for activity errors
-  class ActivityError < Error
 ```
 
 Notes:
 
 - This list is not exhaustive, more errors will be added as parts of the SDK are getting built
 - Some concrete error class placement might be confusing and will be clarified later in the process
+
+
+### Converting API Failures
+
+Similar to other SDKs we will decode `Failure` proto messages to native error classes. All `cause`s
+will be decoded recursively and the result will form a hierarchy identical to the one in the proto
+response. These error classes will all be subclasses of an `APIError` and will have names matching
+the original protobuf messages (while replacing `Failure` with `Error` for consistency within Ruby):
+
+```ruby
+module Temporal
+  class ApplicationError < APIError
+  class TimeoutError < APIError
+  class CanceledError < APIError
+  class TerminatedError < APIError
+  class ServerError < APIError
+  class ResetWorkflowError < APIError
+  class ActivityError < APIError
+  class ChildWorkflowExecutionError < APIError
+end
+```
+
+At this point we are not going to be converting user errors back to their original classes. These
+will be decoded into `ApplicationError`s while keeping the original class name, message, stack trace
+and other details. Here's an example of handling an activity error:
+
+```ruby
+class ProcessPaymentActivity < Temporal::Activity
+  class InsufficientFunds < Temporal::NonRetryableError; end
+  class PaymentNetworkError < Temporal::RetryableError
+    attr_reader :status
+
+    def initialize(message, status)
+      super(message)
+      @status = status
+    end
+  end
+
+  def execute(account, amount)
+    if amount < balance_of(account.number)
+      raise InsufficientFunds, "Account #{account.number} does not have enough funds"
+    end
+
+    response = process_payment(account.number, amount)
+    if response.failure?
+      raise PaymentNetworkError, response.message, response.status
+    end
+
+    ...
+  end
+end
+
+class RenewSubscriptionWorkflow < Temporal::Workflow
+  def execute
+    ...
+
+    begin
+      workflow.execute_activity(ProcessPaymentActivity, account, amount)
+    rescue Temporal::ActivityError => error
+      if error.cause.is_a?(Temporal::ApplicationError)
+        case error.cause.original_class
+        when 'ProcessPaymentActivity::InsufficientFunds'
+          # handle insufficient funds error here
+        when 'ProcessPaymentActivity::PaymentNetworkError'
+          # handle payment network error
+          # notice that status is not available
+        end
+      end
+
+      # You'll need to re-raise the error in case it wasn't handled
+      raise
+    end
+
+    ...
+  end
+end
+```
+
+Application errors will be encoded/decoded using the same Payload converters as the other payloads.
+This also means that if an error class implements `#to_json` / `.json_create` (as suggested by the
+[Ruby's JSON module](https://ruby-doc.org/stdlib-3.1.2/libdoc/json/rdoc/JSON.html#module-JSON-label-Custom+JSON+Additions))
+then we will be able to recreate the original error class:
+
+```ruby
+  class ProcessPaymentActivity < Temporal::Activity
+    class InsufficientFunds < Temporal::NonRetryableError
+      # Add default serialization to an standard looking error
+      include Temporal::JSON::SerializableError
+    end
+    class PaymentNetworkError < Temporal::RetryableError
+      attr_reader :status
+
+      def self.json_create(object)
+        new(object['message'], object['status'])
+      end
+
+      def initialize(message, status)
+        super(message)
+        @status = status
+      end
+
+      def to_json(*args)
+        {
+          JSON.create_id  => self.class.name,
+          'message' => message,
+          'status' => 'status',
+        }.to_json(*args)
+      end
+    end
+
+    # same #execute as the previous example
+  end
+
+  class RenewSubscriptionWorkflow < Temporal::Workflow
+    def execute
+      ...
+
+      begin
+        workflow.execute_activity(ProcessPaymentActivity, account, amount)
+      rescue ProcessPaymentActivity::InsufficientFunds
+        # handle insufficient funds error here
+      rescue ProcessPaymentActivity::PaymentNetworkError => e
+        # handle payment network error
+        # e.status is available as expected
+      end
+
+      ...
+    end
+  end
+```
+
+To allow customisation of this behaviour we will expose an interface for failure conversion:
+
+```ruby
+interface _FailureConverter
+  # Takes any Ruby error and returns a Failure object
+  def to_failure: (Temporal::Error) -> Temporal::Failure
+
+  # Takes a Failure object and returns a Ruby error
+  def from_failure: (Temporal::Failure) -> Temporal::Error
+end
+```
