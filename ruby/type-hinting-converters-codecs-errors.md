@@ -147,6 +147,12 @@ error otherwise), an encoding payload converter (the one used with the `Composit
 only expected to handle values and Payload matching it's specified encoding.
 
 
+#### JSON Converter
+
+The default JSON converter will respect [the interface](https://ruby-doc.org/stdlib-3.1.2/libdoc/json/rdoc/JSON.html#module-JSON-label-Custom+JSON+Additions)
+provided by the Ruby's JSON module to serialize/deserialize an object.
+
+
 ### Codecs
 
 And a payload codec is expected to implement this interface:
@@ -162,66 +168,6 @@ interface _PayloadCodec
   def decode: (Array[Temporal::Payload]) -> Array[Temporal::Payload]
 end
 ```
-
-
-### Configuring client/worker
-
-In order to use the defined converters and codecs, these need to be supplied to a client and worker.
-
-```ruby
-converter = Temporal::Converters::Composite.new(
-  Temporal::Converters::Null,
-  Temporal::Converters::Bytes,
-  MyProtobufConverter.new
-)
-codecs = [EncryptionCodec.new(KEY_ID), CompressionCodec]
-
-connection = Temporal::Connection.new('http://localhost:7233')
-client = Temporal::Client.new(
-  connection,
-  'my-namespace',
-  payload_converter: converter,
-  payload_codecs: codecs
-)
-
-worker = Temporal::Worker.new(
-  connection,
-  namespace: 'demo',
-  task_queue: 'demo',
-  workflows: [...],
-  activities: [...],
-  payload_converter: converter,
-  payload_codecs: codecs
-)
-```
-
-*This does indeed involve some duplication and we might simplify this initialization later
-on. But it's outside the scope for this proposal.*
-
-Notes:
-
-- Converters and codecs both can be classes and class instances as long as the given object
-  implements the required interface
-- The order of both the `Composite` encoding converters and payload codecs matters
-- This API is still being figured out to accommodate future features and configuration params
-
-
-## Data conversion
-
-All the previously outlined modules are required to facilitate the process of data conversion.
-Here's the diagram representing it:
-
-![Data conversion](./images/data-conversion.png)
-
-This describes the process that every piece of data (workflow/activity args and return values,
-signal inputs, query results, headers, memos, etc) goes through getting transformed from the
-user-land object to something that can be transmitted over the wire.
-
-*NOTE: As mentioned previously, the "Type hints" are optional and will be omitted altogether unless
-defined.*
-
-The reverse process is applied when converting the data from a protobuf received over the wire back
-to a use-land object.
 
 
 ## Errors
@@ -402,3 +348,65 @@ interface _FailureConverter
   def from_failure: (Temporal::Failure) -> Temporal::Error
 end
 ```
+
+
+### Configuring client/worker
+
+In order to use the defined converters and codecs, these need to be supplied to a client and worker.
+
+```ruby
+converter = Temporal::Converters::Composite.new(
+  Temporal::Converters::Null,
+  Temporal::Converters::Bytes,
+  MyProtobufConverter.new
+)
+codecs = [EncryptionCodec.new(KEY_ID), CompressionCodec]
+
+connection = Temporal::Connection.new('http://localhost:7233')
+client = Temporal::Client.new(
+  connection,
+  'my-namespace',
+  payload_converter: converter,
+  payload_codecs: codecs,
+  failure_converter: MyFailureConverter.new,
+)
+
+worker = Temporal::Worker.new(
+  connection,
+  namespace: 'demo',
+  task_queue: 'demo',
+  workflows: [...],
+  activities: [...],
+  payload_converter: converter,
+  payload_codecs: codecs
+)
+```
+
+*This does indeed involve some duplication and we might simplify this initialization later
+on. But it's outside the scope for this proposal.*
+
+Notes:
+
+- All converters and codecs are optional and defaults will be used in case none are provided
+- Converters and codecs both can be classes and class instances as long as the given object
+  implements the required interface
+- The order of both the `Composite` encoding converters and payload codecs matters
+- This API is still being figured out to accommodate future features and configuration params
+
+
+## Data conversion
+
+All the previously outlined modules are required to facilitate the process of data conversion.
+Here's the diagram representing it:
+
+![Data conversion](./images/data-conversion.png)
+
+This describes the process that every piece of data (workflow/activity args and return values,
+signal inputs, query results, headers, memos, etc) goes through getting transformed from the
+user-land object to something that can be transmitted over the wire.
+
+*NOTE: As mentioned previously, the "Type hints" are optional and will be omitted altogether unless
+defined.*
+
+The reverse process is applied when converting the data from a protobuf received over the wire back
+to a use-land object.
