@@ -2,6 +2,9 @@
 
 ## What is being proposed? (TL;DR;)
 
+![image](https://user-images.githubusercontent.com/27736122/196280592-68234007-95d2-4d94-8b21-4b7a068f3677.png)
+**An amazing image created by [Dan Davison](https://github.com/dandavison) which captures the overall proposal**
+
 1. New platform agnostic standard - **Arbitrary Length Operations** (ALO). An ALO describes a request/response style interaction which runs for an arbitrary length period of time. Due to the inherent unpredictability of an ALO, special considerations must be taken when handling them. We are proposing standardization of the ALO concept which would enable Workflow-esque calling semantics even outside of Temporal.
 
 1. **Nexus** a standardized primitive supported by Temporal which enables users to define their Temporal APIs as they see fit without being limited to the implementation specifics of Workflows and Activities. A Nexus acts as a protocol independent routing layer. Users can map incoming payloads to Workflows, Activities and their methods.
