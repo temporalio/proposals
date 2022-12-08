@@ -480,7 +480,7 @@ Console.CancelKeyPress += (sender, eventArgs) => {
     eventArgs.Cancel = true;
     cts.Cancel();
 };
-await worker.ExecuteAsync(ctx.Token);
+await worker.ExecuteAsync(cts.Token);
 ```
 
 Looks like:
@@ -597,11 +597,9 @@ public record DataConverter(
 
 public interface IPayloadConverter
 {
-    IEnumerable<Temporal.Api.Common.V1.Payload> ToPayloads(
-        IReadOnlyCollection<object> values);
+    Temporal.Api.Common.V1.Payload ToPayload(object value);
 
-    IEnumerable ToValues(
-        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads, IReadOnlyCollection<Type>? types = null);
+    object? ToValue(Type type, Temporal.Api.Common.V1.Payload payload);
 }
 
 public interface IEncodingPayloadConverter
@@ -610,7 +608,7 @@ public interface IEncodingPayloadConverter
 
     bool TryToPayload(object value, out Temporal.Api.Common.V1.Payload payload);
 
-    object ToValue(Temporal.Api.Common.V1.Payload payload, Type? type = null);
+    object? ToValue(Type type, Temporal.Api.Common.V1.Payload payload);
 }
 
 public record PayloadConverter(IEnumerable<IEncodingConverter> EncodingConverters) : IPayloadConverter
@@ -622,11 +620,9 @@ public record PayloadConverter(IEnumerable<IEncodingConverter> EncodingConverter
         new BinaryProtoConverter(),
         new JsonPlainConverter() }) { /*...*/ }
 
-    public IEnumerable<Temporal.Api.Common.V1.Payload> ToPayloads(
-        IReadOnlyCollection<object> values) { /*...*/ }
+    public Temporal.Api.Common.V1.Payload ToPayload(object value) { /*...*/ }
 
-    public IEnumerable ToValues(
-        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads, IReadOnlyCollection<Type>? types = null) { /*...*/ }
+    object? ToValue(Type type, Temporal.Api.Common.V1.Payload payload) { /*...*/ }
 }
 
 public class BinaryNullConverter : IEncodingPayloadConverter { /*...*/ }
@@ -653,16 +649,49 @@ public record FailureConverter(bool EncodeCommonAttributes = false) : IFailureCo
 
 public interface IPayloadCodec
 {
-    IEnumerable<Temporal.Api.Common.V1.Payload> Encode(IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads);
+    Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Encode(
+        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads);
 
-    IEnumerable<Temporal.Api.Common.V1.Payload> Decode(IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads);
+    Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Decode(
+        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads);
 }
 
-public record CompositePayloadCodec(IEnumerable<PayloadCodec> Codecs) : IPayloadCodec
+public record CompositePayloadCodec(IEnumerable<IPayloadCodec> Codecs) : IPayloadCodec
 {
-    public IEnumerable<Temporal.Api.Common.V1.Payload> Decode(IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads) { /*...*/ }
+    public Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Decode(
+        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads) { /*...*/ }
     
-    public IEnumerable<Temporal.Api.Common.V1.Payload> Encode(IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads) { /*...*/ }
+    public Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Encode(
+        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads) { /*...*/ }
+}
+
+public static class ConverterExtensions
+{
+    public static Task<IEnumerable<Temporal.Api.Common.V1.Payload>> ToPayloads(
+        this IDataConverter converter,
+        IReadOnlyCollection<object> values) { /*...*/ }
+
+    // The types are intentionally separated from the payloads here because they
+    // can be different sizes since a codec can decode into a different sized
+    // set of payloads than it was given.
+    public static Task<IEnumerable<object>> ToValues(
+        this IDataConverter converter,
+        IReadOnlyCollection<IEnumerable<Temporal.Api.Common.V1.Payload>> payloads,
+        IReadOnlyCollection<Type> types) { /*...*/ }
+
+    public static Task<Exception> ToException(
+        this IDataConverter converter,
+        Temporal.Api.Failure.V1.Failure failure) { /*...*/ }
+
+    public static Task<Temporal.Api.Failure.V1.Failure> ToFailure(
+        this IDataConverter converter,
+        Exception exception) { /*...*/ }
+
+    public static T? ToValue<T>(this IPayloadConverter converter, Temporal.Api.Common.V1.Payload payload) { /*...*/ }
+
+    public static Task EncodeFailure(this IPayloadCodec codec, Temporal.Api.Failure.V1.Failure failure) { /*...*/ }
+
+    public static Task DecodeFailure(this IPayloadCodec codec, Temporal.Api.Failure.V1.Failure failure) { /*...*/ }
 }
 ```
 
@@ -670,9 +699,6 @@ Notes:
 
 * Should we prepare for some kind of .NET sandbox now by changing `DataConverter`'s `IPayloadConverter PayloadConverter`
   to instead be a `Type PayloadConverterType`? (don't think we want generics there though)
-* Each top-level class/interface is of course its own file. Technically the nested classes violate some .NET
-  conventions (https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/nested-types), but those are more
-  general guidelines, and having a top-level file for every one of these things is annoying
 
 ## Exceptions
 
@@ -699,7 +725,6 @@ public class FailureException : TemporalException
 // Intentionally extensible
 public class AppException : FailureException
 {
-
     public AppException(IEnumerable<object>? details = null, string? type = null, bool nonRetryable = false)
     {
         Type = type;
@@ -710,11 +735,15 @@ public class AppException : FailureException
 
     public bool NonRetryable { get; protected init; }
 
+    public bool HasDetails { get { /*...*/ } }
+
+    public int DetailCount { get { /*...*/ } }
+
+    public T GetDetail<T>(int index = 0) { /*...*/ }
+
     public IEnumerable<object>? OutboundDetails { get; protected init; }
 
     public IReadOnlyCollection<Temporal.Api.Common.V1.Payload>? InboundDetails { get; protected init; }
-
-    public bool HasDetails { get { /*...*/ } }
 }
 
 // Many more not listed
@@ -726,10 +755,11 @@ Notes:
   https://pkg.go.dev/go.temporal.io/api/serviceerror + https://pkg.go.dev/go.temporal.io/sdk/temporal wrt errors.
 * `AppException` is not `ApplicationException` to avoid clash with `System.ApplicationException`
 * `AppException` is the only inheritable exception
+  * All abstract exceptions will have `internal` constructors and non-abstract ones will be `sealed`
 * We have to differentiate outbound (converted) details and inbound (not converted) details since, like some other SDKs,
   we cannot convert this stuff until the type is provided to do so
-  * Should we store the converter on the exception for easy conversion? Then we could have
-  `public T GetDetail<T>(int index = 0)`
+  * We offer `GetDetail` for getting detail values. For outbound exceptions this attempts a cast. For inbound
+    exceptions, this exception object will carry a converter with it and convert as requested
 
 ## Interceptors
 
@@ -790,7 +820,7 @@ Notes:
   things like OTel)
 * Support for default iface impls in all but the oldest .NET versions
 * Decided abstract with virtuals was a clearer abstraction for the logic of the interceptors than interfaces with
-  default impls (also helps those really old .NET versions)
+  default impls (also helps those really old .NET versions that don't have default interface impl support)
 
 ## Testing
 
