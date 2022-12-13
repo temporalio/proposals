@@ -2,8 +2,8 @@
 
 The .NET SDK will be implemented in three loosely defined phases:
 
-* Phase 1 - Initial project, activity worker, and client
-* Phase 2 - Workflow worker
+* Phase 1 - Initial project, activity worker, client, and test framework
+* Phase 2 - Workflow worker and replayer
 * Phase 3 - Deterministic workflow sandbox and/or static analyzer
 
 This proposal is for phase 1.
@@ -966,6 +966,68 @@ https://learn.microsoft.com/en-us/dotnet/core/extensions/workers
     easy for a user to create and we will of course have a sample
 
 ## General Decision Justifications/Discussion
+
+#### Why method references instead of proxy lambdas
+
+Some utilities like Azure Durable Entities support invoking a method on a proxied version of an item instead of just
+referencing the method. There are pros and cons. To discuss, here are examples and cons of each approach:
+
+##### With method references
+
+```csharp
+// Start a workflow
+var handle = await client.StartWorkflowAsync(
+    IMyWorkflow.Ref.RunAsync, "some arg", new(ID: "my-workflow-id", TaskQueue: "my-task-queue"));
+
+// Send a signal
+await handle.Signal(
+    IMyWorkflow.Ref.SignalAsync, "some arg");
+
+// Invoke activity from workflow (future guess)
+await ExecuteActivity(
+    MyActivities.Ref.Activity, "some arg", new(StartToCloseTimeout: TimeSpan.FromHours(5)));
+```
+
+Cons:
+
+* You have to make a reference to the class whose methods you need to reference
+* You can't have the handle typed with the workflow class
+  * So for example you won't get a compile-time failure if you invoke a signal from some other workflow
+  * With lambdas we might be able to have them typed though
+* Can only support 0 or 1 parameters
+  * Can technically add generic overloads for more parameters, but you have to stop somewhere
+  * This is an inherent problem in .NET in several things and why you often see a dozen overloads for a method
+
+##### With lambda
+
+```csharp
+// Start a workflow
+var handle = await client.StartWorkflowAsync<IMyWorkflow>(
+    myWf => myWf.RunAsync("some arg"), new(ID: "my-workflow-id", TaskQueue: "my-task-queue"));
+
+// Send a signal
+await handle.Signal(
+    myWf => myWf.SignalAsync("some arg"));
+
+// Invoke activity from workflow (future guess)
+await ExecuteActivity<MyActivities>(
+    myAct => myAct.Activity("some arg"), new(StartToCloseTimeout: TimeSpan.FromHours(5)));
+```
+
+Cons:
+
+* Every method must be virtual or on an interface
+  * Cannot proxy regular methods which is a bit off-putting. This works for Azure because they make you opt-in to the
+    typed approach
+    [by forcing interfaces](https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-dotnet-entities#accessing-entities-through-interfaces) which we don't want to do
+  * Cannot proxy static methods
+    * We should support static activities, so you'd have method references anyways probably
+* We cannot control what a user calls in the lambda
+  * Would we prevent multiple proxied calls?
+  * Even if we do provide a "must make one and only one proxied call", it's a runtime check not a compile-time one
+* You cannot proxy static calls
+  * We should support static activities, so you'd have method references anyways probably
+* Not having lambdas as the last parameter is a bit rough looking sometimes
 
 #### Why `Temporalio` NuGet package but `Temporal` namespace?
 
