@@ -19,42 +19,28 @@ Notes for this proposal:
 The .NET SDK will be backed by [sdk-core](https://github.com/temporalio/sdk-core), utilizing "P/Invoke" and a
 custom-built bridge.
 
-The high-level goals for the .Net SDK are:
+The high-level goals for the .NET SDK are:
 
 * Be as simple as possible from a caller POV
 * Be as lightweight as reasonable with regards to dependencies
 * Be reasonably flexible with reasonable defaults
-* Fit well into the .Net ecosystem
+* Fit well into the .NET ecosystem
 * Minimum versions supported: .NET Core 3.1, .NET Standard 2.0, and .NET Framework 4.6.2
 * All common 64-bit platforms supported, 32-bit maybe later
 
 ## Repository Management
 
 The existing repository at https://github.com/temporalio/sdk-dotnet has hundreds of commits, dozens of issues, open PRs,
-GH pages, etc that don't align with this proposal necessarily. After some thought, it has been decided to:
-
-* Create a new https://github.com/temporalio/sdk-dotnet-incubating repo for the very first commits
-* After that repo has some code and API doc gen capability:
-  * Rename https://github.com/temporalio/sdk-dotnet to https://github.com/temporalio/legacy-dotnet (note the
-    intentionally absent "sdk" term for SEO reasons)
-    * Add README note on https://github.com/temporalio/legacy-dotnet pointing to
-      https://github.com/temporalio/sdk-dotnet
-    * Disable GH pages
-    * Archive it
-    * Consider deletion at some point in the future
-  * Rename https://github.com/temporalio/sdk-dotnet-incubating to https://github.com/temporalio/sdk-dotnet
-  * Update DNS for https://dotnet.temporal.io/ to point to vercel-based API docs page
-
-Doing the repo rename was deemed easier than going through manually closing issues, closing PRs, creating empty `main`
-branch, and keeping `master` branch around for those reading older code.
+GH pages, etc that don't align with this proposal necessarily. After some thought, it has been decided to move that
+repository and create https://github.com/temporalio/sdk-dotnet again fresh.
 
 ## Namespace/Package
 
 * Will publish as `Temporalio`
   * Need to reserve prefix `Temporalio` on NuGet, see
     https://learn.microsoft.com/en-us/nuget/nuget-org/id-prefix-reservation
-* Namespace will be `Temporal`
-  * See discussion topics later about this being `Temporal.Sdk` instead
+* Namespace will be `Temporalio`
+  * See discussion topics later about this being `Temporalio.Sdk` instead
 
 ## Workflow Definition
 
@@ -64,7 +50,7 @@ Here's a definition for an other-language-defined workflow (from Python README):
 namespace MyNamespace;
 
 using System.Text.Json.Serialization;
-using Temporal.Workflow;
+using Temporalio.Workflow;
 
 public record GreetingInfo
 {
@@ -97,7 +83,7 @@ public interface IGreetingWorkflow
 Notes:
 
 * We use regular .NET JSON serialization (see data conversion later)
-* Workflow attributes, and in the future workflow runtime features, are in the `Temporal.Workflow` namespace
+* Workflow attributes, and in the future workflow runtime features, are in the `Temporalio.Workflow` namespace
 * We only support workflow interfaces right now because we don't have a workflow implementation yet
   * For now, everything non-static must have some form of `[Workflow` attribute, and not have a default implementation
 * Every workflow interface must have the non-inheritable `Workflow` attribute
@@ -120,7 +106,7 @@ Notes:
 * Users are encouraged to set a `static` `readonly` `Ref` property for use by clients
   * `Refs<T>.Instance` is how it is obtained
     * Also will do validation which will be shared in the future by the workflow worker
-    * `Refs` is in `Temporal` not `Temporal.Workflow`
+    * `Refs` is in `Temporalio` not `Temporalio.Workflow`
   * This is backed by a dynamic proxy
   * Really old versions of .NET (i.e. would be rarely used by users, < C# 8), don't allow a `static readonly` property on the
     interface and therefore they have to make their `Ref` elsewhere
@@ -132,12 +118,12 @@ Common static definition:
 ```csharp
 namespace MyNamespace;
 
-using Temporal.Activity;
+using Temporalio.Activity;
 
 public static class GreetingActivities
 {
     [Activity(Name = "create_greeting_activity")]
-    public static async Task<string> CreateGreeting(GreetingInfo info)
+    public static async Task<string> CreateGreetingAsync(GreetingInfo info)
     {
         return $"{info.Salutation}, {info.Name}!";
     }
@@ -149,7 +135,7 @@ Common instance definition:
 ```csharp
 namespace MyNamespace;
 
-using Temporal.Activity;
+using Temporalio.Activity;
 
 public class GreetingActivities
 {
@@ -190,7 +176,7 @@ Notes:
 The activity context looks like this:
 
 ```csharp
-namespace Temporal.Activity;
+namespace Temporalio.Activity;
 
 public class ActivityContext
 {
@@ -229,16 +215,16 @@ Notes:
 
 ### Async Completion
 
-Simply `throw new Temporal.Activity.CompleteAsyncException` from the activity.
+Simply `throw new Temporalio.Activity.CompleteAsyncException` from the activity.
 
 ## Client
 
-Inside the `Temporal.Client` namespace, we have the following types:
+Inside the `Temporalio.Client` namespace, we have the following types:
 
 * `TemporalClient` - namespace-specific, stateless high-level client to Temporal
   * See later for most of its API design
   * Accepts `ITemporalConnection`
-  * Implements `ITemporalClient` for DI use (which itself implements `Temporal.Worker.IWorkerClient` for worker use)
+  * Implements `ITemporalClient` for DI use (which itself implements `Temporalio.Worker.IWorkerClient` for worker use)
 * `TemporalConnection` - namespace-agnostic, stateful low-level client to Temporal
   * Has `WorkflowService`, `OperatorService`, etc for making raw gRPC calls
   * Supports lazy connectivity
@@ -249,7 +235,7 @@ Inside the `Temporal.Client` namespace, we have the following types:
 Example of starting the workflow defined earlier in document, signalling it, then waiting on its results:
 
 ```csharp
-using Temporal.Client;
+using Temporalio.Client;
 using MyNamespace;
 
 // Connect
@@ -269,7 +255,7 @@ Console.WriteLine(await handle.GetResultAsync());
 Example of doing the same via already started workflow:
 
 ```csharp
-using Temporal.Client;
+using Temporalio.Client;
 using MyNamespace;
 
 // Connect
@@ -293,7 +279,7 @@ user would rather not provide the type until fetching the result. See the defini
 Looks like:
 
 ```csharp
-namespace Temporal.Client;
+namespace Temporalio.Client;
 
 public class TemporalClient : ITemporalClient
 {
@@ -318,7 +304,13 @@ public class TemporalClient : ITemporalClient
     public async Task<WorkflowHandle<TResult>> StartWorkflowAsync<T, TResult>(
         Func<T, Task<TResult>> workflow, T arg, StartWorkflowOptions options) { /*...*/ }
 
-    public async Task<WorkflowHandle<Nothing>> StartWorkflowAsync(
+    public async Task<WorkflowHandle> StartWorkflowAsync(
+        Func<Task> workflow, StartWorkflowOptions options) { /*...*/ }
+
+    public async Task<WorkflowHandle> StartWorkflowAsync<T>(
+        Func<T, Task> workflow, T arg, StartWorkflowOptions options) { /*...*/ }
+
+    public async Task<WorkflowHandle> StartWorkflowAsync(
         string workflow, object[] args, StartWorkflowOptions options) { /*...*/ }
 
     public async Task<WorkflowHandle<TResult>> StartWorkflowAsync<TResult>(
@@ -326,7 +318,7 @@ public class TemporalClient : ITemporalClient
 
     // GetWorkflowHandle
 
-    public WorkflowHandle<Nothing> GetWorkflowHandle(
+    public WorkflowHandle GetWorkflowHandle(
         string workflowID, string? runID = null, string? firstExecutionRunID = null) { /*...*/ }
 
     public WorkflowHandle<TResult> GetWorkflowHandle<TResult>(
@@ -342,7 +334,7 @@ public class TemporalClient : ITemporalClient
 
     // ListWorkflowsAsync
 
-    public WorkflowExecutionEnumerator ListWorkflows(
+    public IAsyncEnumerator<WorkflowExecution> ListWorkflows(
         string query,
         ListWorkflowsOptions? options = null,
     ) { /*...*/ }
@@ -353,10 +345,12 @@ public class TemporalClient : ITemporalClient
 
 Notes:
 
+* There is no lazy connection/client like there is in other languages
+  * Originally the code had a `Lazy` connection option, but the team decided they wanted it removed
 * There will be `ExecuteWorkflowAsync` helper methods for each `StartWorkflowAsync` overload there
 * It was decided forcing an options object is easier than lots of parameters for start workflow
-* Notice that there is a string-based workflow `StartWorkflowAsync` call that accepts a return type and one that doesn't
-  and returns a handle for `Nothing`. The user can specify a return type on `WorkflowHandle.GetResultAsync` if they
+* Notice that there is a string-based workflow `StartWorkflowAsync` call that accepts a return type and one that
+  doesn't. The user can specify a return type on `WorkflowHandle.GetResultAsync` if they
   want instead of at start time (or just never altogether if the return doesn't matter to the user).
 * For string-based calls to `StartWorkflowAsync`, we are accepting all args at once via `object[]`. But since array
   types are covariant in .NET, this means you could have a workflow that accepts `string[]` and forget that needs to
@@ -374,7 +368,7 @@ Notes:
   * We could have taken a proxy approach, but that would have made the code look like
     `client.GetWorkflowHandle<GreetingWorkflow>("my wf id", wf => wf.RunAsync)` which is not much better and is hard to
     get right with all of the overloads so you can have the lambda as the last param. This is what Azure Durable
-    Entities does.
+    Entities does. There is discussion on this later.
 * Cancellation tokens (and RPC metadata and RPC timeout and such) will be in the call options, not as the last parameter
   in a bunch of overloads like many other .NET methods
 * Older versions of .NET don't have `IAsyncEnumerator` and we don't want to go out of our way to provide a special
@@ -382,27 +376,27 @@ Notes:
   * Older versions can just use raw gRPC or not have this feature. These older .NET versions are really old and we don't
     expect hardly any users on them.
   * Note, `ListWorkflows` is not `ListWorkflowsAsync` because the first page is lazily fetched on first iteration
-  * `WorkflowExecutionEnumerator` has a `MapHistories` on it that returns `IAsyncEnumerator<WorkflowHistory>` (or is an
-    extension method)
+  * We need an easy way to map this to histories. Maybe a `GetHandle` extension method on the execution (that accepts a
+    client), and a `SelectHistories` extension method on `IAsyncEnumerator<WorkflowExecution>` that accepts a client.
 
 ### WorkflowHandle
 
 Looks like:
 
 ```csharp
-namespace Temporal.Client;
+namespace Temporalio.Client;
 
-public class WorkflowHandle<TResult>
+public class WorkflowHandle
 {
     public string ID { get; }
     public string? RunID { get; }
     public string? ResultRunID { get; }
     public string? FirstExecutionRunID { get; }
 
-    public async Task<TResult> GetResultAsync(
+    public async Task GetResultAsync(
         bool followRuns = true, RPCOptions? options = null) { /*...*/ }
 
-    public async Task<TResultLocal> GetResultAsync<TResultLocal>(
+    public async Task<TResult> GetResultAsync<TResult>(
         bool followRuns = true, RPCOptions? options = null) { /*...*/ }
 
     public async Task SignalAsync(string signal, object[] args, RPCOptions? options = null) { /*...*/ }
@@ -442,6 +436,12 @@ public class WorkflowHandle<TResult>
 
 #endif
 }
+
+public class WorkflowHandle<TResult> : WorkflowHandle
+{
+    public new async Task<TResult> GetResultAsync(
+        bool followRuns = true, RPCOptions? options = null) { /*...*/ }
+}
 ```
 
 Notes:
@@ -462,8 +462,8 @@ Notes:
 Usage:
 
 ```csharp
-using Temporal.Client;
-using Temporal.Worker;
+using Temporalio.Client;
+using Temporalio.Worker;
 using MyNamespace;
 
 // Connect
@@ -486,9 +486,9 @@ await worker.ExecuteAsync(cts.Token);
 Looks like:
 
 ```csharp
-namespace Temporal.Worker;
+namespace Temporalio.Worker;
 
-using Temporal.Activity;
+using Temporalio.Activity;
 
 public class TemporalWorkerOptions
 {
@@ -551,7 +551,7 @@ Notes:
 Looks like:
 
 ```csharp
-namespace Temporal.Worker;
+namespace Temporalio.Worker;
 
 class WorkflowReplayer
 {
@@ -580,7 +580,7 @@ Notes:
 Looks like:
 
 ```csharp
-namespace Temporal.Converters;
+namespace Temporalio.Converters;
 
 public record DataConverter(
     IPayloadConverter PayloadConverter,
@@ -597,18 +597,18 @@ public record DataConverter(
 
 public interface IPayloadConverter
 {
-    Temporal.Api.Common.V1.Payload ToPayload(object value);
+    Temporalio.Api.Common.V1.Payload ToPayload(object value);
 
-    object? ToValue(Type type, Temporal.Api.Common.V1.Payload payload);
+    object? ToValue(Type type, Temporalio.Api.Common.V1.Payload payload);
 }
 
 public interface IEncodingPayloadConverter
 {
     string Encoding { get; }
 
-    bool TryToPayload(object value, out Temporal.Api.Common.V1.Payload payload);
+    bool TryToPayload(object value, out Temporalio.Api.Common.V1.Payload payload);
 
-    object? ToValue(Type type, Temporal.Api.Common.V1.Payload payload);
+    object? ToValue(Type type, Temporalio.Api.Common.V1.Payload payload);
 }
 
 public record PayloadConverter(IEnumerable<IEncodingConverter> EncodingConverters) : IPayloadConverter
@@ -620,9 +620,9 @@ public record PayloadConverter(IEnumerable<IEncodingConverter> EncodingConverter
         new BinaryProtoConverter(),
         new JsonPlainConverter() }) { /*...*/ }
 
-    public Temporal.Api.Common.V1.Payload ToPayload(object value) { /*...*/ }
+    public Temporalio.Api.Common.V1.Payload ToPayload(object value) { /*...*/ }
 
-    object? ToValue(Type type, Temporal.Api.Common.V1.Payload payload) { /*...*/ }
+    object? ToValue(Type type, Temporalio.Api.Common.V1.Payload payload) { /*...*/ }
 }
 
 public class BinaryNullConverter : IEncodingPayloadConverter { /*...*/ }
@@ -633,41 +633,41 @@ public class JsonPlainConverter : IEncodingPayloadConverter { /*...*/ }
 
 public interface IFailureConverter
 {
-    Temporal.Api.Failure.V1.Failure ToFailure(
+    Temporalio.Api.Failure.V1.Failure ToFailure(
         Exception exception, IPayloadConverter payloadConverter);
 
     Exception ToException(
-        Temporal.Api.Failure.V1.Failure failure, IPayloadConverter payloadConverter);
+        Temporalio.Api.Failure.V1.Failure failure, IPayloadConverter payloadConverter);
 }
 
 public record FailureConverter(bool EncodeCommonAttributes = false) : IFailureConverter
 {
-    public Exception ToException(Temporal.Api.Failure.V1.Failure failure, IPayloadConverter payloadConverter) { /*...*/ }
+    public Exception ToException(Temporalio.Api.Failure.V1.Failure failure, IPayloadConverter payloadConverter) { /*...*/ }
 
-    public Temporal.Api.Failure.V1.Failure ToFailure(Exception exception, IPayloadConverter payloadConverter) { /*...*/ }
+    public Temporalio.Api.Failure.V1.Failure ToFailure(Exception exception, IPayloadConverter payloadConverter) { /*...*/ }
 }
 
 public interface IPayloadCodec
 {
-    Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Encode(
-        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads);
+    Task<IEnumerable<Temporalio.Api.Common.V1.Payload>> Encode(
+        IReadOnlyCollection<Temporalio.Api.Common.V1.Payload> payloads);
 
-    Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Decode(
-        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads);
+    Task<IEnumerable<Temporalio.Api.Common.V1.Payload>> Decode(
+        IReadOnlyCollection<Temporalio.Api.Common.V1.Payload> payloads);
 }
 
 public record CompositePayloadCodec(IEnumerable<IPayloadCodec> Codecs) : IPayloadCodec
 {
-    public Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Decode(
-        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads) { /*...*/ }
+    public Task<IEnumerable<Temporalio.Api.Common.V1.Payload>> Decode(
+        IReadOnlyCollection<Temporalio.Api.Common.V1.Payload> payloads) { /*...*/ }
     
-    public Task<IEnumerable<Temporal.Api.Common.V1.Payload>> Encode(
-        IReadOnlyCollection<Temporal.Api.Common.V1.Payload> payloads) { /*...*/ }
+    public Task<IEnumerable<Temporalio.Api.Common.V1.Payload>> Encode(
+        IReadOnlyCollection<Temporalio.Api.Common.V1.Payload> payloads) { /*...*/ }
 }
 
 public static class ConverterExtensions
 {
-    public static Task<IEnumerable<Temporal.Api.Common.V1.Payload>> ToPayloads(
+    public static Task<IEnumerable<Temporalio.Api.Common.V1.Payload>> ToPayloads(
         this IDataConverter converter,
         IReadOnlyCollection<object> values) { /*...*/ }
 
@@ -676,22 +676,22 @@ public static class ConverterExtensions
     // set of payloads than it was given.
     public static Task<IEnumerable<object>> ToValues(
         this IDataConverter converter,
-        IReadOnlyCollection<IEnumerable<Temporal.Api.Common.V1.Payload>> payloads,
+        IReadOnlyCollection<IEnumerable<Temporalio.Api.Common.V1.Payload>> payloads,
         IReadOnlyCollection<Type> types) { /*...*/ }
 
     public static Task<Exception> ToException(
         this IDataConverter converter,
-        Temporal.Api.Failure.V1.Failure failure) { /*...*/ }
+        Temporalio.Api.Failure.V1.Failure failure) { /*...*/ }
 
-    public static Task<Temporal.Api.Failure.V1.Failure> ToFailure(
+    public static Task<Temporalio.Api.Failure.V1.Failure> ToFailure(
         this IDataConverter converter,
         Exception exception) { /*...*/ }
 
-    public static T? ToValue<T>(this IPayloadConverter converter, Temporal.Api.Common.V1.Payload payload) { /*...*/ }
+    public static T? ToValue<T>(this IPayloadConverter converter, Temporalio.Api.Common.V1.Payload payload) { /*...*/ }
 
-    public static Task EncodeFailure(this IPayloadCodec codec, Temporal.Api.Failure.V1.Failure failure) { /*...*/ }
+    public static Task EncodeFailure(this IPayloadCodec codec, Temporalio.Api.Failure.V1.Failure failure) { /*...*/ }
 
-    public static Task DecodeFailure(this IPayloadCodec codec, Temporal.Api.Failure.V1.Failure failure) { /*...*/ }
+    public static Task DecodeFailure(this IPayloadCodec codec, Temporalio.Api.Failure.V1.Failure failure) { /*...*/ }
 }
 ```
 
@@ -705,7 +705,7 @@ Notes:
 Looks like:
 
 ```csharp
-namespace Temporal.Exceptions;
+namespace Temporalio.Exceptions;
 
 public abstract class TemporalException : Exception
 {
@@ -717,9 +717,9 @@ public class FailureException : TemporalException
     internal FailureException(
         string? message = null,
         Exception? inner = null,
-        Temporal.Api.Failure.V1.Failure? failure = null) : base(message, inner) { /*...*/ }
+        Temporalio.Api.Failure.V1.Failure? failure = null) : base(message, inner) { /*...*/ }
 
-    public Temporal.Api.Failure.V1.Failure? Failure { get; private init; }
+    public Temporalio.Api.Failure.V1.Failure? Failure { get; private init; }
 }
 
 // Intentionally extensible
@@ -743,7 +743,7 @@ public class AppException : FailureException
 
     public IEnumerable<object>? OutboundDetails { get; protected init; }
 
-    public IReadOnlyCollection<Temporal.Api.Common.V1.Payload>? InboundDetails { get; protected init; }
+    public IReadOnlyCollection<Temporalio.Api.Common.V1.Payload>? InboundDetails { get; protected init; }
 }
 
 // Many more not listed
@@ -766,7 +766,7 @@ Notes:
 For client, looks like:
 
 ```csharp
-namespace Temporal.Client.Interceptors;
+namespace Temporalio.Client.Interceptors;
 
 public interface IClientInterceptor
 {
@@ -812,7 +812,7 @@ public record StartWorkflowInput(
 
 Notes:
 
-* Worker interceptors look very similar, though they are in `Temporal.Worker.Interceptors` and have
+* Worker interceptors look very similar, though they are in `Temporalio.Worker.Interceptors` and have
   `IWorkerInterceptor.InterceptActivity(ActivityInboundInterceptor)` and
   `IWorkerInterceptor.InterceptWorkflow(WorkflowInboundInterceptor)`
 * Like Go and Python, if an interceptor provided to a client implements both `IClientInterceptor` _and_
@@ -827,7 +827,7 @@ Notes:
 Looks like:
 
 ```csharp
-namespace Temporal.Testing
+namespace Temporalio.Testing
 
 public class ActivityEnvironment
 {
@@ -904,7 +904,7 @@ Notes:
 .NET provides several
 [extensions to the runtime library](https://learn.microsoft.com/en-us/dotnet/standard/runtime-libraries-overview#extensions-to-the-runtime-libraries)
 which many users use when making apps. We discuss here some of those patterns and how we can support those, either by
-our existing design, or with helpers in a `Temporal.Extensions` namespace.
+our existing design, or with helpers in a `Temporalio.Extensions` namespace.
 
 With DI and configuration and such, this is very analogous to Spring Boot for Java.
 
@@ -919,8 +919,8 @@ https://learn.microsoft.com/en-us/dotnet/standard/serialization/
 
 https://learn.microsoft.com/en-us/dotnet/core/extensions/dependency-injection
 
-* We have `Temporal.Client.ITemporalClient` and `Temporal.Client.ITemporalConnection` to allow DI for these impls
-* Should we also do this for `Temporal.Client.WorkflowHandle`? Is there value in injecting that?
+* We have `Temporalio.Client.ITemporalClient` and `Temporalio.Client.ITemporalConnection` to allow DI for these impls
+* Should we also do this for `Temporalio.Client.WorkflowHandle`? Is there value in injecting that?
 * Since activity instances are instantiated by the user upon registration, the user can use DI when creating those
   classes to, say, inject a logger
   * We'll need an example showing this
@@ -941,7 +941,7 @@ https://learn.microsoft.com/en-us/dotnet/core/extensions/configuration
 
 https://learn.microsoft.com/en-us/dotnet/core/extensions/logging
 
-* Unfortunately there is no logging in the standard library for .Net, therefore in order to support this we'd have to
+* Unfortunately there is no logging in the standard library for .NET, therefore in order to support this we'd have to
   add a dependency on https://www.nuget.org/packages/Microsoft.Extensions.Logging
 * NuGet does not support optional dependencies
 * Should we add the dependency?
@@ -950,9 +950,9 @@ https://learn.microsoft.com/en-us/dotnet/core/extensions/logging
       but a really old version from 4 years ago
   * Against:
     * We don't like extra dependencies, even these tiny ones
-    * We will have a rudimentary `Temporal.ITemporalLogger` with a simple console implementation by default
-      * Could have a separate `Temporal.Extensions` project that had a `ITemporalLogger` impl for `ILogger`, but this is
-        so simple it can just be a sample
+    * We will have a rudimentary `Temporalio.ITemporalLogger` with a simple console implementation by default
+      * Could have a separate `Temporalio.Extensions` project that had a `ITemporalLogger` impl for `ILogger`, but this
+        is so simple it can just be a sample
   * Leaning towards "Against"
 
 ### HostBuilder and Worker Services
@@ -961,7 +961,7 @@ https://learn.microsoft.com/en-us/dotnet/core/extensions/generic-host and
 https://learn.microsoft.com/en-us/dotnet/core/extensions/workers
 
 * Same discussion around dependencies as logging, this would need `Microsoft.Extensions.Hosting`
-* Our `Temporal.Worker.TemporalWorker` is not a subclass of `BackgroundService` to avoid the dependency
+* Our `Temporalio.Worker.TemporalWorker` is not a subclass of `BackgroundService` to avoid the dependency
   * `TemporalWorker.ExecuteAsync` matches `BackgroundService.ExecuteAsync` very intentionally, so this is incredibly
     easy for a user to create and we will of course have a sample
 
@@ -1029,20 +1029,15 @@ Cons:
   * We should support static activities, so you'd have method references anyways probably
 * Not having lambdas as the last parameter is a bit rough looking sometimes
 
-#### Why `Temporalio` NuGet package but `Temporal` namespace?
+#### Why `Temporalio` namespace instead of `Temporal`?
 
-* Does not matter. We should discuss and if we prefer our namespace to match our NuGet package, we should change to
-`Temporalio`.
-* `Temporal` is already taken on NuGet. But `Temporal.Sdk` is not, but that could cause confusion with `Temporal`
-  * We already need to apply for https://learn.microsoft.com/en-us/nuget/nuget-org/id-prefix-reservation
-  * Maybe we can persuade https://github.com/ritterim/temporal to deprecate and
-    https://learn.microsoft.com/en-us/nuget/nuget-org/deprecate-packages#transfer-popularity-to-a-newer-package but it
-    may require some ownership work
+* The NuGet `Temporal` package was already taken, and after discussion the team thought `Temporal` would accidentally
+  encourage people to get the wrong package
+* We do it in other SDKs where there are single-named packages
 
-#### Why `Temporalio`/`Temporal` NuGet/namespace and not `Temporalio.Sdk`/`Temporal.Sdk` NuGet/namespace?
+#### Why `Temporalio` namespace and not `Temporalio.Sdk` namespace?
 
-* Seemed simpler at first to just have `Temporal`
-* After more thought, maybe `Temporal.Sdk` would be better? It'd conform better with
+* After team discussion, decided this is simpler even though we intentionally violate
   https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/names-of-namespaces
 
 #### Why suffix all the async calls with "Async"?
@@ -1066,32 +1061,24 @@ Cons:
 * This is standard practice in .NET, and of course this doesn't apply everywhere, just these three pieces that are most
   likely to be instantiated at a high level
 
-#### Why have Temporal.Client, Temporal.Worker, Temporal.Converters, and Temporal.Exceptions as separate namespaces?
+#### Why have Temporalio.Client, Temporalio.Worker, Temporalio.Converters, and Temporalio.Exceptions as separate namespaces?
 
-* While it'd be fairly normal to have all of these types just in the top-level `Temporal` namespace in .NET, the list
+* While it'd be fairly normal to have all of these types just in the top-level `Temporalio` namespace in .NET, the list
   just grew too large
 * For the dozen exceptions alone it became annoying and also tempting to put them as inner classes just to keep file
   count reasonable
 * These are reasonable boundaries of separation
-* We still will keep common pieces like `Runtime`, `WorkflowHistory`, `RetryOptions`, etc in the top-level `Temporal`
+* We still will keep common pieces like `Runtime`, `WorkflowHistory`, `RetryOptions`, etc in the top-level `Temporalio`
   namespace
 
-#### Why put interceptors in Temporal.Client.Interceptors and Temporal.Worker.Interceptors?
+#### Why put interceptors in Temporalio.Client.Interceptors and Temporalio.Worker.Interceptors?
 
 * The class count is too high for those input types and I didn't want huge inner classes
 * It's a logical separation since most won't use interceptors
 * .NET does not have circular import concerns. Like Java packages, namespaces of a common assembly can reference each
   other circularly
 
-#### Why the "Refs" pattern? Why not source generation?
-
-* Adding source generation, while mostly transparent on build, is not necessary (yet?) for what we're needing
-  * The only reason we need any of this is method references because .NET doesn't have them
-* This does preclude us from adding source generation later as sugar, but at least it'd be optional
-  * It would let you have a "workflow client" generated specifically for your workflow, which is neat
-  * We'll see if the workflow implementation phase provides other worthy use cases
-
-#### Why not an existing Rust-to-.Net helper library?
+#### Why not an existing Rust-to-.NET helper library?
 
 * There are none that meet our needs and are robust enough
   * https://github.com/ralfbiedert/interoptopus doesn't give much and has limitations
