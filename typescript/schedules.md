@@ -9,6 +9,11 @@
 
 ## TS API
 
+NOTE: A modified version of the below API proposal was implemented in [v1.5.0](https://github.com/temporalio/sdk-typescript/blob/main/CHANGELOG.md#150---2022-12-07) and can be found in:
+
+- [schedule-types.ts](https://github.com/temporalio/sdk-typescript/blob/bf4ccdf3c7baae544297d19d66cf047957eedbdb/packages/client/src/schedule-types.ts)
+- [schedule-client.ts](https://github.com/temporalio/sdk-typescript/blob/bf4ccdf3c7baae544297d19d66cf047957eedbdb/packages/client/src/schedule-client.ts)
+
 ```ts
 import { ScheduleClient, ScheduleOverlapPolicy } from '@temporalio/client'
 import { addWeeks, subDays } from 'date-fns'
@@ -501,6 +506,7 @@ export interface Backfill {
  * Example Ranges:
  *
  * ```
+ * {} ➡️ the full range, with step: 1
  * { start: 2 } ➡️ 2
  * { start: 2, end: 4 } ➡️ 2, 3, 4
  * { start: 2, end: 10, step: 3 } ➡️ 2, 5, 8
