@@ -71,30 +71,20 @@ Though the completion event need not necessarily contain all the info sent in th
 it's known and understood that a particular metadata field is simply telling server something
 ephemeral, that could be stripped before writing the event.
 
-With the following proto as its type:
+With the following type:
 
 ```protobuf
-message StructuredMetadata {
-  // For JSON-esque data representations that can be easily decoded by anyone. Could contain user
-  // data that they'd like to show up the UI, for example.
-  map<string, google.protobuf.Struct> struct_metadata = 1;
-  // For better typed / more efficient binary serialization of types that are expected to be known
-  // by their consumers.
-  map<string, google.protobuf.Any> proto_metadata = 2;
+message RespondWorkflowTaskCompletedRequest {
+  // ...
+  
+  map<string, temporal.api.common.v1.Payload> metadata = 11;
+  
+  // ...
 }
 ```
 
-Having both fields seems useful here, since `Any` is useful for the SDK making notes to itself which
-it knows the type of. `Struct` is essentially just a more efficient JSON representation, and can
-be used for arbitrary data that can easily be rendered.
 
-Since `Any` can also be `Struct`, we could have just one field, but this wastes some bytes on the
-`type_url` field if we are throwing a lot of structs in there. Keeping them separate also makes
-it clear what you can decode without any type knowledge, rather than walking the whole map looking
-for struct types in case you want to decode them - that way you only look in the `Any` map when you
-know you're looking for something specific.
-
-### Why not just add more fields to WFT completion response?
+### Why not just add more (specific) fields to WFT completion response?
 
 * Things that the SDK only needs to write down for itself (ex: the versioning usecase) can now be
   made without requiring changes to the API repo, updating the server, releasing it, and ensuring
@@ -121,8 +111,8 @@ representation as history events. The others can be stored as metadata, or not a
 ## Drawbacks
 * No dedicated fields means no docstrings for those fields, and less type safety. Though this is
   much less of a concern when the writer and reader are the same person. Type safety can be achieved
-  with the `Any` valued map - and should be used for data that is expected to be interpreted by
-  more than one component.
+  by serializing a known proto into the payload - and should be used for data that is expected to be
+  interpreted by more than one component.
 * Potential to bloat history.
 
 ## Adoption / teaching / etc
@@ -131,3 +121,6 @@ Not applicable to this proposal since developers will not *directly* interact wi
 it's just providing a mechanism for ourselves. The "what are we wating on" usecase has obvious and
 big value to users, but what exactly gets written there and how we expose it in the UI etc ought to
 be another proposal.
+
+Payload values which are deserializable using the existing set of deserializers the UI understands
+by default should be shown in the UI. Ones that can't should be listed as uninterpretable.
