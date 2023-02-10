@@ -1,9 +1,5 @@
 # [Temporal](https://temporal.io) proposals
 
-* [Creating a new proposal](#creating-a-new-proposal)
-* [Active proposals (Stage 1)](#active-proposals-stage-1)
-* [Accepted proposals (Stage 2)](#accepted-proposals-stage-2)
-
 This repo tracks all new and accepted feature proposals (internal or external) for the [Temporal open source project](https://github.com/temporalio/temporal). If you're interested in submitting a proposal for consideration, please refer the [Creating a new proposal](#creating-a-new-proposal) section.
 
 ### Creating a new proposal
@@ -17,17 +13,3 @@ The Temporal proposal process begins when you create an issue adhering to the pr
 We appreciate the time and energy it takes to create a well constructed proposal. If you ever feel that your proposal was constructed properly but not given a fair chance, please reach out to us!
 
 If you're struggling to understand what a basic issue proposal will look like, [check out this example issue](https://github.com/temporalio/proposals/issues/1).
-
-### Active proposals (Stage 1)
-
-| Proposal  | Author | <sub>Last Presented</sub> |
-|-----------|--------|---------------------------|
-| |  |             |
-
-### Accepted proposals (Stage 2)
-
-| Proposal  | Author | <sub>Status</sub> |
-|-----------|--------|---------------------------|
-| [PHP SDK](./php/php-rr-sdk.md)   | SpiralScout |  Production          |
-| [Core SDK](./core/README.md)   | Temporal |  Alpha          |
-| [NodeJS SDK](./node/node-sdk.md)   | Temporal |  Alpha          |
