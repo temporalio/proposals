@@ -55,6 +55,10 @@ Below is just a proposal of ideas on how better to type search attributes.
 * Setting invalid search attributes in workflow never returns a failure that can be handled by workflow code
 * Users have no way to clarify the difference between keyword and keyword-list
 
+# Solution 1
+
+(see "Solution 2" for a separate solution)
+
 ## Goals
 
 Immediate:
@@ -77,6 +81,8 @@ Non-goals:
 * Support for predefined search attributes in any form of query building
 
 ## Proposed solution
+
+See "Solution 2" for comparison of approaches
 
 ### General
 
@@ -494,4 +500,251 @@ public class MyWorkflow
     [WorkflowSearchAttribute]
     private readonly SearchAttributeInt mySearchAttribute = new();
 }
+```
 
+# Solution 2
+
+## Goals
+
+Immediate:
+
+* As much as is supported by the language, users need to be able to individually define search attributes but must still
+  be able to set them altogether
+* Maintain backwards compatibility but deprecate any approach that doesn't require predefining attributes
+
+Non-goals:
+
+* Flexible API
+* Better validation of actual search attribute type from server
+* Better way for server to tell SDK the upsert failed
+* Support for easy/non-multi form of setting single attribute values
+* Support for typed registration of search attributes
+* Support for any form of query building
+
+## Proposed solution
+
+### General
+
+* Client and workflow APIs using untyped maps are deprecated and will be replaced with opaque typed collections (via
+  overloads where able) where keys are predefined search attributes
+* Upsert is used
+
+Differences between "Solution 1":
+
+* This retains the concept of upsert multi
+* This removes the idea of single-attribute setting
+* This uses typed "keys" in collections (where available) instead of separate single-value mutations
+* API is a little less friendly at the expense of safety
+* History compatibility is retained (assuming we aren't checking contents of upsert)
+
+Option 1 below:
+
+* Find a new name for "searchAttributes" as used in code and deprecate where used
+
+Option 2 below:
+
+* Reuse mapping/collection type of existing search attributes
+
+### Go
+
+```go
+package temporal
+
+type searchAttributeKey interface { keyType() enums.IndexedValueType }
+
+type SearchAttributeValue struct{}
+
+type SearchAttributesReadOnly interface{
+  // Always sorted
+  Keys() []string
+
+  toProto() *common.SearchAttributes
+}
+
+type SearchAttributes struct{}
+
+func (*SearchAttributes) Keys() []string
+
+// These represent keys
+type SearchAttributeText string
+type SearchAttributeKeyword string
+type SearchAttributeInt string
+type SearchAttributeFloat64 string
+type SearchAttributeTime string
+type SearchAttributeKeywordList string
+
+func (SearchAttributeText) keyType() enums.IndexedValueType
+func (SearchAttributeText) IsSet(SearchAttributesReadOnly) bool
+func (SearchAttributeText) GetValue(SearchAttributesReadOnly) string
+func (SearchAttributeText) SetValue(*SearchAttributes, string)
+func (SearchAttributeText) DeleteValue(*SearchAttributes)
+
+// ... Each set of 5 methods for each type, with the get/set as the proper type
+
+// --- For client option 1 ---
+
+type StartWorkflowOptions struct {
+  // ...
+
+	// Deprecated: Use SearchAttributeSet instead
+  //
+  // TODO(cretz): Maybe a better option is to have this accept "any" and warn
+  // when a map is used instead of a search attribute set?
+	SearchAttributes   map[string]any
+
+	SearchAttributeSet SearchAttributesReadOnly
+}
+
+// --- For client option 2 ---
+
+type StartWorkflowOptions struct {
+  // This must be SearchAttributesReadOnly or a map. Maps are deprecated and
+  // this will warn if a map is used.
+  SearchAttributes any
+}
+
+// --- For workflow
+
+// This is updated as upsert/apply is invoked
+func GetSearchAttributes(Context) SearchAttributesReadOnly
+
+// --- For workflow option 1 ---
+
+// Deprecated: Use ApplySearchAttributes instead
+func UpsertSearchAttributes(Context, map[string]interface{}) error
+
+// Future resolved with error on failure
+func ApplySearchAttributes(Context, SearchAttributesReadOnly) error
+
+// --- For workflow option 2 ---
+
+// Accepts SearchAttributesReadOnly or a map. Maps are deprecated and this will
+// warn if a map is used.
+func UpsertSearchAttributes(Context, any) error
+```
+
+Workflow usage like:
+
+```go
+const MySearchAttribute = temporal.SearchAttributeInt("MySearchAttribute")
+
+func MyWorkflow(ctx workflow.Context) error {
+  attrs := workflow.GetSearchAttributes(ctx)
+  workflow.GetLogger(ctx).Info(
+    fmt.Sprintf("Orig attr value: %v", MySearchAttribute.GetValue(attrs)))
+  
+  // If using option 2
+  var newAttrs SearchAttributes
+  MySearchAttribute.SetValue(&newAttrs, 456)
+  if err := workflow.UpsertSearchAttributes(ctx, &newAttrs); err != nil {
+    return err
+  }
+  
+  workflow.GetLogger(ctx).Info(
+    fmt.Sprintf("New attr value: %v", MySearchAttribute.GetValue(attrs)))
+  return nil
+}
+```
+
+Client usage like:
+
+```go
+
+// ...
+
+var attrs temporal.SearchAttributes
+MySearchAttribute.SetValue(&attrs, 123)
+
+myClient.ExecuteWorkflow(... client.StartWorkflowOptions {
+  // If using option 2
+  SearchAttributes: &attrs,
+})
+```
+}
+
+Notes:
+
+* Which client option, 1 or 2?
+* Which workflow option, 1 or 2?
+* Will people get too annoyed with "warnings"? Need way to disable those?
+* What package should the attr types be in? In the `temporal` package can be less discoverable to workflow users and in the
+  `workflow` package can be less discoverable to client users (`client` package is obviously a no-no for workflow users)
+
+### Java
+
+(TODO: expand to code)
+
+Idea:
+
+* Have `SearchAttributeX` classes like Go for each SA type that have hashCode impls for their class + key name
+  * Expected to be used like `SearchAttributeInt MY_SEARCH_ATTR = new SearchAttributeInt("MySearchAttribute")` in
+    workflow interface (or as `public static final` in a class somewhere)
+  * Each generically implements `SearchAttributeKey<T>`
+* Have `ImmutableSearchAttributes` interface that has:
+  * `SortedSet<String> keys()`
+  * `@Nullable T get<T>(SearchAttributeKey<T>)`
+  * `bool containsKey(SearchAttributeKey<?>)`
+  * `int size()`
+* Have new `SearchAttributes` class that impls `ImmutableSearchAttributes` and is a collection but does not extend any
+  impl collection interface
+  * _Could_ impl `List<SearchAttribute>`, but the code gets a bit ugly (set or map have limited value here though)
+  * Has `void put<T>(SearchAttributeKey<T>, @Nonnull T)`
+  * Has `void remove(SearchAttributeKey<?>)`
+  * This must be user instantiable
+* Option 1
+  * For client:
+    * Deprecate builder `setSearchAttributes` and options `getSearchAttributes`
+    * Add builder `setSearchAttributeSet(ImmutableSearchAttributes)` and options `getSearchAttributeSet`
+      * Is this too annoying to have a "SearchAttributeSet"?
+      * Better name? `ImmutableSearchAttributes`, `InitialSearchAttributes`, `SearchAttributeValues`, etc?
+    * Add overload for builder `setSearchAttributes(ImmutableSearchAttributes)`
+      * Why have this if we have the other setter?
+  * For workflow:
+    * Deprecate all existing
+    * Add `ImmutableSearchAttributes getSearchAttributeSet()`
+    * Add `upsertSearchAttributeSet(ImmutableSearchAttributes)`
+    * Add overload `upsertSearchAttributes(ImmutableSearchAttributes)`
+      * Why have this overload if we have the other method?
+* Option 2
+  * Have `ImmutableSearchAttributes` extend `SortedMap<String, List<Object>>`
+    * Don't support any mutation
+    * Deprecate/warn the best we can on any value-getting
+  * Deprecate all functions that accept maps and add overloads to those to accept `ImmutableSearchAttributes`
+  * Change all functions that return search attribute map today to return `ImmutableSearchAttributes`
+    * This safe/allowed?
+  * Deprecate all other calls
+
+### TypeScript
+
+(TODO: expand to code)
+
+Similar to https://github.com/temporalio/proposals/pull/67. Idea:
+
+* Have way to define search attribute by type and give key name
+* Have immutable search attributes interface that supports common read-only collection things for attributes as keys
+  * Cannot use index accessor of course since that's limited in JS, so have getter accepting user-defined SA
+* Have mutable search attributes user can build up that are passed to client options or workflow upsert
+  * Need non-index-accessor setter same as getter
+* Option 1:
+  * Call it something besides `searchAttributes` like `searchAttributeValues` and deprecate all the `searchAttributes`
+    ones
+* Option 2:
+  * Where `Record<string, scalar[]>` is accepted today, deprecate and overload with immutable type
+  * Where `Record<string, scalar[]>` is returned today, change to `ImmutableSearchAttributes | Record<string, scalar[]>`
+    and deprecate use of index accessor on result
+
+### Python
+
+(TODO: expand to code)
+
+* Same as TS basically except below
+* Option 2:
+  * We can change our `Mapping` key to `Union[str, SearchAttributeKey]` but we still can't have backwards compatible
+    `__getitem__` that still has new stuff
+
+### .NET
+
+(TODO: expand to code)
+
+* Have `SearchAttributes` impl `ICollection<SearchAttribute>` and `IReadOnlySearchAttributes`
+* No backwards compatibility concerns, so will have to see how the others shake out
