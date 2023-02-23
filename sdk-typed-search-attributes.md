@@ -83,30 +83,26 @@ because:
       * We don't want people to have language native collection iteration abilities on this or they'll be working with
         untyped tuples
   * We considered calling this collection `TypedSearchAttributes` (and lang can if disambiguation needed), but not
-    required
-  * The read-only form of this collection should have:
+    wanted
+  * This collection is read only and languages can provide ways to create it with type-safe key-values the best they can
+    * Go, Java, Python, and .NET may use a builder, TS may use tuple construction
+  * The collection should have:
     * A single typed getter for getting typed values given a `SearchAttributeKey`
       * In Go where methods cannot have generics, this may have to be inverted to add the getter on the attribute
         definition
     * Ability to determine if key is present and total count in collection
-    * Ability to retrieve a read-only (ideally sorted) collection of raw key/value string/object tuples
+    * Ability to retrieve a read-only (ideally sorted or deterministically ranged) collection of raw key/value
+      string/object tuples
       * This needs an unwieldy name like `getRawValues()`
-  * The mutable form of this collection should have:
-    * A single typed setter for a `SearchAttributeKey` and its value
-    * Ability to "unset" a key
-      * This is clearer than "delete"
-    * Ability to retrieve a mutable (ideally sorted) collection of raw key/value string/object tuples
-      * This needs an unwieldy name like `getRawValues()`
-* There is a new generic base type of `SearchAttributeKey` and new immutable extensions of that for
-  `SearchAttributeText`, `SearchAttributeKeyword`, `SearchAttributeInt`, `SearchAttributeDouble`, `SearchAttributeTime`,
-  and `SearchAttributeKeywordList`
-  * Languages that don't have good base type support don't have to have `SearchAttributeKey` base necessarily
+    * A builder with a copy constructor
+* There is a new generic base type of `SearchAttributeKey`
+  * Instantiations of this class with certain things can be done via static helpers
   * These are just for predefining known search attribute keys and their types
   * The `SearchAttributeInt`, `SearchAttributeDouble`, and `SearchAttributeTime` should be named according to language
-    types. So Go may use `SearchAttributeFloat64`, Java may use `SearchAttributeOffsetDateTime`, etc
+    types. So Go may use `SearchAttributeFloat64`, Java may use `SearchAttributeKey.OffsetDateTime`, etc
   * This is expected to be used in top-level consts. So Java might have
-    `public static final SearchAttributeInt MY_ATTR = new SearchAttributeInt("myAttr")` (or more likely just in the
-    workflow interface), Go might have `const MyAttr = SearchAttributeInt("myAttr")`, etc
+    `public static final SearchAttributeKey<Integer> MY_ATTR = new SearchAttributeKey.forInteger("myAttr")` (or can be
+    just in the workflow interface), Go might have `const MyAttr = SearchAttributeKeyInt("myAttr")`, etc
 * We are calling these "typed search attributes" for user getters/setters
   * It was considered to just overload client options set and workflow upsert to accept old or new type, but that
     doesn't help getters (can't overload the return and union is unclear to users and hard to deprecate)
@@ -120,26 +116,23 @@ because:
     * "search attrs" - hard to justify abbreviation
     * "attributes" - not acceptable to how Temporal uses the "search attributes" term everywhere
 * All existing forms of search attribute getting and setting are hereby deprecated
-* Client options will have ability to get/set this collection as "typed search attributes"
+* Client options will have ability to get/build this collection as "typed search attributes"
 * Workflows can get a read-only form of this collection (however lang expresses that best) as "typed search attributes"
   getter at the top of the workflow adjacent to where getting "info" is today
 * "upsert search attributes" is deprecated
-  * We could have overloaded this in all languages but Go. Maybe we should?
-* "update typed search attributes" is made available on the workflow level where "upsert" already exists today
-  * Considered calling "upsert" but that term does not take deletion into account
-    * Should we consider going back on this and representing null/None as a deletion? Problem here is we didn't expect
-      the collection to be able to store nulls.
-    * Maybe we should call it "upsert" since that's what the event name in UI is?
-  * This accepts a vararg `SearchAttributeUpdate` that is either a "set" or a "delete"
+  * We could have overloaded this in all languages but Go, but clearer to stay with the "typed search attribute" term
+* "upsert typed search attributes" is made available on the workflow level where "upsert" already exists today
+  * Considered calling "update" or "apply" instead of "upsert", but decided that while "upsert" doesn't represent unset
+    properly, it matches the event name that users see in the UI
+  * This accepts a vararg `SearchAttributeUpdate` that is either a "set" or an "unset"
     * We accept this is ugly, but there is no better way to represent deletes
     * We considered a mutable `SearchAttributes` collection but individual key/value mutations would be too hard to
       reason about if buffered/batched and if single upsert commands people would ask for bulk as soon as individual
       upsert events appeared
-      * If we change back to representing deletes as null/None, we can accept mutable form of this collection
     * Each `SearchAttributeKey` has a `valueSet(value)` and a `valueUnset()` that return `SearchAttributeUpdate`s
       * So Java may look like `Workflow.updateSearchAttributes(MY_ATTR1.valueSet("foo"), MY_ATTR2.valueUnset())`
-      * Ok that we call it "unset" instead of "delete"?
-      * Ok that we call it `valueSet` and `valueDelete` instead of just `set` and `delete`?
+      * We intentionally are calling adding "value" prefix instead of just `set` and `unset` to make it clear the key
+        is providing a value update
   * Since we are not offering an async error for this, this function should return the equivalent of
     "get typed search attributes"
 
@@ -147,21 +140,13 @@ because:
 
 ### Java
 
-This is approximate and untested (just typed here in proposal to get an idea).
+Public API (this is approximate and untested, just typed here in proposal to get an idea).
 
 Impl:
 
 ```java
-/** Mutable version not expected to be thread safe **/
+/** Immutable **/
 public class SearchAttributes {
-  public SearchAttributes() {
-    // ...
-  }
-
-  public SearchAttributes(Map<String, ?> rawValues, boolean readOnly) {
-    // ...
-  }
-
   @Nonnull
   public T get<T>(SearchAttributeKey<T> key) {
     // ...
@@ -171,8 +156,7 @@ public class SearchAttributes {
     // ...
   }
 
-  /** Mutable if this collection is. Please avoid using this. */
-  public SortedSet<SearchAttributeEntry> rawEntrySet() {
+  public SortedMap<String, Object> getRawValues() {
     // ...
   }
 
@@ -180,15 +164,34 @@ public class SearchAttributes {
     // ...
   }
 
-  /** @throws UnsupportedOperationException if immutable */
-  public T put<T>(SearchAttributeKey<T> key, @Nonnull T value) {
+  public static Builder newBuilder() {
     // ...
   }
 
-  /** @throws UnsupportedOperationException if immutable */
-  @Nullable
-  public T remove(SearchAttributeKey<?> key) {
+  public static Builder newBuilder(SearchAttributes toCopy) {
     // ...
+  }
+
+  public static class Builder {
+    public Builder set<T>(SearchAttributeKey<T> key, @Nonnull T value) {
+      // ...
+    }
+
+    public Builder unset(SearchAttributeKey<?> key) {
+      // ...
+    }
+
+    public Builder setUntyped(String key, Object value) {
+      // ...
+    }
+
+    public Builder unsetUntyped(String key) {
+      // ...
+    }
+
+    public SearchAttributes build() {
+      // ...
+    }
   }
 }
 
@@ -205,39 +208,48 @@ public abstract class SearchAttributeKey<T> {
     // ...
   }
 
-  public SearchAttributeUpdate valueSet(T value) {
+  public SearchAttributeUpdate valueSet(@Nonnull T value) {
     // ...
   }
 
   public SearchAttributeUpdate valueUnset() {
     // ...
   }
-}
 
-/** Immutable, needs to be hash/equals capable and comparable */
-public class SearchAttributeEntry {
-  public SearchAttributeEntry(String key, Object value) {
+  public static SearchAttributeKey<List<String>> forKeywordList(String name) {
     // ...
   }
 
-  public String getKey() {
+  public static SearchAttributeKey<Integer> forInteger(String name) {
     // ...
   }
 
-  @Nonnull
-  public Object getValue() {
-    // ...
+  // etc
+
+  static class KeywordList extends SearchAttributeKey<List<String>> {
+    KeywordList(String name) {
+      // TODO(cretz): Use Guava type token instead of class to capture generic?
+      super(name, List.class);
+    }
   }
+
+  static class Integer extends SearchAttributeKey<Integer> {
+    Integer(String name) {
+      super(name, Integer.class);
+    }
+  }
+
+  // etc
 }
 
 public abstract class SearchAttributeUpdate {
   SearchAttributeUpdate(String key) { }
 
-  public static SearchAttributeUpdate untypedValueSet(String key, Object value) {
+  public static SearchAttributeUpdate valueSetUntyped(String key, Object value) {
     // ...
   }
 
-  public static SearchAttributeUpdate untypedValueUnset(String key) {
+  public static SearchAttributeUpdate valueUnsetUntyped(String key) {
     // ...
   }
 
@@ -265,7 +277,7 @@ public class Workflow {
     // ...
   }
 
-  public SearchAttributes updateTypedSearchAttributes(SearchAttributeUpdate... updates) {
+  public SearchAttributes upsertTypedSearchAttributes(SearchAttributeUpdate... updates) {
     // ...
   }
 }
@@ -293,7 +305,7 @@ Usage:
 
 ```java
 public interface MyWorkflow {
-  SearchAttributeInt MY_ATTR = new SearchAttributeInt("my-attr-name");
+  SearchAttributeKey<Integer> MY_ATTR = new SearchAttributeKey.forInteger("my-attr-name");
 
   // ...
 }
@@ -303,17 +315,15 @@ public class Main {
   public static void main(String[] args) {
     // ...
 
-    // We accept in some languages you lose the single-liner map/list literal
-    // here and we're ok with that
-    var attrs = new SearchAttributes();
-    attrs.put(MyWorkflow.MY_ATTR, 123);
-
     var workflow = client.newWorkflowStub(
         MyWorkflow.class,
         WorkflowOptions.newBuilder()
             .setWorkflowId("my-id")
             .setTaskQueue(taskQueue)
-            .setTypedSearchAttributes(attrs)
+            .setTypedSearchAttributes(SearchAttributes
+              .newBuilder()
+              .set(MyWorkflow.MY_ATTR, 123)
+              .build())
             .build()
         );
 
@@ -330,7 +340,7 @@ public class MyWorkflowImpl implements MyWorkflow {
 
     logger.info("Orig search attr: {}", Workflow.getTypedSearchAttributes().get(MY_ATTR));
 
-    Workflow.updateTypedSearchAttributes(MY_ATTR.valueSet(456));
+    Workflow.upsertTypedSearchAttributes(MY_ATTR.valueSet(456));
 
     logger.info("New search attr: {}", Workflow.getTypedSearchAttributes().get(MY_ATTR));
 
