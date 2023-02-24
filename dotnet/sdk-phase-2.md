@@ -81,16 +81,20 @@ public record GreetingInfo
     public string Name { get; init; } = "<unknown>";
 }
 
-public static class Activities
+// Activities can be static without ref, this is just for demonstration of
+// instance activities
+public class Activities
 {
+    public static readonly Activities Ref = ActivityRefs.Create<Activities>();
+
     [Activity]
-    public static string CreateGreeting(GreetingInfo info) => return $"{info.Salutation}, {info.Name}!";
+    public string CreateGreeting(GreetingInfo info) => return $"{info.Salutation}, {info.Name}!";
 }
 
 [Workflow]
 public class GreetingWorkflow
 {
-    public static readonly GreetingWorkflow Ref = Refs.Create<GreetingWorkflow>();
+    public static readonly GreetingWorkflow Ref = WorkflowRefs.Create<GreetingWorkflow>();
 
     private readonly BufferBlock<GreetingInfo> updates = new();
     private readonly string name;
@@ -111,7 +115,7 @@ public class GreetingWorkflow
         {
             // Store current greeting
             currentGreeting = await Workflow.ExecuteActivityAsync(
-                Activities.CreateGreeting,
+                Activities.Ref.CreateGreeting,
                 await updates.ReceiveAsync(),
                 new(StartToCloseTimeout: TimeSpan.FromSeconds(5)));
             Workflow.Logger.LogDebug("Greeting set to {Greeting}", currentGreeting);
@@ -135,7 +139,7 @@ public class GreetingWorkflow
 }
 ```
 
-Some things to not about the above code (much copied from phase 1):
+Some things to note about the above code (much copied from phase 1):
 
 * Every workflow must have the non-inheritable `[Workflow]` attribute
   * Optional `Name` positional property can be given. Default is the unqualified type name with the "I" prefix removed
@@ -167,14 +171,10 @@ Some things to not about the above code (much copied from phase 1):
   * Optional `Name` positional property can be given. Default is the unqualified method name.
   * Would love to put this on properties, but they aren't referenceable as delegates
 * Users are encouraged to set a `static` `readonly` `Ref` property for use by clients
-  * `Refs.Create<T>()` is how it is obtained
-    * `Refs` is in `Temporalio` not `Temporalio.Workflows`
-      * TODO(cretz): This acceptable?
-    * TODO(cretz): Should we do validation at this time on the attributes?
-      * Problem is instance activities will want to use `Refs` too.
-      * If I put `Refs` in `Temporalio.Workflows` then at least I can know that all uses are for workflows
-        * But then it'd clash with a `Temporalio.Activities.Refs` or do we want something like either
-          `Refs.ForWorkflow<T>` or `WorkflowRefs.Create<T>`?
+  * Phase 1 had this use `Temporalio.Refs` (and we since changed from `<T>.Instance` to `.Create<T>()`) but we are now
+    going to split this into `Temporalio.Workflows.WorkflowRefs` and `Temporalio.Activities.ActivityRefs`
+    * In addition to not having "refs" for other purposes, this allows eager validation of workflow and activity
+      definitions
   * This is backed by a dynamic proxy
     * Since the constructor may be `[WorkflowInit]`, we use
       `System.Runtime.Serialization.FormatterServices.GetUninitializedObject`, ref
@@ -213,8 +213,6 @@ public class TemporalWorkerOptions : ICloneable
 
     public int MaxConcurrentWorkflowTasks { get; set; } = 100;
 
-    public double NonStickyToStickyPollRatio { get; set; } = 0.2;
-
     public bool DisableRemoteActivities { get; set; }
 
     public TimeSpan StickyQueueScheduleToStartTimeout { get; set; } = TimeSpan.FromSeconds(10);
@@ -225,9 +223,9 @@ public class TemporalWorkerOptions : ICloneable
 }
 ```
 
-TODO(cretz): For discussion:
+Notes:
 
-* Intentionally leaving off `MaxConcurrentWorkflowTaskPolls`, right?
+* Intentionally leaving off `NonStickyToStickyPollRatio` and `MaxConcurrentWorkflowTaskPolls`
 
 ## Workflow API
 
@@ -337,13 +335,21 @@ public static class Workflow
 
     // Search attributes and memo
 
-    public static SearchAttributes SearchAttributes { get; }
+    public static SearchAttributes TypedSearchAttributes { get; }
 
-    public static void UpdateSearchAttributes(params SearchAttributeUpdate[] updates) { /*...*/ }
+    public static void UpsertTypedSearchAttributes(params SearchAttributeUpdate[] updates) { /*...*/ }
 
     public static IDictionary<string, Payload> RawMemo { get; }
 
-    public static void UpdateMemo(params MemoUpdate[] updates) { /*...*/ }
+    public static T GetMemoValue<T>(string key) { /*...*/ }
+
+    public static object? GetMemoValue(string key, Type valueType) { /*...*/ }
+
+    public static bool TryGetMemoValue<T>(string key, out T value) { /*...*/ }
+
+    public static bool TryGetMemoValue(string key, Type valueType, out object? value) { /*...*/ }
+
+    public static void UpsertMemo(params MemoUpdate[] updates) { /*...*/ }
 
     // External workflow handle
 
@@ -362,7 +368,7 @@ public static class Workflow
 
     public static ILogger Logger { get; }
 
-    public static DateTime Now { get; }
+    public static DateTime UtcNow { get; }
 
     public static Random Random { get; }
 
@@ -414,7 +420,28 @@ public class ExternalWorkflowHandle
         string signal, object[] args, ExternalWorkflowSignalOptions? options = null) { /*...*/ }
 }
 
-public class ContinueAsNewException { /*...*/ }
+public class ContinueAsNewException : TemporalException
+{
+    public static ContinueAsNewException Create(
+        Func<Task> workflow, ContinueAsNewOptions? options = null) { /*...*/ }
+    public static ContinueAsNewException Create<T>(
+        Func<T, Task> workflow, T arg, ContinueAsNewOptions? options = null) { /*...*/ }
+    public static ContinueAsNewException Create<TResult>(
+        Func<Task<TResult>> workflow, ContinueAsNewOptions? options = null) { /*...*/ }
+    public static ContinueAsNewException Create<T, TResult>(
+        Func<T, Task<TResult>> workflow, T arg, ContinueAsNewOptions? options = null) { /*...*/ }
+    public static ContinueAsNewException Create(
+        string workflow, object[] args, ContinueAsNewOptions? options = null) { /*...*/ }
+
+    private ContinueAsNewException(
+        string workflow, IReadOnlyCollection<object?> args, ContinueAsNewOptions? options) { /*...*/ }
+
+    public string Workflow { get; private init; }
+
+    public IReadOnlyCollection<object?> Args { get; private init; }
+
+    public ContinueAsNewOptions? Options { get; private init; }
+}
 ```
 
 Notes about the above code:
@@ -426,6 +453,9 @@ Notes about the above code:
   * The cancellation token in the options and the result of the task are enough to support all current activity features
   * `StartActivity` + `ActivityHandle` may be added in the future if we ever allow doing things to activities more than
     just cancelling and getting result
+* After discussion, we have decided to have `ActivityOptions` and `ChildWorkflowOptions` instead of
+  `ActivityStartOptions` and `ChildWorkflowStartOptions`
+  * This means we will also be renaming `WorkflowStartOptions` to `WorkflowOptions` on the client side
 * Signal/query handlers
   * We could have made dynamic signal/query handler get/set a property but it's more consistent with non-dynamic to use
     methods
@@ -433,22 +463,10 @@ Notes about the above code:
   * We currently have no public way to get all signal/query handlers from inside a workflow (same as Python)
 * There's no value in accepting workflow type in `GetExternalWorkflowHandle` at this time because we can only signal and
   cancel it currently. And signal is not currently scoped to the workflow at compile time.
-* We expect users to `throw new ContinueAsNewException()` instead of have some helper
+* We expect users to `throw ContinueAsNewException.Create(RunAsync, )` instead of have some helper
   * This is the .NET preferred approach (same for `throw new CompleteAsyncException()` for activities)
-* We may add helpers for getting individual memo values given a type to deserialize to
-  * We don't expose a data converter to the user in a workflow at this time, so it is wise to make these helpers
 * A `CancellationToken` can be provided on every async call made, but if not set, by default workflow cancellation token
   is the token used. This allows it to be overridden with a token not related to workflow cancellation.
-
-TODO(cretz): For discussion:
-
-* `ChildWorkflowHandle` has `GetResultAsync()` to match `WorkflowHandle` in client, but this could just be a `Task`
-  property. Should it be? Other .NET APIs tend to do this.
-* In client I call options `WorkflowStartOptions`, not only for `StartWorkflowAsync` but also for
-  `ExecuteWorkflowAsync`. I have a similar pattern here with activities and children. Should I continue this or should I
-  remove the `Start` word?
-* Should I rename `Now` to `UtcNow` to match .NET since it's non-local? Or does matching `DateTime.UtcNow` not matter
-  that much?
 
 ## Workflow Replayer API
 
