@@ -19,6 +19,8 @@ A few problems a WASM Core Can solve, in no particular order:
   a bit easier (and, necessary) with it.
 * Auto-updates to core logic. This isn't detailed in this doc, but is a potentially very compelling
   feature. Imagine a worker that can update core logic without needing to be restarted.
+* Allow the use of lang-native gRPC clients (though core can still provide things like retry and 
+  backoff logic, etc.)
 
 
 # Detailed design
@@ -93,7 +95,9 @@ The more we can lean on WASI, the less we have to expand the Core<-->Lang interf
 thing in terms of both immediate work and long-term maintenance. There are some problems though:
 
 * Assuming we need to use `wazero` for non-CGo support, it doesn't appear to be able to handle
-  network calls. We'll test this, though.
+  network calls. We'll test this, though. Even if we intend to use native gRPC clients, being able
+  to make network calls in Core is still pretty desirable for things like auto-updates, test server
+  downloads, etc.
 * Calling back into lang gives us opportunities for more user customization, which can be nice.
   Especially when it comes to the metrics and tracing stuff. gRPC interceptors are also a potential
   plus.
@@ -134,6 +138,9 @@ fn func_name(receiver: ExternRef, arg: ArgType) -> ResultType;
 
 // -------------- Grpc -----------------
 
+// Would be passed into core along with client config options when creating instantiating a client.
+// Core can then augment the client with retry behavior, and the client can then be used when
+// instantiating Core workers.
 struct GrpcClientRef {
     /// Points to the host's gRPC client
     host_ref: ExternRef,
@@ -163,14 +170,9 @@ struct GrpcClientConfig {
     // continue to be handled in core.
 }
 
-// Error is stringly typed since matching on it doesn't appear immediately useful
-fn grpc_client_new(
-    config: GrpcClientConfig
-) -> Result<GrpcClientRef, String> {}
-
 impl GrpcClientRef {
     /// Make a unary grpc call
-    fn grpc_unary(
+    async fn grpc_unary(
         &self,
         req: GrpcRequest,
     ) -> Result<GrpcResponse, GrpcStatus> {}
