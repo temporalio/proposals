@@ -176,9 +176,6 @@ impl GrpcClientRef {
         &self,
         req: GrpcRequest,
     ) -> Result<GrpcResponse, GrpcStatus> {}
-
-    // Will be called by a `Drop` impl, but must exist and be exported by the WASM host.
-    fn close(self) {}
 }
 
 // -------------- Metrics --------------
