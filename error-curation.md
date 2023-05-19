@@ -49,7 +49,7 @@ Solution:
   * The rules within a category do not have to be ordered in any manner. Usually you just use the next available.
   * `0` is never used in the first two digits
   * Can discuss the first thousands-block digit though initial thought for first two is:
-    * `TMRPL1XXX` block is for SDK-specific and workflow/activity authoring things
+    * `TMPRL1XXX` block is for SDK-specific and workflow/activity authoring things
     * `TMPRL2XXX` block is for server-specific and operation things
 * Rule/error messages across Temporal should be prepended with `"[TMPRLXXXX] "` (sans quotes)
   * Note the brackets and space after.
@@ -62,9 +62,9 @@ Solution:
 * All rules are housed in a single repository
   * Maybe something like https://github.com/temporalio/temporal-rules https://github.com/temporalio/rule-library
   * `rules/README.md` will be the primary index of all categories
-  * `rules/TMRPL11XX.md` with the literal `XX.md` suffix but the two-digit category will be the index of all rules in
+  * `rules/TMPRL11XX.md` with the literal `XX.md` suffix but the two-digit category will be the index of all rules in
     that category
-  * `rules/TMRPL1234.md` will be the literal page
+  * `rules/TMPRL1234.md` will be the literal page
     * Consideration was given to breaking these out into subdirectories, but experience has shown a nice, common
       `https://github.com/temporalio/temporal-rules/blob/main/rules/<RULE_NUM>.md` URL for _all_ rules has a lot of
       benefits
