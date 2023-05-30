@@ -6,7 +6,7 @@ Temporal has a gRPC API but no HTTP API. We need an HTTP API.
 
 **Goals**
 
-* Create HTTP API that governs all reasonable user-facing calls
+* Expose existing API over HTTP in addition to gRPC
 * Ensure new API calls are automatically adopted
 * Expose HTTP API in server by default for all to use like gRPC, but have option to disable
 * Support all existing interceptors and auth methods
@@ -16,6 +16,12 @@ Temporal has a gRPC API but no HTTP API. We need an HTTP API.
 * Design a high-quality REST API from first principles
 * grpc-web (browser-only gRPC workaround that requires server-side support)
 * Make an easy call to get workflow result
+* gRPC stream support (maybe later)
+* Poll calls (maybe later)
+
+**Unresolved Research**
+
+* Can payloads be made in non-base64 form without over-complicating the effort?
 
 ## Approach
 
@@ -144,7 +150,7 @@ actually apply to many but we are not repeating ourselves too much here.
   * Intentionally not exposed until they settle
 * Other calls:
   * `GetClusterInfo` - Intentionally not exposed
-  * `GetSystemInfo` - Intentionally not exposed
+  * `GetSystemInfo` - `GET /api/v1/system-info`
 
 ### Embedding into Server
 
