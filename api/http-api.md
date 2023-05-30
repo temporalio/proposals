@@ -90,9 +90,8 @@ actually apply to many but we are not repeating ourselves too much here.
   * `GetWorkflowExecutionHistoryReverse` - `GET /api/v1/namespaces/{namespace}/workflows/{workflow_id}/history-reverse`
   * `RequestCancelWorkflowExecutionRequest` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/cancel`
     * Intentionally not taking the run ID in the URL, but should it be `?runId=` query param?
-  * `SignalWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/signal[/{signal_name}]`
-    * Note signal name on the URL is optional but must be escaped. Must be in body otherwise.
-  * `SignalWithStartWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/signal-with-start`
+  * `SignalWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/signal/{signal_name}`
+  * `SignalWithStartWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/signal-with-start/{signal_name}`
   * `ResetWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/reset`
   * `TerminateWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/terminate`
   * `ListOpenWorkflowExecutions` - Intentionally not exposed
@@ -102,8 +101,7 @@ actually apply to many but we are not repeating ourselves too much here.
   * `ListArchivedWorkflowExecutions` - `GET /api/v1/namespaces/{namespace}/archived-workflows`
     * Intentionally did not do `/workflows/archived` due to ambiguity
   * `CountWorkflowExecutions` - `GET /api/v1/namespaces/{namespace}/workflow-count`
-  * `QueryWorkflow` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/query[/{query_name}]`
-    * Note query name on the URL is optional but must be escaped. Must be in body otherwise.
+  * `QueryWorkflow` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/query/{query_name}`
   * `DescribeWorkflowExecution` - `GET /api/v1/namespaces/{namespace}/workflows/{workflow_id}`
   * `UpdateWorkflowExecution`- `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/updates/{update_id}`
     * Decided to make this an identity so we can have "describe update" or "cancel update" or whatever one day
