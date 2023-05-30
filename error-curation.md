@@ -72,11 +72,13 @@ Solution:
     to be in a repository for review/submission by Temporal developers
 * The `rules/TMPRL1234.md` file will contain rule details
   * No strict metadata/frontmatter required at this time
-  * Ideally the rules should have at least the following headings:
+  * Ideally the rules may have at the following headings (but license is given to author to format as needed):
     * `# <TMPRL1234> - <one-sentence-description>`
     * `## Cause`
     * `## Description`
-    * `## Solution`
+      * Only if cause is not enough information
+    * `## Remediations`
+      * Chosen over "Solutions" as not everything will be solvable
   * More headings can be added
   * None of the contents/headings are strict/rigid/required, they are just suggestions
   * Authors are encouraged to get as detailed as they'd like with code snippets, stable links, hypotheticals, use cases,
