@@ -94,8 +94,8 @@ actually apply to many but we are not repeating ourselves too much here.
   * `SignalWithStartWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/signal-with-start/{signal_name}`
   * `ResetWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/reset`
   * `TerminateWorkflowExecution` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/terminate`
-  * `ListOpenWorkflowExecutions` - Intentionally not exposed
-  * `ListClosedWorkflowExecutions` - Intentionally not exposed
+  * `ListOpenWorkflowExecutions` - Intentionally not exposed (deprecated)
+  * `ListClosedWorkflowExecutions` - Intentionally not exposed (deprecated)
   * `ListWorkflowExecutions` - `GET /api/v1/namespaces/{namespace}/workflows`
     * Accepts `?query=` query parameter
   * `ListArchivedWorkflowExecutions` - `GET /api/v1/namespaces/{namespace}/archived-workflows`
