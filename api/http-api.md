@@ -103,8 +103,10 @@ actually apply to many but we are not repeating ourselves too much here.
   * `CountWorkflowExecutions` - `GET /api/v1/namespaces/{namespace}/workflow-count`
   * `QueryWorkflow` - `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/query/{query_name}`
   * `DescribeWorkflowExecution` - `GET /api/v1/namespaces/{namespace}/workflows/{workflow_id}`
-  * `UpdateWorkflowExecution`- `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/updates/{update_id}`
-    * Decided to make this an identity so we can have "describe update" or "cancel update" or whatever one day
+  * `UpdateWorkflowExecution`- `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/update/{update_name}`
+    * We also support `POST /api/v1/namespaces/{namespace}/workflows/{workflow_id}/updates/{update_id}` which will
+      expect an update name in the body but gives a stable URL to do future things like "describe update" or
+      "cancel update" one day (note the plural `updates`)
   * `PollWorkflowExecutionUpdate` - Intentionally not exposed
     * Not sure if best to have long HTTP API here. Would prefer non-blocking describe and maybe one day the difference
       between describing an update and polling for an update is a "wait" boolean.
@@ -168,6 +170,97 @@ Current suggested approach, subject to discussion:
 * Will test all of the above
 * Can discuss approach for cloud in separate place
 
+#### Payload Formatting
+
+One of the major drawbacks of payloads is that if we accept them directly in JSON, they look like:
+
+```json
+{
+  "payloads": [{
+    "metadata": {
+      "encoding": "anNvbi9wbGFpbg=="
+    },
+    "data": "IkhlbGxvLCBXb3JsZCEi"
+  }]
+}
+```
+
+This is for the simple JSON message of `"Hello, World"`. With larger JSON objects it gets even more ugly like if we
+wanted: `{ "foo": "bar" }`, it becomes `"data": "eyAiZm9vIjogImJhciIgfQ=="`. This is because by default proto byte
+arrays are serialized/deserialized as base64.
+
+But we may be able to solve this using a "shorthand" approach. Some research has been done yet, here are the notes:
+
+* grpc-gateway uses `jsonpb` and supports custom marshalling choice (so `gogoproto`'s `jsonpb` could be used instead)
+* We can make custom JSON unmarshalling _per proto_ on these older forms of unmarshalling, e.g. see
+  [here](https://pkg.go.dev/github.com/gogo/protobuf/jsonpb#JSONPBUnmarshaler)
+  * But newer `protojson` does not support this, see [this issue](https://github.com/golang/protobuf/issues/1322) and
+    others. So this could harm our ability to upgrade.
+* We can make `go.temporal.io/api/common/v1.Payloads` impl JSON marshal/unmarshal to assume if it is given a JSON
+  collection, it can assume it's for the "payloads" field
+* We can make `go.temporal.io/api/common/v1.Payload` impl JSON marshal/unmarshal to assume if it not an object that can
+  deserialize into payload using strict rules (e.g. exact `metadata` and `data` format), then treat it as a `json/plain`
+  payload for non `null` or null payload for null value.
+  * We could just say "without metadata assume JSON/null" but what if someone has an object with a "metadata" field?
+  * The only way it will clash with the raw form is if someone happens to have a `metadata` and/or `data` field with
+    proper base64
+* Should we assume that a payloads shorthand collection means all payloads within are shorthand?
+  * If we do, it reduces clash likelihood, but won't allow raw payloads to come through
+  * Answer: probably not
+* Sure on unmarshal we can accept either type, but on marshal can we assume the shorthand notation is best?
+  * I think for ease of use, the answer is "yes" for JSON/null payloads
+* Upon JSON marshal however, how do we know that we are in the HTTP handler and therefore should use shorthand?
+  * This is a tough challenge. We don't want to change what this looks like on history dump or something, right?
+  * There's no real way to pass contextual I-am-HTTP-handler state to the underlying 
+  * The best way is probably to use the [payload visitor](https://pkg.go.dev/go.temporal.io/api/proxy#VisitPayloads) to
+    set metadata on every payload saying it should be shorthand on marshal
+* What do we do about `json/protobuf` input/output?
+  * On the way out we can unmarshal in shorthand mode, no problem
+  * On the way in, how can we know that it is possibly proto form? Should we have a new shorthand for proto JSON that is
+    a bit different than regular JSON? Probably and should apply to output too.
+  * This new proto JSON form needs to have some way to make it clear it's a proto JSON payload. Since protos always have
+    to be objects, a `_protoMessageType` key will have to be present that is the qualified "messageName"
+
+So now, with the above shorthand, that same payloads set now looks like:
+
+```json
+["Hello, World!"]
+```
+
+And that works in either direction. Nice. And if your memo before was:
+
+```json
+{
+  "fields": {
+    "my-key1": {
+      "metadata": {
+        "encoding": "anNvbi9wbGFpbg=="
+      },
+      "data": "Im15LXZhbHVlMSI="
+    },
+    "my-key2": {
+      "metadata": {
+        "encoding": "anNvbi9wbGFpbg=="
+      },
+      "data": "Im15LXZhbHVlMiI="
+    }
+  }
+}
+```
+
+It is now:
+
+```json
+{
+  "fields": {
+    "my-key1": "my-value1",
+    "my-key2": "my-value2"
+  }
+}
+```
+
+Nice.
+
 ### Documentation
 
 * Need to simply document its presence at first, OpenAPI spec _can_ come later though Temporal may consider a more
@@ -175,3 +268,169 @@ Current suggested approach, subject to discussion:
   * Maybe a snippet or two in docs showing how to use `curl` to start, signal, cancel, and maybe even get history with
     filter type of close event to get workflow result
 * https://api-docs.temporal.io/ already exists, may be worth adapting for this use too
+
+## Usage Examples
+
+These are `curl` examples that are based on documentation but are not tested because that would require actually
+implementing the proposal. So there may be some mistakes.
+
+Note, responses are shown pretty printed though they would not be by default. But we can make this a header/query
+option.
+
+### Start a workflow - no input
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id -d '{
+  "workflowType": { "name": "MyWorkflow" },
+  "taskQueue": { "name": "my-task-queue" }
+}'
+```
+
+Response:
+
+```json
+{
+  "runId": "7124ede7-fef5-4e15-8411-baa23d6beefd"
+}
+```
+
+### Start a workflow with input
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id -d '{
+  "workflowType": { "name": "MyWorkflow" },
+  "taskQueue": { "name": "my-task-queue" },
+  "input": ["Hello, World!"]
+}'
+```
+
+This assumes that the approach from "Payload Formatting" above is applied and works.
+
+Response:
+
+```json
+{
+  "runId": "7124ede7-fef5-4e15-8411-baa23d6beefd"
+}
+```
+
+### Signal workflow
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/signal/MySignal
+```
+
+Response:
+
+```json
+{}
+```
+
+### Query workflow
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/query/MyQuery
+```
+
+Response:
+
+```json
+{
+  "queryResult": ["Hello, World!"]
+}
+```
+
+We could set `queryResult` to be the implied body, but it is best we stick with the gRPC protocol we've bad for better
+or worse. So `queryRejected` comes back as a success. This is just how we chose to implement query rejection (not to be
+confused with query failure).
+
+### Update workflow without ID
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/update/MyUpdate -d '{
+  "request": {
+    "input": {
+      "args": ["Hello, World!"]
+    }
+  }
+}'
+```
+
+Response:
+
+```json
+{
+  "updateRef": {
+    "workflowExecution": {
+      "workflowId": "my-workflow-id",
+      "runId": "7124ede7-fef5-4e15-8411-baa23d6beefd"
+    },
+    "updateId": "6dad5439-40dd-4b01-9f15-f5723a450776"
+  },
+  "outcome": {
+    "success": ["Hello, World!"]
+  }
+}
+```
+
+### Update workflow with ID
+
+Request:
+​
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/updates/my-update-id -d '{
+  "request": {
+    "input": {
+      "name": "MyUpdate",
+      "args": ["Hello, World!"]
+    }
+  }
+}'
+```
+​
+Response:
+​
+```json
+{
+  "updateRef": {
+    "workflowExecution": {
+      "workflowId": "my-workflow-id",
+      "runId": "7124ede7-fef5-4e15-8411-baa23d6beefd"
+    },
+    "updateId": "my-update-id"
+  },
+  "outcome": {
+    "success": ["Hello, World!"]
+  }
+}
+```
+
+So `/update/<update-name>` is sending to a name, but `/updates/<update-id>` is also sending to a name but an ID url too.
+The reason for this is to support a stable ID-based URL for creating and describing (i.e. non-blocking-result fetch) one
+day.
+
+### Cancel workflow
+
+Request:
+​
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/cancel -d '{
+  "reason": "some reason"
+}'
+```
+​
+Response:
+​
+```json
+{ }
+```
