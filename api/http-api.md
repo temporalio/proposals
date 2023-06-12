@@ -434,3 +434,207 @@ Response:
 ```json
 { }
 ```
+
+## Rejected Alternative Approach - Full API Redesign
+
+An alternative to the approach to this proposal is to make a quality Temporal HTTP API from scratch instead of just
+exposing our existing API. But it would still call the existing RPC calls.
+
+Pros:
+
+* Can design a higher quality API
+  * Arguably not that much higher quality though
+* Can be much more consistent
+  * We are incredibly inconsistent with how we do similar things today
+
+Cons:
+
+* Every call and field has to be manually reviewed and designed
+  * This is hundreds of fields. Schedules alone would take a while.
+* Double the effort for many API additions
+  * Something as simple as adding a history or schedule field requires HTTP API design
+* May require maintaining separate auth/headers/timeouts/etc
+  * Just exposing HTTP on existing gRPC leverages existing interceptors, timeouts, etc
+* Still at the mercy of the gRPC interface and therefore can't design very well
+  * For instance, if gRPC doesn't return the full resource as a result of  a mutate call, we can't do so from HTTP side
+    either in a RESTful manner because it would not be atomic
+  * Can't use `PUT`, `PATCH`, etc like you might like because our gRPC API
+* Easy to get bogged down in detailed design discussions
+  * For instance, does the workflow type belong in the URL?
+
+### Usage Examples of a New API Design
+
+These are the same examples as before, just what they might look like if we designed the API from scratch. These can be
+compared with the original.
+
+**Start a workflow - no input**
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id -d '{
+  "workflow": "MyWorkflow",
+  "taskQueue": "my-task-queue"
+}'
+```
+
+Response:
+
+```json
+{
+  "runId": "7124ede7-fef5-4e15-8411-baa23d6beefd"
+}
+```
+
+Note, the response does not include the entire workflow like a normal REST API might. This is because we can't
+start-then-describe atomically.
+
+Differences:
+
+* Changed `"workflowType": { "name": "MyWorkflow" }` to `"workflow": "MyWorkflow"`
+* Changed `"taskQueue": { "name": "my-task-queue" }` to `"taskQueue": "my-task-queue"`
+
+**Start a workflow with input**
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id -d '{
+  "workflow": "MyWorkflow",
+  "taskQueue": "my-task-queue",
+  "args": ["Hello, World!"]
+}'
+```
+
+Response:
+
+```json
+{
+  "runId": "7124ede7-fef5-4e15-8411-baa23d6beefd"
+}
+```
+
+Differences:
+
+* Changed `"workflowType": { "name": "MyWorkflow" }` to `"workflow": "MyWorkflow"`
+* Changed `"taskQueue": { "name": "my-task-queue" }` to `"taskQueue": "my-task-queue"`
+* Changed the term `input` to `args`
+
+**Signal workflow**
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/signal/MySignal
+```
+
+Response:
+
+```json
+{}
+```
+
+Differences:
+
+* None
+
+**Query workflow**
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/query/MyQuery
+```
+
+Response:
+
+```json
+["Hello, World!"]
+```
+
+Differences:
+
+* We were able to lift the response to the top level
+
+**Update workflow without ID**
+
+Request:
+
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/update/MyUpdate \
+     -d '["Hello, World!"]'
+```
+
+Response:
+
+```json
+{
+  "updateId": "6dad5439-40dd-4b01-9f15-f5723a450776",
+  "result": ["Hello, World!"]
+}
+```
+
+Differences:
+
+* We were able to lift the request to the top level
+* We were able to lift the response ID and result to the top level
+
+**Update workflow with ID**
+
+Request:
+​
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/updates/my-update-id -d '{
+  "update": "MyUpdate",
+  "args": ["Hello, World!"]
+}'
+```
+​
+Response:
+​
+```json
+{
+  "updateId": "my-update-id",
+  "result": ["Hello, World!"]
+}
+```
+
+Differences:
+
+* We were able to put `update` and `args` to be consistent with starting workflow
+* We were able to lift the response ID and result to the top level
+
+**Cancel workflow**
+
+Request:
+​
+```bash
+curl -X POST http://localhost:7243/api/v1/namespaces/my-namespace/workflows/my-workflow-id/cancel -d '{
+  "reason": "some reason"
+}'
+```
+​
+Response:
+​
+```json
+{ }
+```
+
+Differences:
+
+* None
+
+## Rejected Alternative Approach - Full API Redesign and New Frontend Implementation
+
+An alternative approach to this proposal is, like above, redesign the HTTP API but without calling the existing RPCs.
+Instead redevelop those too.
+
+In addition to many of the pros/cons of the redesign approach mentioned, these stand out in particular:
+
+Pros:
+
+* Can build a high-quality API with no boundaries
+
+Cons:
+
+* Have to write your own new Temporal frontend service
+* Will likely have to alter persistence abstraction to support some features
+  * For example, if server today doesn't support transactional mutate-then-read semantics, would have to add them
