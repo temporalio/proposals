@@ -16,8 +16,12 @@ Temporal has a gRPC API but no HTTP API. We need an HTTP API.
 * Design a high-quality REST API from first principles
 * grpc-web (browser-only gRPC workaround that requires server-side support)
 * Make an easy call to get workflow result
+* Alter existing gRPC API
 * gRPC stream support (maybe later)
 * Poll calls (maybe later)
+
+The reason for all non-goals is to have a reasonably scoped project and to not harm/effect our existing gRPC API in any
+way. This proposal is for a limited-effort approach.
 
 **Unresolved Research**
 
@@ -67,6 +71,7 @@ though.
     * Noun as last URL term if for a create, verb if for an action
   * `PATCH` is not needed because we don't adhere to common CRUD
     * TODO(cretz): Needs discussion
+* `?pretty` can be added to any URL for pretty printing of response
 
 ### RPCs
 
@@ -220,6 +225,7 @@ But we may be able to solve this using a "shorthand" approach. Some research has
     a bit different than regular JSON? Probably and should apply to output too.
   * This new proto JSON form needs to have some way to make it clear it's a proto JSON payload. Since protos always have
     to be objects, a `_protoMessageType` key will have to be present that is the qualified "messageName"
+* Shorthand payload parsing/formatting can be opted out via a `?noPayloadShorthand` query parameter
 
 So now, with the above shorthand, that same payloads set now looks like:
 
