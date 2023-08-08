@@ -161,6 +161,8 @@ actually apply to many but we are not repeating ourselves too much here.
 
 Current suggested approach, subject to discussion:
 
+* HTTP calls will be handled by the existing frontend service (i.e. the same pod/container/process that handles gRPC)
+  * Since gRPC is itself wrapped in HTTP, this means that all the same security mechanisms (auth, encryption, etc.) will work exactly the same for HTTP as they do for gRPC
 * Generated gRPC gateway code will be auto-generated at the same time as api-go is for gRPC and live alongside it
 * Service config has new `httpPort`
   * Only allowed on "frontend" service, presence elsewhere is config failure
