@@ -67,13 +67,13 @@ Example invocations:
 
 ```js
 Start(
-  "payments",
-  "charge",
+  'payments',
+  'charge',
   transactionId,
-  { customerId: "someCustomerId", amount: 5000 },
-  "nexus://caller.example.com/callback?token=" + token
+  { customerId: 'someCustomerId', amount: 5000 },
+  'nexus://caller.example.com/callback?token=' + token
 );
-Cancel("payments", "charge", transactionId);
+Cancel('payments', 'charge', transactionId);
 ```
 
 #### Handler addressability
@@ -92,13 +92,13 @@ The handler may deal with this in a couple ways:
 
    ```js
    Start(
-     "payments",
-     "charge",
-     customerId + "/" + transactionId,
+     'payments',
+     'charge',
+     customerId + '/' + transactionId,
      { amount: 5000 },
-     "nexus://caller.example.com/callback?token=" + token
+     'nexus://caller.example.com/callback?token=' + token
    );
-   Cancel("payments", "charge", customerId + "/" + transactionId);
+   Cancel('payments', 'charge', customerId + '/' + transactionId);
    ```
 
    > NOTE: This looks a lot like a nested REST style URL, e.g: `/payments/customers/{customerId}/charges/{transactionId}`.
@@ -186,7 +186,7 @@ Both handler generated IDs and caller generated IDs with handler mapping options
 ### API draft
 
 ```
-Start(service, operation, (optional) operation_id, input, ...) -> operation_id | result
+Start(service, operation, input, request_id, ...) -> operation_id | result
 Cancel(service, operation, operation_id)
 GetResult(service, operation, operation_id)
 Describe(service, operation, operation_id)
@@ -195,19 +195,15 @@ Describe(service, operation, operation_id)
 
 ### Notes
 
-- Caller identifiers are optional. If not provided with an ID, the handler must generate one. Handlers may reject (with
-  an error) caller generated IDs for certain operations (e.g. low latency use cases with complex identifiers or when
-  multiple calls are backed by a single operation).
-- Operations are addressed by service, operation name, operation ID, and caller information (e.g. tenant ID).
-- Temporal _may_ at some point expose a strongly consistent mapping of caller to handler identifiers that handlers may
-  choose to leverage, this will be required to alleviate the caller burden of generating addressable IDs for workflow
-  updates.
-  We may start by requiring wrapping update requests with another workflow execution, which achieves the same effect.
-  Note that there are still open questions around using workflow updates over Nexus (e.g. guarateed callback delivery in
-  case of workflow termination).
-- When starting operations from a Temporal workflow, there's no need to provide an ID, Temporal will persist the handler
-  generated ID on the workflow's behalf. If an ID is provided from a workflow, the handler can use it for deduping
-  purposes.
+- Handler generates operation IDs.
+- To cancel or get the status or result of an operation, a caller must provide the operation name, and handler provided
+  operation ID.
+  - Callers must be store operation identifiers in order to use these APIs
+  - We may later add the ability for callers to provide operation IDs to remove the requirement for caller state.
+  - This may require some form of seconary index when mapping mulitple client IDs to the same handler operation.
+    Alternatively, we may expose a handler API to map caller input to an operation ID, as mentioned in the [Handler
+    generated identifiers](#handler-generated-identifiers) above.
+- Callers may provide a request ID used to dedupe the start request.
 - `GetResult` may be used to long poll for the result or eagerly return if not ready yet.
-- `Describe` and `GetResult` may be merged into a single request.
-- `DeliverResult`, which was mentioned above, may be added in the full API proposal.
+- The handler _should_ either sign or qualify caller-provided operation IDs when dealing with untrusted sources and
+  multi-tenant applications.
