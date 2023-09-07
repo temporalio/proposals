@@ -48,66 +48,16 @@ type Registry interface {
 Add and embed a third registry type: `OperationRegistry` with the following method:
 
 ```go
+import "github.com/nexus-rpc/sdk-go/nexus"
+
 type OperationRegistry interface {
-	RegisterOperation(operation string, handler operation.Handler)
-	// Alternative: get the operation name from handler.Name()
-	// RegisterOperation(handler operation.Handler)
+	RegisterOperation(operation string, handler nexus.Handler)
 }
 ```
 
-`operation.Handler` is an interface with a minimal definition of:
-
-```go
-package operation // go.temporal.io/sdk/operation
-
-type Handler interface {
-	StartOperation(context.Context, *StartOperationRequest) (OperationResponse, error)
-	CancelOperation(context.Context, *CancelOperationRequest) error
-	// Later we will add GetResult and GetInfo as well
-}
-
-// Maps almost 1:1 to the Nexus Go SDK StartOperationRequest, exposing HTTP header and body directly instead of the HTTP
-// Request object.
-type StartOperationRequest struct {
-	Operation   string
-	RequestID   string
-	CallbackURL string
-
-	URL    *url.URL
-	Header http.Header
-	Body   []byte
-}
-
-// Maps almost 1:1 to the Nexus Go SDK CancelOperationRequest, exposing HTTP header and body directly instead of the
-// HTTP Request object.
-type CancelOperationRequest struct {
-	Operation   string
-	OperationID string
-
-	URL    *url.URL
-	Header http.Header
-}
-
-type OperationResponse interface {
-	// private methods
-}
-
-// Indicates that an operation completed successfully. Implements OperationResponse.
-type OperationResponseSync struct {
-	// Header to deliver in the HTTP response.
-	Header http.Header
-	// Body conveying the operation result.
-	// If it is an io.Closer, it will be automatically closed by the framework.
-	// Note that we accept a reader instead of bytes here to keep the future possiblity of supporting streaming of large
-	// payloads.
-	Body io.Reader
-}
-
-// Indicates that an operation has been accepted and will complete asynchronously. Implements OperationResponse.
-type OperationResponseAsync struct {
-	OperationID string
-}
-```
+> NOTE: `nexus.Handler` methods accept [request structs][nexus-start-request] that include an `*http.Request` object.
+> The SDK creates an fake request with the `Method`, `URL`, `Proto`, `Header`, and `Body` members populated (others
+> TBD).
 
 To minimize the amount of boilerplate required to map operations to common Temporal constructs, the SDK exposes default
 handler implementations.
@@ -305,3 +255,4 @@ All of these methods panic if called outside of an operation handler.
 [nexus-go-sdk]: https://github.com/nexus-rpc/sdk-go
 [nexus-http-api]: https://github.com/nexus-rpc/api/TODO
 [activity-package]: https://pkg.go.dev/go.temporal.io/sdk@v1.24.0/activity#pkg-functions
+[nexus-start-request]: https://pkg.go.dev/github.com/nexus-rpc/sdk-go@v0.0.0-20230906182323-c6769ebc0c28/nexus#StartOperationRequest
