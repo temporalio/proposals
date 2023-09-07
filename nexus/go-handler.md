@@ -61,7 +61,7 @@ type OperationRegistry interface {
 package operation // go.temporal.io/sdk/operation
 
 type Handler interface {
-	StartOperation(context.Context, *StartOperationRequest) (StartOperationResponse, error)
+	StartOperation(context.Context, *StartOperationRequest) (OperationResponse, error)
 	CancelOperation(context.Context, *CancelOperationRequest) error
 	// Later we will add GetResult and GetInfo as well
 }
