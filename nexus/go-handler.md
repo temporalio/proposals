@@ -253,6 +253,6 @@ All of these methods panic if called outside of an operation handler.
 
 [temporal-go-sdk]: https://github.com/temporal/sdk-go
 [nexus-go-sdk]: https://github.com/nexus-rpc/sdk-go
-[nexus-http-api]: https://github.com/nexus-rpc/api/TODO
+[nexus-http-api]: https://github.com/nexus-rpc/api/blob/main/SPEC.md
 [activity-package]: https://pkg.go.dev/go.temporal.io/sdk@v1.24.0/activity#pkg-functions
 [nexus-start-request]: https://pkg.go.dev/github.com/nexus-rpc/sdk-go@v0.0.0-20230906182323-c6769ebc0c28/nexus#StartOperationRequest
