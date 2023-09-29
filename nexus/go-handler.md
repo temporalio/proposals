@@ -251,6 +251,13 @@ func GetMetricsHandler(context.Context) metrics.Handler
 
 All of these methods panic if called outside of an operation handler.
 
+### WorkerOptions
+
+The following worker options will be added to apply limits:
+
+- `MaxConcurrentNexusTaskPollers`
+- `MaxConcurrentNexusExecutionSize`
+
 [temporal-go-sdk]: https://github.com/temporal/sdk-go
 [nexus-go-sdk]: https://github.com/nexus-rpc/sdk-go
 [nexus-http-api]: https://github.com/nexus-rpc/api/blob/main/SPEC.md
