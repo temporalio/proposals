@@ -67,3 +67,8 @@ To unmarshal from a Nexus request or response to a Temporal payload:
 ## Custom data converters
 
 Users implementing custom data converters will need to add a codec that converts to and from their non-standard payload format.
+
+## References
+
+- https://stackoverflow.com/a/48051331
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type#directives
