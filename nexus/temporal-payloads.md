@@ -34,35 +34,40 @@ To unmarshal a Temporal Payload from a Nexus request or response:
 
 1. Extract all `Content-Temporal-` prefixed headers into the payload metadata using the following rules:
    1. Ignore multiple values (not supported)
-   2. Strip the key prefix and transform header case to camel case. E.g: `Content-Temporal-Foo-Bar` becomes `fooBar`
-   3. Read the values as [data URLs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs)
-2. Set the `encoding` Payload metadata field as follows:
+   1. Strip the key prefix and transform header case to camel case. E.g: `Content-Temporal-Foo-Bar` becomes `fooBar`
+   1. Read the values as [data URLs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs)
+1. Set the `Payload.metadata.encoding` field as follows:
    1. If `Content-Length` is 0 or body is empty → `binary/null`
-   2. If `Content-Type` media type is `application/json` →
+   1. If `Content-Type` media type is `application/json` →
       1. If the content type parameter contains a `format=protobuf` → `json/protobuf` and set `messageType` to the corresponding parameter value.
          Example: `Content-Type: application/json; format=protobuf; messageType=com.example.Message`
       2. Otherwise → `json/plain`
-   3. If `Content-Type` media type is `application/x-protobuf` → `binary/protobuf` and set the `messageType` parameter as given in the header.
+   1. If `Content-Type` media type is `application/x-protobuf` → `binary/protobuf` and set the `messageType` parameter as given in the header.
       Example: `Content-Type: application/x-protobuf; messageType="com.example.Message"`
-   4. Otherwise → `binary/plain`
-3. Extract all `Content-Encoding` values into a `codecs` metadata key with a comma separator. Note that the server may
-   decompress gzipped content and other popular encoding formats.
-4. Read the entire body into `Payload.data` and unset `Content-Length`
-5. Extract any other interesting `Content-` prefixed headers (none seem relevant ATM)
+   1. `Content-Type: application/octet-stream; temporalEncoding=X` → `X`
+   1. Otherwise → `binary/plain`
+1. Read the entire body into `Payload.data`
 
 To unmarshal from a Nexus request or response to a Temporal payload:
 
 1. Set the `Content-Length` header to the `Payload.data` length
-2. Set body to `Payload.data`
-3. Set `Content-Type` based on the `Payload.metadata` `encoding` field:
+1. Set body to `Payload.data`
+1. Set `Content-Type` based on the `Payload.metadata.encoding` field:
    1. `binary/null` → unset
-   2. `json/plain` → `application/json`
-   3. `json/protobuf` → `application/json; proto=$Payload.metadata.messageType`
-   4. `binary/protobuf` → `application/x-protobuf; messageType=$Payload.metadata.messageType`
-   5. `binary/plain` → `application/octet-stream`
-   6. Anything else → `application/octet-stream; temporalEncoding=$Payload.metadata.encoding`
-4. Set `Content-Encoding` to `Payload.metadata.codecs`
-5. Other metadata fields are set as `Content-Temporal-` headers, transforming camel case to header case. Values are encoded as base64 data URLs.
+   1. `json/plain` → `application/json`
+   1. `json/protobuf` → `application/json; format=protobuf; messageType=$Payload.metadata.messageType`
+   1. `binary/protobuf` → `application/x-protobuf; messageType=$Payload.metadata.messageType`
+   1. `binary/plain` → `application/octet-stream`
+   1. Anything else → `application/octet-stream; temporalEncoding=$Payload.metadata.encoding`
+1. Other metadata fields are set as `Content-Temporal-` headers, transforming camel case to header case. Values are encoded as base64 data URLs.
+
+## Note on `Content-Encoding`
+
+`Content-Encoding` is handled at the Nexus transport layer - typically handled by Temporal server. Temporal applications
+should not concern themselves with that detail.
+
+At a later stage we may want to formalize practices around `Accept` headers and `Content-Encoding` as well as letting a
+client request that a result is encrypted using a given key.
 
 ## Custom data converters
 
