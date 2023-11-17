@@ -1,6 +1,6 @@
 # [Temporal](https://temporal.io) proposals
 
-This repo tracks all new and accepted feature proposals (internal or external) for the [Temporal open source project](https://github.com/temporalio/temporal). If you're interested in submitting a proposal for consideration, please refer the [Creating a new proposal](#creating-a-new-proposal) section.
+This repo tracks select new and accepted feature proposals (internal or external) for the [Temporal open source project](https://github.com/temporalio/temporal). If you're interested in submitting a proposal for consideration, please refer the [Creating a new proposal](#creating-a-new-proposal) section.
 
 ### Creating a new proposal
 
@@ -12,4 +12,4 @@ The Temporal proposal process begins when you create an issue adhering to the pr
 
 We appreciate the time and energy it takes to create a well constructed proposal. If you ever feel that your proposal was constructed properly but not given a fair chance, please reach out to us!
 
-If you're struggling to understand what a basic issue proposal will look like, [check out this example issue](https://github.com/temporalio/proposals/issues/1).
+To see what a basic issue proposal looks like, [check out this example issue](https://github.com/temporalio/proposals/issues/1).
