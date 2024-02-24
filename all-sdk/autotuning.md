@@ -1,18 +1,18 @@
 # Worker Autotuning Proposal
 
 Users often struggle with the appropriate configuration of workers. There are many options to fiddle with, nearly none
-of which ought to be something users should be required to think about. This proposal aims to reduce the cognitive load
-of configuring workers by automatically setting appropriate values for various worker options at runtime without
-(or with much simplified) user intervention.
+of which are something users should be required to think about. This proposal aims to reduce the cognitive load of
+configuring workers by automatically tuning various worker internals at runtime without (or with configurable) user
+intervention.
 
 ## Areas of configuration
-There are a few different configuration "areas" that we can autotune:
+There are a few different configuration areas that we can autotune:
 
 ### Concurrent Pollers
-Right now, the number of pollers used for polling workflow and activity tasks is dynamic (in varying ways in different
-SDKs), but is limited to a maximum defined by the user. In Core: `max_concurrent_wft_polls` and
-`max_concurrent_at_polls`. This limit need not be defined by the user, except possibly as hard high ceiling. This work
-is largely already designed and implemented in Go: [see the branch
+Right now the number of pollers used for polling workflow and activity tasks is fixed to a maximum defined by the user.
+In Core: `max_concurrent_wft_polls` and `max_concurrent_at_polls`. There's no need for this number to be fixed, and we
+can and should scale it up and down as demand dictates.  This work is largely already designed and implemented in Go:
+[see the branch
 here](https://github.com/temporalio/sdk-go/compare/master...Quinn-With-Two-Ns:sdk-go:poller-autottune-v0.2). Hence this
 doc will not focus on this area in detail.
 
@@ -22,17 +22,21 @@ time. The former may have a floor, whereas the latter must always be able to go 
 the number of routines as they are relatively cheap. They *do*, however, care about how quickly we will change the
 number of active RPCs. The floor on the number of routines effectively determines how quickly we are willing to consume
 available slots and thus make actual RPC calls. IE: If the floor on the number of routines is 10, and 10 slots open up
-at the same time, we will immediately make 10 RPC calls.
+at the same time, we will immediately make 10 RPC calls. 
+
+In Go the name for these options is already misleading: `MaxConcurrentWorkflowTaskPollers` is not accurate, it's really
+`NumWorkflowTaskPollers` (or routines), what it probably should be is `MaxConcurrentWorkflowTaskPolls`, since the number
+of open RPC calls is actually what's fluctuating.
 
 
 ### Slot tuning & Cache Size
 
 Workers have a configurable number of slots for task types. In Core: `max_outstanding_workflow_tasks`,
 `max_outstanding_activities`, and `max_outstanding_local_activities`. These are set by the user and can't change at
-runtime. Autotuning of these values would seek to allow them to change at runtime according to available resources on
-the worker. It is not feasible to choose *optimal* values for these at runtime, because we cannot know a-priori about
-how much resources any given workflow or activity task will consume - only the user can (maybe) know this. However, we
-can provide a reasonable default autotuning implementation while also allowing users to provide their own.
+runtime. Autotuning of these values seeks to allow them to change at runtime according to available resources on
+the worker. It is not feasible for us to choose *optimal* values for these at runtime, because we cannot know a-priori
+about how much resources any given workflow or activity task will consume - only the user can (maybe) know this.
+However, we can provide reasonable default autotuning implementations while also allowing users to provide their own.
 
 Additionally, there is a maximum cache size for cached workflows. In Core: `max_cached_workflows`. This is also set by
 users at the moment, and autotuning it is subject to the same lack of knowledge we have as with slot tuning.
@@ -52,37 +56,41 @@ To reiterate, we can't possibly know as well as the user what resources a given 
 Thus, we need to provide an interface by which users can tell us whether they think it's reasonable to allow the use
 of an additional slot.
 
-The interface definition here is provided in Rust, but need not be copied exactly by other languages. Since users
-are implementing it, we want something idiomatic for them. Languages without destructors might eschew the permit struct
-since it may not provide much value there. So, don't get too fixated on the specifics - the important thing is the
-semantics of being able to ask for a slot, mark when it's in use, and free it when we're done.
+The interface definition here is provided in Rust, but need not be copied exactly by other languages. Since users are
+implementing it, we want something idiomatic for them. Rust will likely immediately convert all newly allowed slots into
+a permit struct which will automatically release the slot when dropped (like it does today, without this interface). 
+Languages with destructor semantics should do the same, as permit/slot leaking is easy to do by accident.
 
-There is some mild generic magic going on to represent different types of slots and constrain that only permits of the
-appropriate type are provided or consumed, and only with the corresponding info type. These guarantees can't be
-compile-time enforced across the language boundary, but are at least useful after runtime validation.
+There is some mild generic magic going on to represent different types of slots and constrain that the right info type
+is provided. These guarantees can't be compile-time enforced across the language boundary, but are at least useful after
+runtime validation.
 
 ```rust
 trait SlotSupplier {
-  type SlotKind: TaskSlotKind;
-
-  /// Blocks until a slot is available, then returns a permit for that slot.
+  type SlotKind: SlotKind;
+  /// Blocks until a slot is available.
   /// May also return an error if the backing user implementation encounters an error.
-  async fn reserve_slot(&self) -> Result<SlotPermit<SlotKind>, anyhow::Error>;
-  /// Tries to immediately reserve a slot, returning None if no slot is available.
+  /// Returned errors will bubble up and cause the worker to shut down.
+  async fn reserve_slot(&self) -> Result<(), anyhow::Error>;
+
+  /// Tries to immediately reserve a slot, returning true if a slot is available.
   /// May also return an error if the backing user implementation encounters an error.
-  fn try_reserve_slot(&self) -> Result<Option<SlotPermit<SlotKind>>, anyhow::Error>;
+  /// Returned errors will bubble up and cause the worker to shut down.
+  fn try_reserve_slot(&self) -> Result<bool, anyhow::Error>;
 
-
-  /// Marks a permit as actually now being used. This is separate from reserving one because the pollers need to
+  /// Marks a slot as actually now being used. This is separate from reserving one because the pollers need to
   /// reserve a slot before they have actually obtained work from server. Once that task is obtained (and validated)
   /// then the slot can actually be used to work on the task.
   /// 
   /// Users' implementation of this can choose to emit metrics, or otherwise leverage the information provided by the
   /// `info` parameter to be better able to make future decisions about whether a slot should be handed out.
-  fn mark_slot_used(&self, permit: &SlotPermit<SlotKind>, info: &Self::SlotKind::Info);
+  fn mark_slot_used(&self, info: &Self::SlotKind::Info);
 
-  /// Frees a slot by reclaiming the provided permit.
-  fn release_permit(&self, permit: SlotPermit<SlotKind>, info: &Self::SlotKind::Info);
+  /// Frees a slot.
+  fn release_slot(&self, info: &Self::SlotKind::Info);
+  
+  /// If this implementation knows how many slots are available at any moment, it should return that here.
+  fn available_slots(&self) -> Option<usize>;
 }
 
 // These functions would be provided to the user as top level statics they can access to get information about how
@@ -96,22 +104,6 @@ pub fn used_workflow_slots_info() -> WorkflowSlotsInfo { /* ... */ }
 pub fn used_activity_slots_info() -> ActivitySlotsInfo { /* ... */ }
 pub fn used_local_activity_slots_info() -> LocalActivitySlotsInfo { /* ... */ }
 
-struct SlotPermit<T: SlotKind> {
-  supplier: Arc<dyn SlotSupplier>,
-  _kind: PhantomData<T>,
-  // ... other implementation details of a permit
-}
-
-impl Drop for SlotPermit {
-  fn drop(&mut self) {
-    // When the permit is dropped, the slot is freed.
-    // languages without destructors will need to call a method to free the slot.
-    // (for the eagle eyed, yes, technically this won't compile since self can't be consumed here
-    // but it's a simplification for the sake of the example and doable with some mem::replace)
-    self.supplier.release_permit(self);
-  }
-}
-
 struct WorkflowSlotsInfo {
   used_slots: Vec<WorkflowSlotInfo>,
   /// Current size of the workflow cache.
@@ -119,6 +111,7 @@ struct WorkflowSlotsInfo {
   /// The limit on the size of the cache, if any. This is important for users to know as discussed below in the section
   /// on workflow cache management.
   max_cache_size: Option<usize>,
+  // ... Possibly also metric information
 }
 struct ActivitySlotsInfo {
   used_slots: Vec<ActivitySlotInfo>,
@@ -155,7 +148,6 @@ impl SlotKind for ActivitySlotKind {
 impl SlotKind for LocalActivitySlotKind {
   type Info = LocalActivitySlotInfo;
 }
-
 trait WorkflowTaskSlotSupplier: SlotSupplier<SlotKind=WorkflowSlotKind> {}
 trait ActivityTaskSlotSupplier: SlotSupplier<SlotKind=ActivitySlotKind> {}
 trait LocalActivityTaskSlotSupplier: SlotSupplier<SlotKind=LocalActivitySlotKind> {}
@@ -188,18 +180,27 @@ there is room in the cache (either additional capacity, or an idle cached workfl
 a potential problem where we ask for a slot, they provide one, but there's nothing we can evict at the moment.
 
 If and when we do introduce user-configurable caching, it's likely that they would want the same thing to be responsible
-for both slots and cache management, since the two are so closely related.
+for both slots and cache management, since the two are closely related.
 
 A possible future:
 
 ```rust
 trait WorkflowCacheSizer {
-  /// Return true if it is acceptable to cache a new workflow
-  fn can_allow_additional_workflow(&self, slots_info: &WorkflowSlotsInfo) -> bool;
+  /// Return true if it is acceptable to cache a new workflow. Information about already-in-use slots, and just-received
+  /// task is provided. Will not be called for an already-cached workflow who is receiving a new task.
+  /// 
+  /// Because the number of available slots must be <= the number of workflows cached, if this returns false
+  /// when there are no idle workflows in the cache (IE: All other outstanding slots are in use), we will buffer the
+  /// task and wait for another to complete so we can evict it and make room for the new one.
+  fn can_allow_workflow(&self, slots_info: &WorkflowSlotsInfo, new_task: &WorkflowSlotInfo) -> bool;
+  /// Called when deciding what workflow should be evicted from the cache. May return the run id of a workflow to evict.
+  /// If None, or an invalid run id is returned, the default LRU eviction / strategy is used. The id returned must
+  /// be one of the workflows provided in `evictable` (the ones for which there is no actively processing WFT).
+  fn eviction_hint(&self, evictable: &[WorkflowSlotInfo]) -> Option<&str>;
   /// Called when a workflow is evicted from the cache
   fn evicted_workflow(&self, evicted: &WorkflowSlotInfo);
   /// If there is a fixed maximum number of cached workflows, return it.
-  fn max_cached_workflows(&self) -> Option<usize>;
+  fn max(&self) -> Option<usize>;
 }
 
 /// The user would be allowed to provide either just a slot supplier (using the standard fixed-size cache),
@@ -209,20 +210,66 @@ trait WorkflowCacheSizer {
 trait WorkflowSlotAndCacheManager: WorkflowTaskSlotSupplier + WorkflowCacheSizer {}
 ```
 
+## Flow
+
+Some context on the current flow (at least in Core). The cache only applies to workflow tasks. This flow should remain
+the same after these changes. The flow makes it clear that a misbehaving `WorkflowSlotAndCacheManager` which allows lots
+of slots but keeps saying the cache should not expand could result in buffering tasks and generally gumming things
+up.
+
+```mermaid
+sequenceDiagram
+  participant T as Temporal
+  participant W as Worker
+  participant S as Slots
+  participant C as CacheSizer
+  W->>S: reserve_slot
+  S-->>W: Allowed
+  W->>T: Poll
+  T-->>W: Response
+  
+  alt Workflow is not already in cache
+    W->>C: `can_allow_workflow` ?
+    C-->>W: I'm full
+    W->>W: Buffer task
+    W->>W: Wait for some workflow to be idle (maybe there is already)
+    W->>C: `eviction_hint`
+    C-->>W: Evict This guy
+    W->>W: Evict workflow
+    W->>C: `evicted_workflow`
+    W->>W: Cache new workflow
+  end
+  
+  W->>S: `mark_slot_used`
+  W->>W: Process workflow task
+  W->>S: `release_slot`
+```
+
+## Default implementations
+
+We should provide a few default implementations:
+
+* Semaphore based SlotSupplier: This is the current implementation. There's a fixed number of slots, that's it.
+* Resource based SlotSupplier: This implementation can look at how close the worker is to some resource limit
+  (% of CPU and/or memory used), and hand out slots if it's still below that limit. This only makes sense for
+  activity slot suppliers, since workflows use little CPU, and the memory they use is the concern of cache
+  management, not the slot supplier.
+* Memory based WorkflowCacheSizer: Like above, but for the sizing of the workflow cache.
 
 ## Metrics
 
-Users can add their own metrics behind their implementations now, which is great - but we can also provide one out 
-of the box that can apply to all implementations. Namely `slots_in_use` by type. Right now we emit the inverse of this,
-available slots - we can keep emitting that with a bundled implementation that can act like the old fixed-number based
-implementation.
+Users can add their own metrics behind their implementations now, which is great - but we can also provide some out of
+the box. We can always provide `slots_in_use` by type. Right now we emit the inverse of this,
+`worker_task_slots_available` - we can keep emitting that with a bundled implementation that replicates the old
+fixed-number based implementation. In fact, any implementation which returns a value from `available_slots` we can make
+emit the metric automatically.
 
 We can also of course keep emitting the current number of cached workflows.
 
 
 ## Where it hooks up and the language barrier
 
-Staying in just Rust for a moment, the slot supplier implementations can be hooked up on a per-worker basis through
+Staying in Rust for a moment, the slot supplier implementations can be hooked up on a per-worker basis through
 `WorkerConfig`, as expected. We would add:
 
 ```rust
@@ -246,7 +293,6 @@ This is analogous to what we'd expect in the worker config for other languages.
 
 The suppliers are kept inside of `Arc`s so that they can be shared across multiple workers, and used with the pauseable
 supplier (which the user presumably wants to retain a reference to so they can call pause).
-
 
 Of course, most users aren't going to be implementing this in Rust, they'll be doing it in their language, and then
 we've got to translate that into calls across the language barrier. As such we need a slot provider implementation
@@ -272,47 +318,53 @@ Say you have some activity workers who all interact with an external service. Th
 interact with the service, one of which can have many instances run in parallel, and another that should prevent any
 new work from being done until it's finished.
 
-You can implement a slot supplier for these workers that coordinates their efforts! Pseudocode:
+You can implement a slot supplier for these workers that coordinates their efforts! Pseudocode below. This toy
+isn't meant to be taken seriously and is likely prone to a race, but it shows that cross-worker coordination is possible
+and also raises some questions (see later section for more on that).
 
 ```rust
 struct MyCoordinatingSlotSupplier {
-  // Magic external lock service. Don't think too hard about races :)
   lock_svc_client: LockServiceClient,
   per_worker_allowed: Sempahore,
 }
 
 impl ActivityTaskSlotSupplier for MyCoordinatingSlotSupplier {
-  async fn reserve_slot(&self) -> Result<SlotPermit<SlotKind>, anyhow::Error> {
-    self.lock_svc_client.wait_for_lock_not_held_or_being_acquired().await;
-    self.per_worker_allowed.acquire().await;
-    Ok(SlotPermit::new(self))
+  async fn reserve_slot(&self) -> Result<(), anyhow::Error> {
+    self.lock_svc_client.wait_for_lock_not_held_or_being_acquired().await?;
+    self.per_worker_allowed.acquire().await?;
+    Ok(())
   }
-  fn try_reserve_slot(&self) -> Result<Option<SlotPermit<SlotKind>>, anyhow::Error> { /* ... */ }
-  fn mark_slot_used(&self, permit: &SlotPermit<SlotKind>, info: &Self::SlotKind::Info) {
+  
+  fn try_reserve_slot(&self) -> Result<bool, anyhow::Error> { /* ... */ }
+  
+  fn mark_slot_used(&self, info: &ActivitySlotInfo) {
     if info.activity_type == "there_can_only_be_one" {
+      // Probably kicks off something in the background, but immediately blocks slot reservation
       self.lock_svc_client.eventually_acquire_lock();
     }
   }
-  fn release_permit(&self, permit: SlotPermit<SlotKind>, info: &Self::SlotKind::Info) {
+  
+  fn release_slot(&self, info: &ActivitySlotInfo) {
     if info.activity_type == "there_can_only_be_one" {
       self.lock_svc_client.release_lock();
     }
     self.per_worker_allowed.release();
   }
+  
+  fn available_slots(&self) -> Option<usize> { Some(self.per_worker_allowed.available_permits()) }
 }
 ```
 
-
 ## Drawbacks
 
-* Gives users a bigger footgun. This is mitigated by the fact that most users are probably just going to use one of our
-  default implementations. Inevitably though, someone will implement a custom slot supplier with buggy logic and contact
-  support about it.
+* Gives users a big footgun. This is mitigated by the fact that most users are probably just going to use one of our
+  default implementations. Inevitably though, someone will implement a custom slot supplier or cache manager with buggy
+  logic and contact support about it.
 * More complexity in the core/lang bridge, nothing too bad though.
 
 ## Alternatives
 
-We could not expose this as a user-implementable interface at all, and only offer a handful of default implementations.
+We could not expose this as a user-implementable interface at all and only offer a handful of default implementations.
 The benefits of user customization are substantial though, and seem to outweigh the mild complexity increase. Users will
 always know more about their workload than we can.
 
@@ -336,6 +388,20 @@ knock-on effects in terms of the external load on the systems their workers are 
 Docs & education will both need content about what the interface is for, what default implementations are provided &
 what their limitations are, and how to implement a custom one.
 
+## Open questions
+
+### Async/fallible `mark_slot_used` and `release_slot`
+The "fun example" raises questions about whether `mark_slot_used` and `release_slot` should be allowed to be async
+and/or return errors. Users might reasonably want to perform side effects in them, but internal usage of these functions
+is ideally fast and infallible.
+
+If we were to allow them to be async/blocking, it's another possible spot things can get hosed up and stuck. Less than
+great. If we allow them to be fallible, it's not clear what we could do on a returned error besides bubble it up and
+shut down the worker.
+
+The downsides seem substantial, and users who want to do this can "offload" the async-ness/fallibility to the
+`reserve_slot` function as implied in my toy, which seems reasonable.
+
 ## Future considerations
 
 This proposal has focused specifically on worker autotuning and user customization thereof. However, it's worth
@@ -346,9 +412,9 @@ workers.
 
 We know we want users to be easily able to spin up, and more importantly know _when_ to spin up, new workers. A good
 chunk of this work is already known and has been talked about quite a bit: Having a more accurate task queue backlog
-count, creating autoscalers for k8s or other platforms, etc. These autoscalers would more likely than not primarily
-rely on these backlog counts, but it makes sense that they (as well as other tooling like alerting facilities, etc)
-might want to gather information from workers as well.
+count, creating autoscalers for k8s or other platforms, etc. These autoscalers would likely primarily rely on these
+backlog counts, but it makes sense that they (as well as other tooling like alerting facilities, etc) might want to
+gather information from workers as well.
 
 For example, there might be a substantial backlog of tasks in the queue while workers are simultaneously not using all
 the capacity they could be - this would indicate a problem with the autotuning implementation (or perhaps the need to
