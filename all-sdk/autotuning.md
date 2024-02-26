@@ -5,6 +5,28 @@ of which are something users should be required to think about. This proposal ai
 configuring workers by automatically tuning various worker internals at runtime without (or with configurable) user
 intervention.
 
+Specifically here we are focusing on the first steps architecturally to enable the automatic tuning of an *individual*
+worker. Questions of how to scale up/down the total number of workers are not part of the scope of the proposal, but
+I make some reference towards how this effort could assist that one in the future. We're also not aiming to
+automatically detect or resolve all possible kinds of bottlenecks a user might encounter.
+
+We are aiming to:
+* Give users the option of a better out-of-the-box experience that allows workers to maximize (or at least get closer to
+  maximizing) their resource usage on an individual basis without manual load testing and configuration. Thereby
+  reducing user ramp-up time and our support burden.
+* Establish architecture that allows us (or users) to build more advanced autotuning features in the future
+
+## Definitions and context
+* **Poller** or **poller routine**: A thread/goroutine/tokio task/etc that is responsible for polling for tasks of a
+  particular type. Namely a [sticky] workflow task poller or an activity task poller.
+* **Slot**: A permit or the right to execute a task of a particular type. Workflow, activity, or local activity. The
+  total number of slots that exist at any moment for a task type represents the maximum number of tasks of that type that
+  can be executed in parallel. Currently our SDKs use a fixed ceiling for this number per task type.
+* **In use slot**: Pollers need to reserve a slot before proceeding to make the actual RPC call. Once the call has
+  returned a valid task, the slot is marked as in use. This distinction matters largely for metrics reporting reasons -
+  a user would typically not think of a slot reserved by a poller but without a task yet as "in use".
+
+
 ## Areas of configuration
 There are a few different configuration areas that we can autotune:
 
@@ -45,9 +67,9 @@ users at the moment, and autotuning it is subject to the same lack of knowledge 
 
 There are some invariants that must be maintained:
 
-* The current number of active polls for a task type must be <= the number of free slots for that task type at all
-  times. Otherwise, we can end up receiving a task that won't have anywhere to go until a slot frees. For example,
-  in Core this is expressed by using a permit reservation system.
+* The current number of active polls for a task type must be <= the number of free slots (in use or not) for that task
+  type at all times. Otherwise, we can end up receiving a task that won't have anywhere to go until a slot frees. For
+  example, in Core this is expressed by using a permit reservation system.
 * Max outstanding workflow tasks must be <= max cached workflows.
 
 ## Proposed interface for slot management
@@ -68,15 +90,13 @@ runtime validation.
 ```rust
 trait SlotSupplier {
   type SlotKind: SlotKind;
-  /// Blocks until a slot is available.
-  /// May also return an error if the backing user implementation encounters an error.
-  /// Returned errors will bubble up and cause the worker to shut down.
-  async fn reserve_slot(&self) -> Result<(), anyhow::Error>;
+  /// Blocks until a slot is available. In languages with explicit cancel mechanisms, this should be cancellable and
+  /// return a boolean indicating whether a slot was actually obtained or not. In Rust, the future can simply
+  /// be dropped if the reservation is no longer desired.
+  async fn reserve_slot(&self);
 
   /// Tries to immediately reserve a slot, returning true if a slot is available.
-  /// May also return an error if the backing user implementation encounters an error.
-  /// Returned errors will bubble up and cause the worker to shut down.
-  fn try_reserve_slot(&self) -> Result<bool, anyhow::Error>;
+  fn try_reserve_slot(&self) -> bool;
 
   /// Marks a slot as actually now being used. This is separate from reserving one because the pollers need to
   /// reserve a slot before they have actually obtained work from server. Once that task is obtained (and validated)
@@ -84,25 +104,18 @@ trait SlotSupplier {
   /// 
   /// Users' implementation of this can choose to emit metrics, or otherwise leverage the information provided by the
   /// `info` parameter to be better able to make future decisions about whether a slot should be handed out.
-  fn mark_slot_used(&self, info: &Self::SlotKind::Info);
+  /// 
+  /// `info` may not be provided if the slot was never used
+  /// `error` may be provided if an error was encountered at any point during processing
+  ///     TODO: Error type should maybe also be generic and bound to slot type
+  fn mark_slot_used(&self, info: Option<&Self::SlotKind::Info>, error: Option<&anyhow::Error>);
 
   /// Frees a slot.
-  fn release_slot(&self, info: &Self::SlotKind::Info);
+  fn release_slot(&self, info: &SlotReleaseReason<Self::SlotKind::Info>);
   
   /// If this implementation knows how many slots are available at any moment, it should return that here.
   fn available_slots(&self) -> Option<usize>;
 }
-
-// These functions would be provided to the user as top level statics they can access to get information about how
-// all outstanding slots are currently being used. Ostensibly they could've stored this in their own implementation
-// too, but this is to make it convenient for them to answer questions like "How many slots are being used by 
-// activities of type X right now?". 
-//
-// These could potentially be provided as parameters to the trait methods - but at least in the case of the 
-// async/blocking reserve, the information may change over time, so it may be best to have these be explicit calls.
-pub fn used_workflow_slots_info() -> WorkflowSlotsInfo { /* ... */ }
-pub fn used_activity_slots_info() -> ActivitySlotsInfo { /* ... */ }
-pub fn used_local_activity_slots_info() -> LocalActivitySlotsInfo { /* ... */ }
 
 struct WorkflowSlotsInfo {
   used_slots: Vec<WorkflowSlotInfo>,
@@ -249,7 +262,7 @@ sequenceDiagram
 
 We should provide a few default implementations:
 
-* Semaphore based SlotSupplier: This is the current implementation. There's a fixed number of slots, that's it.
+* Fixed-size SlotSupplier: This is the current implementation. There's a fixed number of slots, that's it.
 * Resource based SlotSupplier: This implementation can look at how close the worker is to some resource limit
   (% of CPU and/or memory used), and hand out slots if it's still below that limit. This only makes sense for
   activity slot suppliers, since workflows use little CPU, and the memory they use is the concern of cache
