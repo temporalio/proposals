@@ -206,14 +206,17 @@ trait WorkflowCacheSizer {
   /// when there are no idle workflows in the cache (IE: All other outstanding slots are in use), we will buffer the
   /// task and wait for another to complete so we can evict it and make room for the new one.
   fn can_allow_workflow(&self, slots_info: &WorkflowSlotsInfo, new_task: &WorkflowSlotInfo) -> bool;
+  
+  // ======================= Methods in this box might be added in a future date, but not initially ====================
+  
   /// Called when deciding what workflow should be evicted from the cache. May return the run id of a workflow to evict.
   /// If None, or an invalid run id is returned, the default LRU eviction / strategy is used. The id returned must
   /// be one of the workflows provided in `evictable` (the ones for which there is no actively processing WFT).
   fn eviction_hint(&self, evictable: &[WorkflowSlotInfo]) -> Option<&str>;
   /// Called when a workflow is evicted from the cache
   fn evicted_workflow(&self, evicted: &WorkflowSlotInfo);
-  /// If there is a fixed maximum number of cached workflows, return it.
-  fn max(&self) -> Option<usize>;
+  
+  // ===================================================================================================================
 }
 
 /// The user would be allowed to provide either just a slot supplier (using the standard fixed-size cache),
@@ -400,6 +403,11 @@ knock-on effects in terms of the external load on the systems their workers are 
 
 Docs & education will both need content about what the interface is for, what default implementations are provided &
 what their limitations are, and how to implement a custom one.
+
+It would also be very valuable to provide tooing & guidance on how to benchmark the performance of a custom (or one of
+our) slot supplier implementation. We can fairly easily add to omes the ability to run a scenario where workflows &
+activities use a customizable amount of memory/cpu. Users can input values that they feel represent their own activities
+and workflow, and then see how the slot supplier implementation behaves under those conditions.
 
 ## Open questions
 
