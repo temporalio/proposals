@@ -93,10 +93,10 @@ trait SlotSupplier {
   /// Blocks until a slot is available. In languages with explicit cancel mechanisms, this should be cancellable and
   /// return a boolean indicating whether a slot was actually obtained or not. In Rust, the future can simply
   /// be dropped if the reservation is no longer desired.
-  async fn reserve_slot(&self);
+  async fn reserve_slot(&self, ctx: &dyn SlotReservationContext<Self::SlotKind>);
 
   /// Tries to immediately reserve a slot, returning true if a slot is available.
-  fn try_reserve_slot(&self) -> bool;
+  fn try_reserve_slot(&self, ctx: &dyn SlotReservationContext<Self::SlotKind>) -> bool;
 
   /// Marks a slot as actually now being used. This is separate from reserving one because the pollers need to
   /// reserve a slot before they have actually obtained work from server. Once that task is obtained (and validated)
@@ -104,66 +104,59 @@ trait SlotSupplier {
   /// 
   /// Users' implementation of this can choose to emit metrics, or otherwise leverage the information provided by the
   /// `info` parameter to be better able to make future decisions about whether a slot should be handed out.
-  /// 
-  /// `info` may not be provided if the slot was never used
-  /// `error` may be provided if an error was encountered at any point during processing
-  ///     TODO: Error type should maybe also be generic and bound to slot type
-  fn mark_slot_used(&self, info: Option<&Self::SlotKind::Info>, error: Option<&anyhow::Error>);
+  fn mark_slot_used(&self, info: <Self::SlotKind as SlotKind>::Info<'_>);
 
-  /// Frees a slot.
-  fn release_slot(&self, info: &SlotReleaseReason<Self::SlotKind::Info>);
+  /// Frees a slot. This is always called when a slot is no longer needed, even if it was never marked as used.
+  /// EX: If the poller reserves a slot, and then receives an invalid task from the server for whatever reason, this
+  /// method would be called with [SlotReleaseReason::Error].
+  fn release_slot(&self, info: SlotReleaseReason);
+}
+
+/// This trait lets implementors obtain other information that might be relevant to their decision on whether to hand
+/// out a slot. It's a trait rather than a struct because the most up-to-date information should be available even
+/// if waiting for some time in the blocking version of `reserve_slot`.
+pub trait SlotReservationContext<SK: SlotKind>: Send + Sync {
+  /// Returns information about currently in-use slots
+  fn used_slots(&self) -> &[SK::Info];
   
-  /// If this implementation knows how many slots are available at any moment, it should return that here.
-  fn available_slots(&self) -> Option<usize>;
+  // ... anything else users end up wanting here
 }
 
-struct WorkflowSlotsInfo {
-  used_slots: Vec<WorkflowSlotInfo>,
-  /// Current size of the workflow cache.
-  num_cached_workflows: usize,
-  /// The limit on the size of the cache, if any. This is important for users to know as discussed below in the section
-  /// on workflow cache management.
-  max_cache_size: Option<usize>,
-  // ... Possibly also metric information
-}
-struct ActivitySlotsInfo {
-  used_slots: Vec<ActivitySlotInfo>,
-}
-struct LocalActivitySlotsInfo {
-  used_slots: Vec<LocalActivitySlotInfo>,
+pub enum SlotReleaseReason {
+  TaskComplete,
+  NeverUsed,
+  Error(anyhow::Error),  // Or possibly something specific to the slot kind, but unlikely.
 }
 
-struct WorkflowSlotInfo {
-  workflow_type: String,
-  // task queue, worker id, etc...
-}
-struct ActivitySlotInfo {
-  activity_type: String,
+pub struct WorkflowSlotInfo<'a> {
+  pub workflow_type: &'a str,
   // etc...
 }
-struct LocalActivitySlotInfo {
-  activity_type: String,
+
+pub struct ActivitySlotInfo<'a> {
+  pub activity_type: &'a str,
+  // etc...
+}
+pub struct LocalActivitySlotInfo<'a> {
+  pub activity_type: &'a str,
   // etc...
 }
 
 struct WorkflowSlotKind {}
 struct ActivitySlotKind {}
 struct LocalActivitySlotKind {}
-trait SlotKind {
-  type Info;
+pub trait SlotKind {
+  type Info<'a>;
 }
 impl SlotKind for WorkflowSlotKind {
-  type Info = WorkflowSlotInfo;
+  type Info<'a> = WorkflowSlotInfo<'a>;
 }
 impl SlotKind for ActivitySlotKind {
-  type Info = ActivitySlotInfo;
+  type Info<'a> = ActivitySlotInfo<'a>;
 }
 impl SlotKind for LocalActivitySlotKind {
-  type Info = LocalActivitySlotInfo;
+  type Info<'a> = LocalActivitySlotInfo<'a>;
 }
-trait WorkflowTaskSlotSupplier: SlotSupplier<SlotKind=WorkflowSlotKind> {}
-trait ActivityTaskSlotSupplier: SlotSupplier<SlotKind=ActivitySlotKind> {}
-trait LocalActivityTaskSlotSupplier: SlotSupplier<SlotKind=LocalActivitySlotKind> {}
 
 /// Users might want to be able to pause the handing-out of slots as an effective way of pausing their workers.
 /// We can provide an implementation for this that wraps their implementation, or one of the defaults we provide.
@@ -224,6 +217,16 @@ trait WorkflowCacheSizer {
 /// 
 /// I'm a bit at a loss for a good name
 trait WorkflowSlotAndCacheManager: WorkflowTaskSlotSupplier + WorkflowCacheSizer {}
+
+struct WorkflowSlotsInfo {
+  used_slots: Vec<WorkflowSlotInfo>,
+  /// Current size of the workflow cache.
+  num_cached_workflows: usize,
+  /// The limit on the size of the cache, if any. This is important for users to know as discussed below in the section
+  /// on workflow cache management.
+  max_cache_size: Option<usize>,
+  // ... Possibly also metric information
+}
 ```
 
 ## Flow
@@ -277,8 +280,7 @@ We should provide a few default implementations:
 Users can add their own metrics behind their implementations now, which is great - but we can also provide some out of
 the box. We can always provide `slots_in_use` by type. Right now we emit the inverse of this,
 `worker_task_slots_available` - we can keep emitting that with a bundled implementation that replicates the old
-fixed-number based implementation. In fact, any implementation which returns a value from `available_slots` we can make
-emit the metric automatically.
+fixed-number based implementation. 
 
 We can also of course keep emitting the current number of cached workflows.
 
@@ -366,8 +368,6 @@ impl ActivityTaskSlotSupplier for MyCoordinatingSlotSupplier {
     }
     self.per_worker_allowed.release();
   }
-  
-  fn available_slots(&self) -> Option<usize> { Some(self.per_worker_allowed.available_permits()) }
 }
 ```
 
