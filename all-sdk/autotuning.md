@@ -148,6 +148,7 @@ impl SlotPermit {
 
 pub enum SlotReleaseReason {
   TaskComplete,
+  /// The slot was reserved but never actually used. May happen during shutdown.
   NeverUsed,
   Error(anyhow::Error),  // Or possibly something specific to the slot kind, but unlikely.
 }
