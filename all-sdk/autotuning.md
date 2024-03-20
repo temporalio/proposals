@@ -91,12 +91,17 @@ runtime validation.
 trait SlotSupplier {
   type SlotKind: SlotKind;
   /// Blocks until a slot is available. In languages with explicit cancel mechanisms, this should be cancellable and
-  /// return a boolean indicating whether a slot was actually obtained or not. In Rust, the future can simply
-  /// be dropped if the reservation is no longer desired.
-  async fn reserve_slot(&self, ctx: &dyn SlotReservationContext<Self::SlotKind>);
+  /// return an option indicating whether a slot was actually obtained or not. In Rust, the future can simply be dropped
+  /// if the reservation is no longer desired.
+  async fn reserve_slot(&self, ctx: &dyn SlotReservationContext<Self::SlotKind>) -> SlotPermit;
 
-  /// Tries to immediately reserve a slot, returning true if a slot is available.
-  fn try_reserve_slot(&self, ctx: &dyn SlotReservationContext<Self::SlotKind>) -> bool;
+  /// Tries to immediately reserve a slot, returning one if a slot is available.
+  ///
+  /// This version of reservation is used for the acquisition of slots for eager activities and eager workflow start, 
+  /// both of which are latency optimizations. Implementations which do not feel they can provide a reasonable answer 
+  /// without blocking can always return false. Alternatively, implementations may feel free to perform blocking work in
+  /// the background so that they can "pre-prepare" an answer for calls to this method.
+  fn try_reserve_slot(&self, ctx: &dyn SlotReservationContext<Self::SlotKind>) -> Option<SlotPermit>;
 
   /// Marks a slot as actually now being used. This is separate from reserving one because the pollers need to
   /// reserve a slot before they have actually obtained work from server. Once that task is obtained (and validated)
@@ -104,22 +109,41 @@ trait SlotSupplier {
   /// 
   /// Users' implementation of this can choose to emit metrics, or otherwise leverage the information provided by the
   /// `info` parameter to be better able to make future decisions about whether a slot should be handed out.
-  fn mark_slot_used(&self, info: <Self::SlotKind as SlotKind>::Info<'_>);
+  /// 
+  /// This implementation must be non-blocking.
+  fn mark_slot_used(&self, info: <Self::SlotKind as SlotKind>::Info<'_>, permit: &SlotPermit);
 
   /// Frees a slot. This is always called when a slot is no longer needed, even if it was never marked as used.
   /// EX: If the poller reserves a slot, and then receives an invalid task from the server for whatever reason, this
   /// method would be called with [SlotReleaseReason::Error].
-  fn release_slot(&self, info: SlotReleaseReason);
+  /// 
+  /// This implementation must be non-blocking.
+  fn release_slot(&self, info: SlotReleaseReason, permit: SlotPermit);
 }
 
 /// This trait lets implementors obtain other information that might be relevant to their decision on whether to hand
 /// out a slot. It's a trait rather than a struct because the most up-to-date information should be available even
 /// if waiting for some time in the blocking version of `reserve_slot`.
 pub trait SlotReservationContext<SK: SlotKind>: Send + Sync {
-  /// Returns information about currently in-use slots
+  /// Returns the task queue associated with this reservation request.
+  fn task_queue(&self) -> &str;
+  /// Returns true if this reservation request is for a poll on a sticky workflow task queue.
+  fn is_sticky(&self) -> bool;
+  /// Returns information about currently in-use slots (TBD if we will have this pending how costly it is)
   fn used_slots(&self) -> &[SK::Info];
   
   // ... anything else users end up wanting here
+}
+
+pub struct SlotPermit {
+  /// A unique identifier for the slot.
+  id: u64,
+  /// This is a way for the user to associate some data with the slot they handed out.
+  user_data: Option<Box<dyn Any + Send + Sync>>,
+}
+impl SlotPermit {
+  /// We will handle identifier assignment for the user.
+  pub fn new(data: Option<Box<dyn Any + Send + Sync>>) -> Self { /* ... */ }
 }
 
 pub enum SlotReleaseReason {
