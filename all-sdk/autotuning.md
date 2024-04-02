@@ -185,6 +185,13 @@ impl SlotKind for LocalActivitySlotKind {
 
 /// Users might want to be able to pause the handing-out of slots as an effective way of pausing their workers.
 /// We can provide an implementation for this that wraps their implementation, or one of the defaults we provide.
+/// 
+/// Pausing a supplier should cause any call to `reserve_slot` to block until `resume` is called. Internally, if the
+/// pause happened during a call to the inner supplier, and that call resolves while paused, the slot should be 
+/// released back to the inner supplier. At least one user expressed a desire for the semantics to be "definitely do not
+/// do any new work when paused". This means that, if we handed out a slot, then paused, and then a poll call resolved
+/// we would end up doing "new work" while paused. We may support that use case in the future by adding an option to
+/// `PauseOptions` that could cancel any outstanding poll calls who already reserved a slot.
 struct PauseableSlotSupplier<T: SlotKind> {
   inner: Arc<dyn SlotSupplier<SlotKind=T>>,
   paused: AtomicBool,
@@ -192,7 +199,7 @@ struct PauseableSlotSupplier<T: SlotKind> {
 }
 impl<T: SlotKind> PauseableSlotSupplier<T> {
   pub fn new(supplier: impl SlotSupplier<SlotKind=T>) -> Self { /* ... */ }
-  pub fn pause(&self) { /* ... */ }
+  pub fn pause(&self, options: PauseOptions) { /* ... */ }
   pub fn resume(&self) { /* ... */ }
 }
 impl<T: SlotKind> SlotSupplier for PauseableSlotSupplier<T> {
