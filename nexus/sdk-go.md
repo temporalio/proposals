@@ -77,9 +77,10 @@ package temporalnexus
 import (
 	"github.com/nexus-rpc/sdk-go/nexus"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/workflow"
 )
 
-// NewWorkflowRunOperation map an operation to a workflow run.
+// NewWorkflowRunOperation maps an operation to a workflow run.
 func NewWorkflowRunOperation[I, O any](
 	name string,
 	workflow func(internal.Context, I) (O, error),
@@ -91,11 +92,12 @@ type WorkflowRunOperationOptions[I, O any] struct {
 	Name string
 	// Workflow function to map this operation to. The operation input maps directly to workflow input.
 	// The workflow name is resolved as it would when using this function in client.ExecuteOperation.
-	// OptionsGetter must be provided when setting this option. Mutually exclusive with Handler.
-	Workflow func(internal.Context, I) (O, error)
+	// GetOptions must be provided when setting this option. Mutually exclusive with Handler.
+	Workflow func(workflow.Context, I) (O, error)
 	// Options for starting the workflow. Must be set if Workflow is set. Mutually exclusive with Handler.
-	OptionsGetter func(context.Context, I, nexus.StartOperationOptions) (client.StartWorkflowOptions, error)
-	// Handler for starting a workflow with a different input than the operation. Mutually exclusive with Workflow.
+	GetOptions func(context.Context, I, nexus.StartOperationOptions) (client.StartWorkflowOptions, error)
+	// Handler for starting a workflow with a different input than the operation. Mutually exclusive with Workflow
+	// and GetOptions.
 	Handler func(context.Context, I, nexus.StartOperationOptions) (WorkflowHandle[O], error)
 }
 
@@ -107,8 +109,8 @@ type WorkflowHandle[T any] interface {
 	RunID() string
 }
 
-// ExecuteWorkflow starts a workflow run, linking the execution chain to a Nexus operation (subsequent runs started from
-// continue-as-new and retries).
+// ExecuteWorkflow starts a workflow run for a [WorkflowRunOperationOptions.Handler], linking the execution chain to a
+// Nexus operation (subsequent runs started from continue-as-new and retries).
 // Automatically propagates the callback and request ID from the nexus options to the workflow.
 func ExecuteWorkflow[I, O any, WF func(internal.Context, I) (O, error)](
 	ctx context.Context,
@@ -158,7 +160,7 @@ opStartTransactionAlt2 := temporalnexus.NewWorkflowRunOperationWithOptions(
 	temporalnexus.WorkflowRunOperationOptions[MyInput, MyOutput]{
 		Name: "start-transaction",
 		Workflow: MyHandlerWorkflow,
-		OptionsGetter: func(ctx context.Context, input MyInput, opts nexus.StartOperationOptions) (client.StartWorkflowOptions, error) {
+		GetOptions: func(ctx context.Context, input MyInput, opts nexus.StartOperationOptions) (client.StartWorkflowOptions, error) {
 			return client.StartWorkflowOptions{
 				ID: input.ID,
 			}, nil
@@ -171,7 +173,7 @@ opStartTransactionAlt3 := temporalnexus.NewWorkflowRunOperationWithOptions(
 		Name: "start-transaction",
 		Handler: func(ctx context.Context, input MyInput, opts nexus.StartOperationOptions) (temporalnexus.WorkflowHandle[MyOutput], error) {
 			// Workflows started with this API must take a single input and return single output.
-			return temporalnexus.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+			return temporalnexus.ExecuteWorkflow(ctx, opts, client.StartWorkflowOptions{
 				ID: input.ID,
 			}, MyHandlerWorkflowWithAlternativeInput, MyWorkflowInput{})
 		},
@@ -184,7 +186,7 @@ opStartTransactionAlt4 := temporalnexus.NewWorkflowRunOperationWithOptions(
 		Name: "start-transaction",
 		Handler: func(ctx context.Context, input MyInput, opts nexus.StartOperationOptions) (temporalnexus.WorkflowHandle[MyOutput], error) {
 			// Run any arbitrary workflow.
-			return temporalnexus.ExecuteUntypedWorkflow[MyOutput](ctx, client.StartWorkflowOptions{
+			return temporalnexus.ExecuteUntypedWorkflow[MyOutput](ctx, opts, client.StartWorkflowOptions{
 				ID: input.ID,
 			}, "SomeOtherWorkflow", input1, input2, input3)
 		},
@@ -252,7 +254,8 @@ type NexusOperationFuture interface {
 }
 
 // ExecuteNexusOperation executes a Nexus Operation.
-func ExecuteNexusOperation(ctx Context, service string, operation string, input any, options NexusOperationOptions) NexusOperationFuture
+// The operation argument can be a string, a [nexus.Operation] or a [nexus.OperationReference].
+func ExecuteNexusOperation(ctx Context, service string, operation any, input any, options NexusOperationOptions) NexusOperationFuture
 ```
 
 **Usage**:
