@@ -21,6 +21,9 @@ Temporal is leveraing the Nexus RPC protocol to facilitate calling across namesp
 This proposal discusses exposing Nexus concepts in the Temporal Go SDK, reusing definitions from the Nexus Go SDK.
 
 > NOTE: The proposed APIs will all be marked experimental until we get user feedback and we feel they've matured enough.
+>
+> Due to limitation in the SDK package structure, some of the types shown in this proposal are aliases to types defined
+> in the `internal` package. We define them inline here for brevity.
 
 ## Temporal Operations
 
@@ -193,10 +196,10 @@ opStartTransactionAlt4 := temporalnexus.NewWorkflowRunOperationWithOptions(
 	})
 ```
 
-### Register an Operation with a Worker
+### Register Operations As Part of a Service with a Worker
 
-We define a `NexusOperationRegistry` interface with a single method `RegisterNexusOperation` and embed it in the
-`Registry` interface:
+We define a `NexusServiceRegistry` interface with a single method `RegisterNexusService` and embed it in the `Registry`
+interface:
 
 ```go
 import "github.com/nexus-rpc/sdk-go/nexus"
@@ -204,21 +207,27 @@ import "github.com/nexus-rpc/sdk-go/nexus"
 Registry interface {
 	WorkflowRegistry
 	ActivityRegistry
-	NexusOperationRegistry // <-- New
+	NexusServiceRegistry // <-- New
 }
 
-NexusOperationRegistry interface {
-	// RegisterNexusOperation registers an operation with a worker. Panics if an operation with the same name has
-	// already been registered on this worker or if the worker has already been started. A worker will only poll for
-	// Nexus tasks if any operations are registered on it.
-	RegisterNexusOperation(op nexus.RegisterableOperation)
+NexusServiceRegistry interface {
+	// RegisterNexusService registers a service with a worker. Panics if a service with the same name has already
+	// been registered on this worker or if the worker has already been started. A worker will only poll for
+	// Nexus tasks if any services are registered on it.
+	RegisterNexusService(service *nexus.Service)
 }
 ```
 
 **Usage**:
 
 ```go
-myWorker.RegisterNexusOperation(myOperation)
+service := nexus.NewService("payments")
+err := service.Register(myOperation, myOtherOperation)
+if err != nil {
+	panic(err)
+}
+
+myWorker.RegisterNexusService(service)
 ```
 
 ## Starting an Operation from a Workflow
@@ -229,11 +238,37 @@ SDK's selectors.
 > NOTE: In the future, as the Go SDK adds support for typed futures, we will add a strongly typed variant of this API.
 
 ```go
-package workflow
+package temporalnexus
 
+type Endpoint interface {
+	// contains filtered or unexported methods
+}
+
+// NewNamedEndpoint creates an with targeted by name as registered in the endpoint registry. If the endpoint is renamed
+// calls refering to the old name will fail.
+func NewNamedEndpoint(name string) Endpoint
+
+// START: Potential future
+
+// NewEndpointFromID creates an endpoint targeted by a stable endpoint ID from the endpoint registry.
+func NewEndpointFromID(id string) Endpoint
+
+// NewEndpointFromSelectors creates an endpoint that is resolved by applying the given selectors.
+// For example {"env" "prod", "region": "us-east-1"}.
+func NewEndpointFromSelectors(selectors map[string]string) Endpoint
+
+// END: Potential future
+```
+
+```go
 // NexusOperationOptions are options for starting a Nexus Operation from a Workflow.
 type NexusOperationOptions struct {
 	ScheduleToCloseTimeout time.Duration
+	// The endpoint to send this operation request to. Optional. If not provided the endpoint will be resolved in
+	// the worker based on the given worker options NexusEndpointResolver function.
+	// It is generally recommended to keep workflow code enviroment agnostic and only set this from a workflow in
+	// ambiguous cases.
+	Endpoint temporalnexus.Endpoint
 }
 
 // NexusOperationExecution is the result of [NexusOperationFuture.GetNexusOperationExecution].
@@ -266,11 +301,15 @@ import (
 	"time"
 
 	"go.temporal.io/sdk/workflow"
+	"go.temporal.io/sdk/temporalnexus"
 )
 
 func MyCallerWorkflow(ctx workflow.Context) (MyOutput, error) {
 	fut := workflow.ExecuteNexusOperation(ctx, "payments", "start-transaction", MyInput{ID: "tx-deadbeef"}, workflow.NexusOperationOptions{
 		ScheduleToCloseTimeout: time.Hour,
+		// Optional, if not provided the endpoint will be resolved in the worker based on the given worker
+		// options.
+		Endpoint: temporalnexus.NewNamedEndpoint("prod-payments"),
 	})
 	var exec workflow.NexusOperationExecution
 	_ = fut.GetNexusOperationExecution().Get(ctx, &exec)
@@ -281,6 +320,22 @@ func MyCallerWorkflow(ctx workflow.Context) (MyOutput, error) {
 ```
 
 > NOTE: To cancel a Nexus Operation, cancel the context used to execute it.
+
+### Endpoint Registration in the Worker
+
+To avoid injecting configuration into the workflow - which is inherently unsafe and could break determinism - the SDK
+provides a worker option to resolve a service to an endpoint.
+
+> NOTE: This could also be implemented in an interceptor but for consistency with all SDKs, including ones where
+> interceptors run in the sandboxed workflow environment, this functionality has been extracted out to the worker.
+
+```go
+opts := worker.Options{
+	NexusEndpointResolver: func(ctx workflow.Context, service string) temporalnexus.Endpoint {
+		return temporalnexus.NewNamedEndpoint("prod-" + service)
+	}
+}
+```
 
 ### Interceptors
 
