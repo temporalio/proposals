@@ -238,37 +238,9 @@ SDK's selectors.
 > NOTE: In the future, as the Go SDK adds support for typed futures, we will add a strongly typed variant of this API.
 
 ```go
-package temporalnexus
-
-type Endpoint interface {
-	// contains filtered or unexported methods
-}
-
-// NewNamedEndpoint creates an with targeted by name as registered in the endpoint registry. If the endpoint is renamed
-// calls refering to the old name will fail.
-func NewNamedEndpoint(name string) Endpoint
-
-// START: Potential future
-
-// NewEndpointFromID creates an endpoint targeted by a stable endpoint ID from the endpoint registry.
-func NewEndpointFromID(id string) Endpoint
-
-// NewEndpointFromSelectors creates an endpoint that is resolved by applying the given selectors.
-// For example {"env" "prod", "region": "us-east-1"}.
-func NewEndpointFromSelectors(selectors map[string]string) Endpoint
-
-// END: Potential future
-```
-
-```go
 // NexusOperationOptions are options for starting a Nexus Operation from a Workflow.
 type NexusOperationOptions struct {
 	ScheduleToCloseTimeout time.Duration
-	// The endpoint to send this operation request to. Optional. If not provided the endpoint will be resolved in
-	// the worker based on the given worker options NexusEndpointResolver function.
-	// It is generally recommended to keep workflow code enviroment agnostic and only set this from a workflow in
-	// ambiguous cases.
-	Endpoint temporalnexus.Endpoint
 }
 
 // NexusOperationExecution is the result of [NexusOperationFuture.GetNexusOperationExecution].
@@ -288,9 +260,15 @@ type NexusOperationFuture interface {
 	GetNexusOperationExecution() Future
 }
 
-// ExecuteNexusOperation executes a Nexus Operation.
-// The operation argument can be a string, a [nexus.Operation] or a [nexus.OperationReference].
-func ExecuteNexusOperation(ctx Context, service string, operation any, input any, options NexusOperationOptions) NexusOperationFuture
+// NexusClient is a client for executing Nexus Operations from a workflow.
+type NexusClient interface {
+	// ExecuteOperation executes a Nexus Operation.
+	// The operation argument can be a string, a [nexus.Operation] or a [nexus.OperationReference].
+	ExecuteOperation(ctx Context, operation any, input any, options NexusOperationOptions) NexusOperationFuture
+}
+
+// Create a [NexusClient] from a service name and an endpoint name.
+func NewNexusClient(service, endpoint string) NexusClient
 ```
 
 **Usage**:
@@ -301,15 +279,12 @@ import (
 	"time"
 
 	"go.temporal.io/sdk/workflow"
-	"go.temporal.io/sdk/temporalnexus"
 )
 
 func MyCallerWorkflow(ctx workflow.Context) (MyOutput, error) {
-	fut := workflow.ExecuteNexusOperation(ctx, "payments", "start-transaction", MyInput{ID: "tx-deadbeef"}, workflow.NexusOperationOptions{
+	client := workflow.NewNexusClient("payments", "prod-payments")
+	fut := client.ExecuteOperation(ctx, "start-transaction", MyInput{ID: "tx-deadbeef"}, workflow.NexusOperationOptions{
 		ScheduleToCloseTimeout: time.Hour,
-		// Optional, if not provided the endpoint will be resolved in the worker based on the given worker
-		// options.
-		Endpoint: temporalnexus.NewNamedEndpoint("prod-payments"),
 	})
 	var exec workflow.NexusOperationExecution
 	_ = fut.GetNexusOperationExecution().Get(ctx, &exec)
@@ -321,22 +296,6 @@ func MyCallerWorkflow(ctx workflow.Context) (MyOutput, error) {
 
 > NOTE: To cancel a Nexus Operation, cancel the context used to execute it.
 
-### Endpoint Registration in the Worker
-
-To avoid injecting configuration into the workflow - which is inherently unsafe and could break determinism - the SDK
-provides a worker option to resolve a service to an endpoint.
-
-> NOTE: This could also be implemented in an interceptor but for consistency with all SDKs, including ones where
-> interceptors run in the sandboxed workflow environment, this functionality has been extracted out to the worker.
-
-```go
-opts := worker.Options{
-	NexusEndpointResolver: func(ctx workflow.Context, service string) temporalnexus.Endpoint {
-		return temporalnexus.NewNamedEndpoint("prod-" + service)
-	}
-}
-```
-
 ### Interceptors
 
 For now we'll only intercept outbound APIs from a workflow, extending the `WorkflowOutboundInterceptor` interface.
@@ -344,7 +303,7 @@ More interceptors are likely to come later.
 
 ```go
 type WorkflowOutboundInterceptor interface {
-	ScheduleNexusOperation(ctx Context, service, operation string, input any, options NexusOperationOptions) NexusOperationFuture
+	NewNexusClient(service, endpoint string) workflow.NexusClient
 	RequestCancelNexusOperation(ctx Context, service, operation, id string, options nexus.CancelOperationOptions) error
 }
 ```
