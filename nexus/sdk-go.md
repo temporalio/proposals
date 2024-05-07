@@ -267,8 +267,8 @@ type NexusClient interface {
 	ExecuteOperation(ctx Context, operation any, input any, options NexusOperationOptions) NexusOperationFuture
 }
 
-// Create a [NexusClient] from a service name and an endpoint name.
-func NewNexusClient(service, endpoint string) NexusClient
+// Create a [NexusClient] from an endpoint name and a service name.
+func NewNexusClient(endpoint, service string) NexusClient
 ```
 
 **Usage**:
@@ -282,7 +282,7 @@ import (
 )
 
 func MyCallerWorkflow(ctx workflow.Context) (MyOutput, error) {
-	client := workflow.NewNexusClient("payments", "prod-payments")
+	client := workflow.NewNexusClient(ctx, "prod-payments", "payments")
 	fut := client.ExecuteOperation(ctx, "start-transaction", MyInput{ID: "tx-deadbeef"}, workflow.NexusOperationOptions{
 		ScheduleToCloseTimeout: time.Hour,
 	})
@@ -303,8 +303,8 @@ More interceptors are likely to come later.
 
 ```go
 type WorkflowOutboundInterceptor interface {
-	NewNexusClient(service, endpoint string) workflow.NexusClient
-	RequestCancelNexusOperation(ctx Context, service, operation, id string, options nexus.CancelOperationOptions) error
+	ExecuteNexusOperation(ctx workflow.Context, client workflow.NexusClient, operation any, input any, options NexusOperationOptions) 
+	RequestCancelNexusOperation(ctx workflow.Context, client workflow.NexusClient, operation any, id string, options nexus.CancelOperationOptions) error
 }
 ```
 
@@ -327,6 +327,7 @@ sequenceDiagram
         UserHandler-->>HandlerWorker: OperationID
         HandlerWorker-->>HandlerTemporal: RespondNexusTaskCompleted(OperationID)
         HandlerTemporal-->>CallerTemporal: OperationID
+        CallerTemporal->>CallerTemporal: Record NexusOperationStarted(OperationID)
     end
     CallerWorker->>CallerTemporal: PollWorkflowTaskQueue
     CallerTemporal-->>CallerWorker: Workflow Task (NexusOperationStarted)
@@ -339,6 +340,7 @@ sequenceDiagram
     ArbitraryHandlerWorker->>HandlerTemporal: RespondWorkflowTaskCompleted<br>(WorkflowExecutionCompleted)
     HandlerTemporal-->>ArbitraryHandlerWorker: OK
     HandlerTemporal->>CallerTemporal: POST callback with operation (workflow) result
+    CallerTemporal->>CallerTemporal: Record NexusOperationCompleted
     CallerTemporal-->>HandlerTemporal: OK
     CallerWorker->>CallerTemporal: PollWorkflowTaskQueue
     CallerTemporal-->>CallerWorker: Workflow Task (NexusOperationCompleted)
@@ -362,6 +364,7 @@ sequenceDiagram
         UserHandler-->>HandlerWorker: Result
         HandlerWorker-->>HandlerTemporal: RespondNexusTaskCompleted(Result)
         HandlerTemporal-->>CallerTemporal: Result
+        CallerTemporal->>CallerTemporal: Record NexusOperationCompleted
     end
     CallerWorker->>CallerTemporal: PollWorkflowTaskQueue
     CallerTemporal-->>CallerWorker: Workflow Task (NexusOperationCompleted)
