@@ -44,7 +44,7 @@ These are the general requirements of the project
   * 💭 Why async-capable? Core and all SDKs are very parallel and so we want to give that benefit to users if they want
     it.
   * 💭 Why thread-blocking? That's the most common way Ruby is used.
-* By as type-safe as possible with RBS
+* Be as type-safe as possible with RBS
   * All SDKs leverage generics to try to catch mistyped arguments for, say, calling a workflow/activity and we should
     too.
   * It is acknowledged that RBS and Ruby type hinting in general is rough at this time, but we must do our best.
@@ -66,7 +66,7 @@ These are the general requirements of the project
   * 💭 Why not top-level? Cluttering top-level module makes discoverability difficult and API docs unclear.
   * 💭 Why no `Temporalio::Common`? Ruby expects to have common things where they make sense instead of under a `Common`
     module.
-  * ❓ To we want plural, e.g. `Temporalio::SearchAttributes` and `Temporalio::Metrics`? While there is no such thing as
+  * ❓ Do we want plural, e.g. `Temporalio::SearchAttributes` and `Temporalio::Metrics`? While there is no such thing as
     a `SearchAttribute`, there is such thing as a `SearchAttributes` (i.e. search attributes collection). And there is
     such thing as a `Metric` (i.e. base class for counter, gauge, and histogram). So it could be
     `Temporalio::SearchAttributes` (the collection) and `Temporalio::Metric` (the base class), and they are not modules
@@ -92,7 +92,7 @@ These are the general requirements of the project
 ### Basic Features
 
 By the very first version, the Ruby SDK should have feature parity with every other SDK (except in cases where we have
-decided other features in other SDKs will never be ported). Here's a non-exhaustive list of some features that includes
+decided other features in other SDKs will never be ported). Here's a non-exhaustive list of features we should include
 that are not discussed later:
 
 * Interceptors and an OpenTelemetry implementation
