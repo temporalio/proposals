@@ -259,13 +259,13 @@ client = Client.connect('localhost:7233')
 # Start workflow
 handle = client.start_workflow(
   MyWorkflow,
-  "some arg",
+  'some arg',
   id="wf-#{SecureRandom.uuid}",
   task_queue='my_task_queue',
 )
 
 # Send signal
-handle.signal(MyWorkflow.some_signal, "some arg")
+handle.signal(MyWorkflow.some_signal, 'some arg')
 ```
 
 * This leverages a `method_added` approach to "decorate" methods.
@@ -381,6 +381,8 @@ end
 
 ## Workers
 
+The implementation of worker may look like:
+
 ```ruby
 module Temporalio
   class Worker
@@ -412,6 +414,31 @@ module Temporalio
 end
 ```
 
+This phase only supports activity workers. Running a worker may look like:
+
+```ruby
+require './my_activities_1.md'
+require './my_activities_2.md'
+
+client = Client.connect('localhost:7233')
+
+# Create worker for task-queue-1
+worker1 = Temporalio::Worker.new(
+  client,
+  task_queue: 'task-queue-1',
+  activities: [MyActivity1.new()]
+)
+
+# Create worker for task-queue-2
+worker2 = Temporalio::Worker.new(
+  client,
+  task_queue: 'task-queue-2',
+  activities: [MyActivity2.new()]
+)
+
+Temporalio::Worker.run(worker1, worker2)
+```
+
 * Following the API of the current Temporal Ruby SDK, workers can be run individually, but we will also provide a class
   method to run several at once.
   * 💭 Why is something needed to run multiple workers for the user? Because in Ruby they don't have easy ways of
@@ -428,6 +455,8 @@ end
     * ❓ Or should we just enforce this at worker instantiation time too?
   * 💭 Why this executor concept? Ruby has multiple ways of running code and many people use libraries, so we are better
     off supporting multiple executors and just having sane defaults.
+  * While it may seem reasonable to share a thread pool across workers if the class method `run` is used with multiple
+    workers, since each need their own max-concurrent-activity set of threads, they remain separate by default.
 * Worker shutdown and all that entails is the same as any other SDK.
 * 💭 Why does a worker need a client instead of a connection? Clients have several options like namespace, interceptors,
   and data converter that the worker also needs.
