@@ -53,6 +53,7 @@ These are the general requirements of the project
     library won't work with.
     * ❓ How hard do we want to work to avoid duplicate yard/RBS typing?
   * 💭 Why not Sorbet? Sorbet can come later or provided separately, but RBS seems to be the newer movement.
+  * 💭 Why have any typing? As a library we might as well help users where we can.
 * Everything is in the `Temporalio` module and released as a `temporalio` gem starting at 0.2.0
   * 💭 Why 0.2.0? 0.1.x versions already in use at https://rubygems.org/gems/temporalio.
 * Internal code will be in `Temporalio::Internal` module including bridge which is in `Temporalio::Internal::Bridge`
@@ -61,16 +62,16 @@ These are the general requirements of the project
 * Avoid cluttering the top-level `Temporalio` module with many small classes, but some are ok as we try to avoid a
   `Temporalio::Common` module
   * So `Temporalio::RetryPolicy` is preferred over `Temporalio::Common::RetryPolicy`.
-  * All search attribute things should be under `Temporalio::SearchAttribute` (e.g. `Temporalio::SearchAttribute::Key`)
+  * The search attribute collection is `Temporalio::SearchAttributes` and all things are under it, e.g.
+    `Temporalio::SearchAttributes::Key`.
+    * 💭 Why not `Temporalio::SearchAttribute` module with the collection underneath? The object has value on its own
+      so might as well make it a class.
+  * The base metric is `Temporalio::Metric`, and all metric things are under there, e.g. `Temporalio::Metric::Meter`.
+    * 💭 Why not `Temporalio::Metrics` module? The object has value on its own so might as well make it a class.
+   (e.g. `Temporalio::SearchAttribute::Key`)
     and all metric things under `Temporalio::Metric` (e.g. `Temporalio::Metric::Meter`).
-  * 💭 Why not top-level? Cluttering top-level module makes discoverability difficult and API docs unclear.
   * 💭 Why no `Temporalio::Common`? Ruby expects to have common things where they make sense instead of under a `Common`
     module.
-  * ❓ Do we want plural, e.g. `Temporalio::SearchAttributes` and `Temporalio::Metrics`? While there is no such thing as
-    a `SearchAttribute`, there is such thing as a `SearchAttributes` (i.e. search attributes collection). And there is
-    such thing as a `Metric` (i.e. base class for counter, gauge, and histogram). So it could be
-    `Temporalio::SearchAttributes` (the collection) and `Temporalio::Metric` (the base class), and they are not modules
-    but classes with the nested pieces underneath like we do elsewhere.
 * No compatibility with any existing Ruby SDK
   * Migration guides/docs may appear as needed.
   * 💭 Why? Need a clean slate to develop a high-quality SDK from first principles.
@@ -129,22 +130,27 @@ connection. The former has shortcut for creating the latter while it creates its
 ```ruby
 module Temporalio
   class Client
-    attr_reader :connection, :namespace
+    # This can be splatted into the constructor if one option needs to be
+    # changed. This is a Struct and not Data because we support Ruby 3.1.
+    Options = Struct.new(...)
 
     # Connect a client (i.e. Connection.new + Client.new)
-    def self.connect(target_host:, namespace: 'default', runtime: nil, ...)
+    def self.connect(target_host, namespace, runtime: nil, ...)
       ...
     end
 
-    # Create client with existing connection
-    def initialize(connection, namespace: 'default', ...)
+    # Create client with existing connection. This must be all keyword arguments
+    # and must match the Options struct.
+    def initialize(connection:, namespace:, ...)
       ...
     end
 
-    # Duped hash of keyword args of constructor
-    def options
+    # Duped options 
+    def dup_options
       ...
     end
+
+    # Several properties such as connection, namespace, workflow_service, etc
 
     # Returns workflow handle
     def start_workflow(
@@ -178,13 +184,15 @@ module Temporalio
 
   class Client
     class Connection
+      Options = Struct.new(...)
+
       # Perform connection
       def initialize(target_host:, runtime: nil, ...)
         ...
       end
 
-      # Duped hash of keyword args of constructor
-      def options
+      # Duped options 
+      def dup_options
         ...
       end
 
@@ -207,6 +215,10 @@ module Temporalio
 
       # Lots more
     end
+
+    class CloudOperationsClient
+      # Similar to client but for cloud ops
+    end
   end
 end
 ```
@@ -215,10 +227,12 @@ end
 * We expect most users and most samples to just use `Client.connect`.
   * 💭 Why not make users create a connection themselves instead of maintaining similar options sets across
     `Connection.initialize` and `Client.connect`? We have found most people only need a single client per connection.
-* Users that want raw service access need to use `client.connection.workflow_service` similar to .NET.
+* Users will have access to raw clients via `client.workflow_service` and similar
 * Workflow handles exist with all relevant calls.
-* Note that we prefer large sets of keyword arguments over hashes or options/config objects.
-  * 💭 Why? This is the Ruby preference and clearer to users.
+* Note that we use the kwargs constructor + options struct pattern so that a user can access duped options, change one,
+  and reconstruct via `Client.new(**my_new_options.to_h)`
+  * ❓Is there a better way to allow people to easily change an option? We didn't want a `with` pattern because, at
+    least for `Connection`, it requires a reconnect.
 * Must make clear in docs which things issue an RPC call (e.g. start workflow) vs ones that don't (e.g. get workflow
   handle).
 
@@ -235,17 +249,17 @@ class MyWorkflow < Temporalio::Workflow
   workflow_query_attr_reader :some_other_query
 
   def execute(arg)
-    raise NoMethodError
+    raise NotImplementedError
   end
 
   workflow_signal
   def some_signal(arg)
-    raise NoMethodError
+    raise NotImplementedError
   end
 
   workflow_query 'custom-query-name'
   def some_query(arg)
-    raise NoMethodError
+    raise NotImplementedError
   end
 end
 ```
@@ -254,7 +268,7 @@ And client usage may look like:
 
 ```ruby
 # Connect client
-client = Client.connect('localhost:7233')
+client = Client.connect('localhost:7233', 'default')
 
 # Start workflow
 handle = client.start_workflow(
@@ -276,30 +290,38 @@ handle.signal(MyWorkflow.some_signal, 'some arg')
 
 Like other SDKs, the following classes will exist:
 
-* `Temporalio::Converter::DataConverter` - Accepts a payload converter (must be Ractor shareable), failure converter
+* `Temporalio::Converters::DataConverter` - Accepts a payload converter (must be Ractor shareable), failure converter
   (must be Ractor shareable), and a payload codec
-  * 💭 Why use `Temporalio::Converter` module instead of just `Temporalio::DataConverter`? There are many files that are
-    included in conversion and most regular users won't ever use them.
+  * 💭 Why use `Temporalio::Converters` module instead of just `Temporalio::DataConverter`? There are many files that
+    are included in conversion and most regular users won't ever use them so no need to clutter the top.
   * 💭 Why duplicate words instead of `Temporalio::Converter::Data`? `Temporalio::Converter` is not a base class and a
     `DataConverter` is a completely separate thing from, say, a `PayloadConverter`.
-  * ❓ Would we prefer `Temporalio::Conversion` as the module name?
-* `Temporalio::Converter::PayloadConverter` - Default composite payload implementation accepting a collection of
-  encoding payload converters accepted in constructor, with a default class attr that has a default set.
-  * Users are expected to extend this and override conversion methods as needed. Default instantiation of this is 0
-    encoding converters and a `NotImplementedError` if either is called.
-  * 💭 Why not have a separate base class instead of combining the composite one with the one to override? This was a
-    50/50 call, but most users will probably add an encoding impl instead of override at this level. This is admittedly
-    a slight deviation from other SDKs.
-* `Temporalio::Converter::PayloadConverter::Encoding` - Base unimplemented encoding converter
-  * ❓ Would we prefer `Temporalio::Converter::EncodingPayloadConverter`?
-* `Temporalio::Converter::PayloadConverter::JSON`, `Temporalio::Converter::PayloadConverter::JSONProto`, etc  - All
-  common encoding converters
-* `Temporalio::Converter::FailureConverter` - Default failure converter, can be overridden
-* `Temporalio::Converter::PayloadCodec` - Unimplemented base codec
-  * Important for implementers to ensure this is async capable if using async activities anywhere
-* `Temporalio::Converter::RawValue` - Can be used as way to move around unconverted payloads
+* `Temporalio::Converters::PayloadConverter` - Default base class for payload converters (only has two unimplemented
+  methods)
+  * Has a `default` class method with lazily created default that is composite of set of common encoding converters
+  * Note, Ruby has no type hinting, so there are no hints when converting from a payload to a value what you might want
+    to do beyond metadata on the payload itself (see the `JSONPlain` section next). We will try to make sure payload
+    conversion is done within the activity/workflow context of course.
+  * 💭 Why not make `Temporalio::Converters::PayloadConverter` a module and have
+    `Temporalio::Converters::PayloadConverter::Base` as the base class? This was a 50/50 call, but we are not taking the
+    pattern of `Base` around the repo for implementable classes.
+* `Temporalio::Converters::PayloadConverter::Composite` - Converter implementation that accepts a ollection of multiple
+  `Encoding` converters (see next top-level bullet)
+  * 💭 Why not just make the `PayloadConverter` be the composite impl and those overriding can just have no encoding
+    converters passed in? This was a 50/50 call, but it is clearer for users to have the base class just show them the
+    two `NotImplementedError` methods they must implement instead of the details of a composite converter.
+* `Temporalio::Converters::PayloadConverter::Encoding` - Base unimplemented encoding converter
+* `Temporalio::Converters::PayloadConverter::JSONPlain`, `Temporalio::Converter::PayloadConverter::JSONProtobuf`, etc -
+  All common encoding converters
+* `Temporalio::Converters::FailureConverter` - Default failure converter, can be overridden
+* `Temporalio::Converters::PayloadCodec` - Unimplemented base codec
+  * ❓How can we make this async capable? We need to be able to multiplex several calls to this concurrently, but we may
+    not be in an async-capable environment and/or don't know how implementations may want to multiplex, so we can't just
+    have a naive payloads-to-payloads implementation. We probably need to allow the payload to accept multiple "payload
+    sets" and return "payload sets", since each set may contain multiple payloads, but sets need to be independent.
+* `Temporalio::Converters::RawValue` - Can be used as way to move around unconverted payloads.
 
-#### Temporalio::Converter::PayloadConverter::JSON
+#### Temporalio::Converter::PayloadConverter::JSONPlain
 
 * Ruby has a `JSON` module in the standard library, but by default it's only primitives, arrays, hashes, etc and not
   classes.
@@ -355,10 +377,15 @@ end
   * ❓ Would we prefer activities as methods knowing they may not be able to be typed/referenced well? We can't really
     take the workflow signal-ish approach of those pseudo-decorators making class methods unless we say activities must
     be instance methods (since we would allow class methods as activities).
-* Activity classes are instantiated at registration time, not for each invocation.
-  * 💭 Why? Existing Temporal Ruby SDK does instantiate for each activity task, but this discourages use of shared
-    objects or state to be referenced. This does have the tradeoff our other SDKs have of requiring the function to be
-    thread safe.
+* If an activity class is provided to a worker, it is instantiated each attempt. But if an activity instance is provided
+  to a worker, execute is called on that instance.
+  * 💭 Why support every-attempt-instantiated activities? This is a reasonable expectation for Ruby things and is how
+    the current Temporal Ruby SDK operates. This allows users to use instance state without race concerns.
+  * 💭 Why support pre-instantiated activities? It is a very common need for SDKs to be able to support cross-attempt
+    state such as a DB client, and while Ruby users are unfortunately used to class-level/static attrs, it should not
+    be encouraged.
+  * ❓ Is it too confusing that the instance lifecycle is different depending on whether you pass in a class or an
+    instance?
 * `Temporalio::Activity::Context` is a thread/fiber-local context available to activities.
   * It has instance methods for info, heartbeat, etc.
   * It has a class method for `current` that returns from thread/fiber-local and class method shortcuts for all instance
@@ -392,7 +419,7 @@ module Temporalio
     end
 
     def initialize(
-      client,
+      client:,
       task_queue:,
       activities: [],
       activity_executors: nil,
@@ -417,21 +444,21 @@ end
 This phase only supports activity workers. Running a worker may look like:
 
 ```ruby
-require './my_activities_1.md'
-require './my_activities_2.md'
+require 'my_activities_1'
+require 'my_activities_2'
 
-client = Client.connect('localhost:7233')
+client = Client.connect('localhost:7233', 'default')
 
 # Create worker for task-queue-1
 worker1 = Temporalio::Worker.new(
-  client,
+  client: client,
   task_queue: 'task-queue-1',
   activities: [MyActivity1.new()]
 )
 
 # Create worker for task-queue-2
 worker2 = Temporalio::Worker.new(
-  client,
+  client: client,
   task_queue: 'task-queue-2',
   activities: [MyActivity2.new()]
 )
@@ -445,18 +472,19 @@ Temporalio::Worker.run(worker1, worker2)
     running multiple blocking things at once without external libraries or forcing threads on users.
 * Like other SDK methods, `run` is async-capable.
 * `activity_executors` can be a hash of `Temporalio::Worker::ActivityExecutor`s to run certain types of activities.
-  * Default is `{:default: Temporalio::Worker::ActivityExecutor::ThreadPool.new(max_concurrent_activities), :fiber: Temporalio::Worker::ActivityExecutor::Fiber.DEFAULT}`
+  * Default is `{default: Temporalio::Worker::ActivityExecutor::ThreadPool.new(max_concurrent_activities), fiber: Temporalio::Worker::ActivityExecutor::Fiber.DEFAULT}`
   * Activity can choose its executor, default is `:default`.
-  * Registration time will fail if activity references an executor that does not exist.
-  * Worker run will fail immediately before even starting if it is not run with a fiber scheduler present but any
-    activities reference a `Fiber` executor.
-    * 💭 Why wait until worker run to fail? Workers can be created outside of an async environment, it's just important
-      that they are run within an async environment if there are async activities.
-    * ❓ Or should we just enforce this at worker instantiation time too?
-  * 💭 Why this executor concept? Ruby has multiple ways of running code and many people use libraries, so we are better
-    off supporting multiple executors and just having sane defaults.
+  * Registration/creation time will fail if activity references an executor that does not exist.
+  * At registration/creation time, executors will have a chance to validate each activity using it can run on it.
+    * This will allow the fiber executor to fail if an activity needs it but there is no current fiber scheduler.
+    * 💭 Why not wait until worker `run` to validate so the worker can be created outside of the async/fiber context
+      but still run within it? Worker `run` failures are harder for users to reason about because they assume "runtime"
+      issues. We need to validate as early as possible and only fail `run` for actual runtime things. This does mean
+      that users must create the worker in the async context too which does not seem unreasonable.
   * While it may seem reasonable to share a thread pool across workers if the class method `run` is used with multiple
     workers, since each need their own max-concurrent-activity set of threads, they remain separate by default.
+  * 💭 Why this executor concept? Ruby has multiple ways of running code and many people use libraries, so we are better
+    off supporting multiple executors and just having sane defaults.
 * Worker shutdown and all that entails is the same as any other SDK.
 * 💭 Why does a worker need a client instead of a connection? Clients have several options like namespace, interceptors,
   and data converter that the worker also needs.
