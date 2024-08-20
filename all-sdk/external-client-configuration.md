@@ -24,22 +24,33 @@ What are the reasons for building this?
 
 ### Goals
 
-* Common, well-specified configuration format usable by Temporal tooling for client options
+* Common, well-specified/type-safe configuration format usable by Temporal tooling for client options and usable
+  manually by advanced users
 * Implementation in all Temporal SDKs for reading and writing of this configuration
 * All Temporal CLI/SDKs updated to have easy client creation using this configuration
 * Common on-disk location in every platform for reading/writing this format
 * Ability to provide environment variables to represent values in the configuration
 * Well-specified hierarchy for on-disk overridable by environment variables overridable by in-CLI/SDK values
 * 0 new dependencies in SDKs
+  * 💭 Why?
+    * Dependencies in our SDKs subject our users to these dependencies and their version constraints, so we should avoid
+      this as much as possible.
+  * ❓ Can we just have an "extension" that has new dependencies?
+    * Yes, but ideally users don't have to add dependencies on extension libraries just to get this functionality.
 * Profile names within the configuration
+  * 💭 Why?
+    * It is common in configurations like this to want to be able to share a single file with many configurations.
+
+### Future Goals
+
+None identified at this time. The goals are simple enough for the MVP and the non-goals are ones we never want.
 
 ### Non-goals
 
 * Common format for declarative workers, schedules, etc. This is only for client options.
-* File-based hierarchy. We don't need many levels of file merging for these options at this time.
-* Extreme focus on human authoring of this format. This is because it'd likely go against the "0 new dependencies" rule.
-* Use external configuration by default. Users need to opt-in to this for compatibility and clarity reasons (but it is
-  of course easy).
+* File-based hierarchy. We don't need many levels of file merging for these options.
+* Use external configuration by default in SDKs (it is default in CLI and samples). Users need to opt-in to this for
+  compatibility and clarity reasons (but it is of course easy).
 
 ### High-level Usage Examples
 
@@ -70,7 +81,7 @@ you could do this in environment variables for mTLS auth:
     export TEMPORAL_TLS_CLIENT_CERT_PATH=path/to/my/client.pem
     export TEMPORAL_TLS_CLIENT_KEY_PATH=path/to/my/client.key
 
-Now running the same code again unmodified will run against cloud. You can do ths same thing with config instead of
+Now running the same code again unmodified will run against cloud. You can do this same thing with config instead of
 environment variables:
 
     temporal config set --key address --value my-ns.a1b2c.tmprl.cloud:7233
@@ -97,15 +108,35 @@ Similar to AWS tooling and other tools, you can have profiles. So you can have:
 
 For dev and then in production, this might exist:
 
-    temporal config set --profile prod --key address --value my-dev-ns.a1b2c.tmprl.cloud:7233
-    temporal config set --profile prod --key namespace --value my-dev-ns.a1b2c
-    temporal config set --profile prod --key tls.clientCertPath --value path/to/my/dev-cert.pem
-    temporal config set --profile prod --key tls.clientKeyPath --value path/to/my/dev-cert.key
+    temporal config set --profile prod --key address --value my-prod-ns.a1b2c.tmprl.cloud:7233
+    temporal config set --profile prod --key namespace --value my-prod-ns.a1b2c
+    temporal config set --profile prod --key tls.clientCertPath --value path/to/my/prod-cert.pem
+    temporal config set --profile prod --key tls.clientKeyPath --value path/to/my/prod-cert.key
 
 Or alternatively it could be a fixed file that that creates or environment variables or whatever.
 
 Now a simple setting of `TEMPORAL_PROFILE` environment to `dev` or `prod` will switch connectivity (or `--profile` on
 CLI or the string in the SDK if you don't want to use environment variable).
+
+#### Manually Working with Configuration
+
+If a user wanted to hand-write a configuration, they can have `my-file.json` like:
+
+```json
+{
+  "profiles": {
+    "default": {
+      "address": "my-host:7233",
+      "namespace": "my-namespace"
+    }
+  }
+}
+```
+
+* This is the same format used by the CLI and the CLI can even be used to edit this file.
+* `TEMPORAL_CONFIG_FILE` env var can point to this file or the config file can be manually set in the CLI/SDK.
+* There is a type safe contract this file conforms to for anyone wanting to work with it programmatically.
+* All SDKs accept the type safe model this file represents if users would rather provide config that way.
 
 #### Possible UI Creation Flow
 
@@ -159,8 +190,8 @@ whether this is done by default can be discussed, but the idea is the same.
       * `namespace` - Client namespace.
       * `apiKey` - Client API key.
       * `tls` - A boolean (true is same as empty object) _or_ an object. Note the default for this value is dependent
-        upon the client and may change. 💭 Why? We regret not making TLS the default in the past. If TLS is an object,
-        it can have the following possible fields:
+        upon other settings here. 💭 Why? We regret not making TLS the default in the past, so we will make it default
+        if `apiKey` is present. If TLS is an object, it can have the following possible fields:
         * `clientCertPath` - File path to mTLS client cert. Mutually exclusive with `clientCertData`.
         * `clientCertData` - Cert data. Mutually exclusive with `clientCertPath`.
         * `clientKeyPath` - File path to mTLS client key. Mutually exclusive with `clientKeyData`.
@@ -253,6 +284,26 @@ default is assumed.
   * There's no obvious env var approach to array of strings, and it can't be completely comma-delimited because header
     values often contain commas. Would rather not force users to have an index in the env var name. Should we just not
     support gRPC meta from env var until we think this through?
+
+### Loading Configuration
+
+Configuration is loaded in the following manner:
+
+* Try to load profile from configuration file
+  * Only if file loading is enabled
+  * Can If user provides specific config file, use that, otherwise use the default location
+  * If user specifies the profile, use that, otherwise use the default
+* Try to overwrite with specific configuration environment variables
+  * Only if env loading is enabled
+  * If user specifies the profile, use that, otherwise use the default
+  * If the `default` profile is being loaded, try the profile-specific environment variable first, e.g.
+    `TEMPORAL_DEFAULT_ADDRESS` is used over `TEMPORAL_ADDRESS` if it's present.
+  * The `default` env vars are only for the default profile, meaning a profile of `foo` cannot use `TEMPORAL_ADDRESS`,
+    only `TEMPORAL_FOO_ADDRESS` if present.
+
+That is it, nothing more complicated. When the configuration is provided to the SDKs/CLI, they apply their normal logic
+which includes defaults for things that can be defaulted, or errors if they expect something that is not provided (this
+is SDK specific).
 
 ## Implementation
 
