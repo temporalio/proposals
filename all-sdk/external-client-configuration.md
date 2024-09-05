@@ -81,62 +81,74 @@ you could do this in environment variables for mTLS auth:
     export TEMPORAL_TLS_CLIENT_CERT_PATH=path/to/my/client.pem
     export TEMPORAL_TLS_CLIENT_KEY_PATH=path/to/my/client.key
 
-Now running the same code again unmodified will run against cloud. You can do this same thing with config instead of
-environment variables:
+Now running the same code again unmodified will run against cloud. You can do the same thing with config file:
+
+```json
+{
+  "profiles": {
+    "default": {
+      "address": "my-ns.a1b2c.tmprl.cloud:7233",
+      "namespace": "my-ns.a1b2c",
+      "tls": {
+        "clientCertPath": "path/to/my/client.pem",
+        "clientKeyPath": "path/to/my/client.key"
+      }
+    }
+  }
+}
+```
+
+And you can provide that config file or put it in the default place. You can also do this via CLI:
 
     temporal config set --key address --value my-ns.a1b2c.tmprl.cloud:7233
     temporal config set --key namespace --value my-ns.a1b2c
     temporal config set --key tls.clientCertPath --value path/to/my/cert.pem
     temporal config set --key tls.clientKeyPath --value path/to/my/cert.key
 
-Now running the same code again unmodified will run against cloud. Or in a Temporal future with API keys and a
-known/fixed API endpoint:
-
-    temporal config set --key cloudApiKey --value my-api-key
-
-And that would be all that is needed (but that is a future scenario, note `cloudApiKey` is not a defined key today, but
-`apiKey` is, but you have to put in the `address` and `namespace` still).
+Or in a Temporal future with API keys you can use it instead.
 
 #### Profile Switching
 
-Similar to AWS tooling and other tools, you can have profiles. So you can have:
+Similar to AWS tooling and other tools, you can have profiles. So you can have a config like:
+
+```json
+{
+  "profiles": {
+    "dev": {
+      "address": "my-dev-ns.a1b2c.tmprl.cloud:7233",
+      "namespace": "my-dev-ns.a1b2c",
+      "tls": {
+        "clientCertPath": "path/to/my/dev-cert.pem",
+        "clientKeyPath": "path/to/my/dev-cert.key"
+      }
+    },
+    "prod": {
+      "address": "my-prod-ns.a1b2c.tmprl.cloud:7233",
+      "namespace": "my-prod-ns.a1b2c",
+      "tls": {
+        "clientCertPath": "path/to/my/prod-cert.pem",
+        "clientKeyPath": "path/to/my/prod-cert.key"
+      }
+    }
+  }
+}
+```
+Or in CLI, dev:
 
     temporal config set --profile dev --key address --value my-dev-ns.a1b2c.tmprl.cloud:7233
     temporal config set --profile dev --key namespace --value my-dev-ns.a1b2c
     temporal config set --profile dev --key tls.clientCertPath --value path/to/my/dev-cert.pem
     temporal config set --profile dev --key tls.clientKeyPath --value path/to/my/dev-cert.key
 
-For dev and then in production, this might exist:
+And prod:
 
     temporal config set --profile prod --key address --value my-prod-ns.a1b2c.tmprl.cloud:7233
     temporal config set --profile prod --key namespace --value my-prod-ns.a1b2c
     temporal config set --profile prod --key tls.clientCertPath --value path/to/my/prod-cert.pem
     temporal config set --profile prod --key tls.clientKeyPath --value path/to/my/prod-cert.key
 
-Or alternatively it could be a fixed file that that creates or environment variables or whatever.
-
 Now a simple setting of `TEMPORAL_PROFILE` environment to `dev` or `prod` will switch connectivity (or `--profile` on
 CLI or the string in the SDK if you don't want to use environment variable).
-
-#### Manually Working with Configuration
-
-If a user wanted to hand-write a configuration, they can have `my-file.json` like:
-
-```json
-{
-  "profiles": {
-    "default": {
-      "address": "my-host:7233",
-      "namespace": "my-namespace"
-    }
-  }
-}
-```
-
-* This is the same format used by the CLI and the CLI can even be used to edit this file.
-* `TEMPORAL_CONFIG_FILE` env var can point to this file or the config file can be manually set in the CLI/SDK.
-* There is a type safe contract this file conforms to for anyone wanting to work with it programmatically.
-* All SDKs accept the type safe model this file represents if users would rather provide config that way.
 
 #### Possible UI Creation Flow
 
@@ -150,13 +162,13 @@ API key is created, make sure you copy it here because it is not stored:
 
 Alternatively, you can download it as a configuration file:
 
-    <some button or something that downloads a file name temporalio.json>
+    <some button or something that downloads a file name temporalio-client.json>
 
 You can place this configuration file in the default place used by CLIs/SDKs:
 
-* macOS - `$HOME/Library/Application Support/temporalio/temporal.json`
-* Windows - `%AppData%/temporalio/temporal.json` (often `C:\Users\<myuser>\AppData\Roaming\temporalio\temporal.json`)
-* Linux - `$HOME/.config/temporalio/temporal.json`
+* macOS - `$HOME/Library/Application Support/temporalio/temporal-client.json`
+* Windows - `%AppData%/temporalio/temporal.json` (often `C:\Users\<myuser>\AppData\Roaming\temporalio\temporal-client.json`)
+* Linux - `$HOME/.config/temporalio/temporal-client.json`
 
 This will be automatically consumed by the SDKs/CLI. This file can also be put anywhere else and `TEMPORAL_CONFIG_FILE`
 environment variable can be set to point to it.
@@ -176,6 +188,41 @@ And that last step can by default set a `temporal-cloud` profile in the configur
 mTLS certificates. So now all you have to do to use cloud in CLI is either `--profile temporal-cloud` or set
 `TEMPORAL_PROFILE=temporal-cloud` environment variable. Granted you may want better certificate management than that and
 whether this is done by default can be discussed, but the idea is the same.
+
+#### Multi-Namespace Config Use
+
+Some users may want the same configuration for multiple namespaces (or multiple addresses or multiple API keys or
+whatever). Users can supply partial configuration. For instance, you can have this config:
+
+```json
+{
+  "profiles": {
+    "default": {
+      "address": "my-dev-ns.a1b2c.tmprl.cloud:7233",
+      "tls": {
+        "clientCertPath": "path/to/my/dev-cert.pem",
+        "clientKeyPath": "path/to/my/dev-cert.key"
+      }
+    }
+  }
+}
+```
+
+And then still use CLI like
+
+    temporal workflow list --namespace my-specific-namespace
+
+This will use the config file information for all but the namespace. Similarly you could just set the
+`TEMPORAL_NAMESPACE` env var to `my-specific-namespace` and run:
+
+    temporal workflow list
+
+Similarly, if you're using an SDK, you can load the config and just switch namespaces in code. So you can have:
+
+```python
+config = ClientConnectConfig.load_from_config()
+client = await Client.connect(namespace="my-specific-namespace", **config)
+```
 
 ## Specification
 
@@ -239,23 +286,16 @@ whether this is done by default can be discussed, but the idea is the same.
 
 ### Environment variables
 
-* Environment variables are in the form `TEMPORAL_<PROFILE_>_KEY_SUB_KEY_CAMEL_CASE`. If the profile part is missing,
-default is assumed.
+* Environment variables are in the form `TEMPORAL_KEY_SUB_KEY_CAMEL_CASE`. Profiles do not apply to environment
+  variables. Environment variables always overwrite config if set regardless of config profile in use.
   * 💭 Why `TEMPORAL` prefix?
     * Reasonable to differentiate.
-  * This means that `TEMPORAL_ADDRESS` and `TEMPORAL_DEFAULT_ADDRESS` are the same thing.
-  * This means that camel case parts are separated by underscores _except_ the profile name itself.
-    * So a config value of `profiles.myProfile.tls.clientCertPath` is `TEMPORAL_MYPROFILE_TLS_CLIENT_CERT_PATH`.
+  * So for example, the `address` key is `TEMPORAL_ADDRESS`, etc.
+  * This means that camel case parts are separated by underscores.
+    * So a config value of `tls.clientCertPath` is `TEMPORAL_TLS_CLIENT_CERT_PATH`.
     * 💭 Why?
-      * This is clearer for typing and it is unreasonable to try and break up user-supplied camel case.
-  * Also the profile may contain an underscore and retain that and match that first. So
-    `profiles.my_profile_tls.tls.clientCertPath` is `TEMPORAL_MY_PROFILE_TLS_TLS_CLIENT_CERT_PATH`.
-    * 💭 Why?
-      * It is unreasonable to elide any characters in the user-provided profile name.
-    * ❓ Since these become parts of the env var, should we limit profile name characters overall? Maybe `A-Z`, `a-z`,
-      `0-9`, and only `_-:/` for now. And do those last special characters become `_` in env vars? And therefore is it
-      a failure to have two profile names that would result in the same env var?
-* Environment variables are case-insensitive.
+      * This is clearer for users.
+* Case-sensitivity is a platform specific thing, but Temporal uses all-caps.
 * The CLI has existing environment variables. Some of these work and some should be still supported but deprecated in
   favor of the new forms. Below are the CLI env vars and how they apply:
   * `TEMPORAL_ADDRESS` - works just fine.
@@ -277,10 +317,10 @@ default is assumed.
     * For non-CLI uses (i.e. SDKs), it is unreasonable to burden them with past CLI choices.
 * There are some special environment variables respected by clients:
   * `TEMPORAL_PROFILE` - the name of the profile to load if one is not provided at load time. The default is  `default`.
-  * `TEMPORAL_CONFIG_FILE` - the path to the config file. The default is `~/.config/temporalio/temporal.json`.
+  * `TEMPORAL_CONFIG_FILE` - the path to the config file. The default is `~/.config/temporalio/temporal-client.json`.
 * ❓ How to do grpc-meta as env var? Like for `My-Header: My-Value`
-  * Env var names are case-insensitive and don't use dashes, so we can't put header name in env var name. And we may not
-    want to canonicalize the header names even though most gRPC clients do it for you.
+  * Env var names are case-insensitive on some platforms and don't use dashes, so we can't put header name in env var
+    name. And we may not want to canonicalize the header names even though most gRPC clients do it for you.
   * There's no obvious env var approach to array of strings, and it can't be completely comma-delimited because header
     values often contain commas. Would rather not force users to have an index in the env var name. Should we just not
     support gRPC meta from env var until we think this through?
@@ -290,16 +330,11 @@ default is assumed.
 Configuration is loaded in the following manner:
 
 * Try to load profile from configuration file
-  * Only if file loading is enabled
-  * Can If user provides specific config file, use that, otherwise use the default location
+  * Only if file loading is enabled (which it is by default)
+  * If user provides specific config file, use that, otherwise use the default location
   * If user specifies the profile, use that, otherwise use the default
 * Try to overwrite with specific configuration environment variables
-  * Only if env loading is enabled
-  * If user specifies the profile, use that, otherwise use the default
-  * If the `default` profile is being loaded, try the profile-specific environment variable first, e.g.
-    `TEMPORAL_DEFAULT_ADDRESS` is used over `TEMPORAL_ADDRESS` if it's present.
-  * The `default` env vars are only for the default profile, meaning a profile of `foo` cannot use `TEMPORAL_ADDRESS`,
-    only `TEMPORAL_FOO_ADDRESS` if present.
+  * Only if env loading is enabled (which it is by default)
 
 That is it, nothing more complicated. When the configuration is provided to the SDKs/CLI, they apply their normal logic
 which includes defaults for things that can be defaulted, or errors if they expect something that is not provided (this
@@ -320,7 +355,7 @@ is SDK specific).
         * This is the new way and we should not try to support both at the same time, it can get confusing.
   * The default is `default`, and this can also be set via `TEMPORAL_PROFILE` env var.
 * CLI will accept `--config-file`.
-  * Default is `~/.config/temporalio/temporal.json`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
+  * Default is `~/.config/temporalio/temporal-client.json`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
 * CLI will have a whole new set of `config` commands that operate similar to `env` commands today.
   * Will not go into detail in this proposal, but it's very similar.
   * We will strictly validate keys when setting whereas we did not with `env`.
@@ -379,7 +414,7 @@ Some decisions here are explained here even though they apply to later SDKs.
 Simplest example:
 
 ```go
-options, err := client.LoadOptionsFromConfig("default")
+options, err := client.LoadOptionsFromConfig("default", LoadConfigOptions{})
 if err != nil {
   return err
 }
