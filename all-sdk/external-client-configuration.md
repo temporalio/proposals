@@ -31,12 +31,7 @@ What are the reasons for building this?
 * Common on-disk location in every platform for reading/writing this format
 * Ability to provide environment variables to represent values in the configuration
 * Well-specified hierarchy for on-disk overridable by environment variables overridable by in-CLI/SDK values
-* 0 new dependencies in SDKs
-  * 💭 Why?
-    * Dependencies in our SDKs subject our users to these dependencies and their version constraints, so we should avoid
-      this as much as possible.
-  * ❓ Can we just have an "extension" that has new dependencies?
-    * Yes, but ideally users don't have to add dependencies on extension libraries just to get this functionality.
+* Must be an "extension" to SDKs so the core SDK does not have dependencies added.
 * Profile names within the configuration
   * 💭 Why?
     * It is common in configurations like this to want to be able to share a single file with many configurations.
@@ -61,7 +56,7 @@ Similar to `temporal env` today, you can use the CLI to manage configurations wi
 For example, say you had this Go code for starting a workflow:
 
 ```go
-options, err := client.LoadOptionsFromConfig("default")
+options, err := envconfig.LoadClientOptionsFromConfig("default")
 if err != nil {
   return err
 }
@@ -81,29 +76,22 @@ you could do this in environment variables for mTLS auth:
     export TEMPORAL_TLS_CLIENT_CERT_PATH=path/to/my/client.pem
     export TEMPORAL_TLS_CLIENT_KEY_PATH=path/to/my/client.key
 
-Now running the same code again unmodified will run against cloud. You can do the same thing with config file:
+Now running the same code again unmodified will run against cloud. You can do the same thing with config file in TOML:
 
-```json
-{
-  "profiles": {
-    "default": {
-      "address": "my-ns.a1b2c.tmprl.cloud:7233",
-      "namespace": "my-ns.a1b2c",
-      "tls": {
-        "clientCertPath": "path/to/my/client.pem",
-        "clientKeyPath": "path/to/my/client.key"
-      }
-    }
-  }
-}
+```toml
+[profile.default]
+address = "my-ns.a1b2c.tmprl.cloud:7233"
+namespace = "my-ns.a1b2c"
+tls.client_cert_path = "path/to/my/client.pem"
+tls.client_key_path = "path/to/my/client.pem"
 ```
 
 And you can provide that config file or put it in the default place. You can also do this via CLI:
 
     temporal config set --key address --value my-ns.a1b2c.tmprl.cloud:7233
     temporal config set --key namespace --value my-ns.a1b2c
-    temporal config set --key tls.clientCertPath --value path/to/my/cert.pem
-    temporal config set --key tls.clientKeyPath --value path/to/my/cert.key
+    temporal config set --key tls.client_cert_path --value path/to/my/cert.pem
+    temporal config set --key tls.client_key_path --value path/to/my/cert.key
 
 Or in a Temporal future with API keys you can use it instead.
 
@@ -111,41 +99,32 @@ Or in a Temporal future with API keys you can use it instead.
 
 Similar to AWS tooling and other tools, you can have profiles. So you can have a config like:
 
-```json
-{
-  "profiles": {
-    "dev": {
-      "address": "my-dev-ns.a1b2c.tmprl.cloud:7233",
-      "namespace": "my-dev-ns.a1b2c",
-      "tls": {
-        "clientCertPath": "path/to/my/dev-cert.pem",
-        "clientKeyPath": "path/to/my/dev-cert.key"
-      }
-    },
-    "prod": {
-      "address": "my-prod-ns.a1b2c.tmprl.cloud:7233",
-      "namespace": "my-prod-ns.a1b2c",
-      "tls": {
-        "clientCertPath": "path/to/my/prod-cert.pem",
-        "clientKeyPath": "path/to/my/prod-cert.key"
-      }
-    }
-  }
-}
+```toml
+[profile.dev]
+address = "my-dev-ns.a1b2c.tmprl.cloud:7233"
+namespace = "my-dev-ns.a1b2c"
+tls.client_cert_path = "path/to/my/dev-cert.pem"
+tls.client_key_path = "path/to/my/dev-cert.pem"
+
+[profile.prod]
+address = "my-prod-ns.a1b2c.tmprl.cloud:7233"
+namespace = "my-prod-ns.a1b2c"
+tls.client_cert_path = "path/to/my/prod-cert.pem"
+tls.client_key_path = "path/to/my/prod-cert.pem"
 ```
 Or in CLI, dev:
 
     temporal config set --profile dev --key address --value my-dev-ns.a1b2c.tmprl.cloud:7233
     temporal config set --profile dev --key namespace --value my-dev-ns.a1b2c
-    temporal config set --profile dev --key tls.clientCertPath --value path/to/my/dev-cert.pem
-    temporal config set --profile dev --key tls.clientKeyPath --value path/to/my/dev-cert.key
+    temporal config set --profile dev --key tls.client_cert_path --value path/to/my/dev-cert.pem
+    temporal config set --profile dev --key tls.client_key_path --value path/to/my/dev-cert.key
 
 And prod:
 
     temporal config set --profile prod --key address --value my-prod-ns.a1b2c.tmprl.cloud:7233
     temporal config set --profile prod --key namespace --value my-prod-ns.a1b2c
-    temporal config set --profile prod --key tls.clientCertPath --value path/to/my/prod-cert.pem
-    temporal config set --profile prod --key tls.clientKeyPath --value path/to/my/prod-cert.key
+    temporal config set --profile prod --key tls.client_cert_path --value path/to/my/prod-cert.pem
+    temporal config set --profile prod --key tls.client_key_path --value path/to/my/prod-cert.key
 
 Now a simple setting of `TEMPORAL_PROFILE` environment to `dev` or `prod` will switch connectivity (or `--profile` on
 CLI or the string in the SDK if you don't want to use environment variable).
@@ -162,13 +141,13 @@ API key is created, make sure you copy it here because it is not stored:
 
 Alternatively, you can download it as a configuration file:
 
-    <some button or something that downloads a file name temporalio-client.json>
+    <some button or something that downloads a file name temporalio-client.toml>
 
 You can place this configuration file in the default place used by CLIs/SDKs:
 
-* macOS - `$HOME/Library/Application Support/temporalio/temporal-client.json`
-* Windows - `%AppData%/temporalio/temporal.json` (often `C:\Users\<myuser>\AppData\Roaming\temporalio\temporal-client.json`)
-* Linux - `$HOME/.config/temporalio/temporal-client.json`
+* macOS - `$HOME/Library/Application Support/temporalio/temporal-client.toml`
+* Windows - `%AppData%/temporalio/temporal-client.toml` (often `C:\Users\<myuser>\AppData\Roaming\temporalio\temporal-client.toml`)
+* Linux - `$HOME/.config/temporalio/temporal-client.toml`
 
 This will be automatically consumed by the SDKs/CLI. This file can also be put anywhere else and `TEMPORAL_CONFIG_FILE`
 environment variable can be set to point to it.
@@ -194,18 +173,11 @@ whether this is done by default can be discussed, but the idea is the same.
 Some users may want the same configuration for multiple namespaces (or multiple addresses or multiple API keys or
 whatever). Users can supply partial configuration. For instance, you can have this config:
 
-```json
-{
-  "profiles": {
-    "default": {
-      "address": "my-dev-ns.a1b2c.tmprl.cloud:7233",
-      "tls": {
-        "clientCertPath": "path/to/my/dev-cert.pem",
-        "clientKeyPath": "path/to/my/dev-cert.key"
-      }
-    }
-  }
-}
+```toml
+[profile.temporal-cloud]
+address = "my-dev-ns.a1b2c.tmprl.cloud:7233"
+tls.client_cert_path = "path/to/my/dev-cert.pem"
+tls.client_key_path = "path/to/my/dev-cert.pem"
 ```
 
 And then still use CLI like
@@ -220,7 +192,7 @@ This will use the config file information for all but the namespace. Similarly y
 Similarly, if you're using an SDK, you can load the config and just switch namespaces in code. So you can have:
 
 ```python
-config = ClientConnectConfig.load_from_config()
+config = envconfig.load_client_connect_config()
 client = await Client.connect(namespace="my-specific-namespace", **config)
 ```
 
@@ -228,44 +200,39 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
 
 ### Values and File Format
 
-* The format is a JSON object with the following fields:
-  * `profiles` - Object with keys as profile names. The default profile should be named `default`.
+* The format is a TOML object with the following fields:
+  * `profile` - Object with keys as profile names. The default profile should be named `default`.
     * `<name>` - Profile object with configuration values. Profile names are case-insensitive. 💭 Why? They are needed
       for environment variables which are case insensitive. It is a validation error to have a config file with two
       separately-cased profile names that are equal case-insensitively.
       * `address` - Client address, aka gRPC "host:port". This cannot be a URL, it must be `host:port`.
       * `namespace` - Client namespace.
-      * `apiKey` - Client API key.
+      * `api_key` - Client API key.
       * `tls` - A boolean (true is same as empty object) _or_ an object. Note the default for this value is dependent
         upon other settings here. 💭 Why? We regret not making TLS the default in the past, so we will make it default
-        if `apiKey` is present. If TLS is an object, it can have the following possible fields:
-        * `clientCertPath` - File path to mTLS client cert. Mutually exclusive with `clientCertData`.
-        * `clientCertData` - Cert data. Mutually exclusive with `clientCertPath`.
-        * `clientKeyPath` - File path to mTLS client key. Mutually exclusive with `clientKeyData`.
-        * `clientKeyData` - Key data. Mutually exclusive with `clientKeyPath`.
-        * `serverCaCertPath` - File path to server CA cert. Mutually exclusive with `serverCaCertData`.
-        * `serverCaCertData` - CA cert data. Mutually exclusive with `serverCaCertPath`.
-        * `serverName` - Override SNI name when connecting to server.
-        * `disableHostVerification` - Boolean to disable verifying TLS server host. May not be available in all Temporal
-          clients. 💭 Why? Not all SDKs offer this feature today.
+        if `api_key` is present. If TLS is an object, it can have the following possible fields:
+        * `client_cert_path` - File path to mTLS client cert. Mutually exclusive with `client_cert_data`.
+        * `client_cert_data` - Cert data. Mutually exclusive with `client_cert_path`.
+        * `client_key_path` - File path to mTLS client key. Mutually exclusive with `client_key_data`.
+        * `client_key_data` - Key data. Mutually exclusive with `client_key_path`.
+        * `server_ca_cert_path` - File path to server CA cert. Mutually exclusive with `server_ca_cert_data`.
+        * `server_ca_cert_data` - CA cert data. Mutually exclusive with `server_ca_cert_path`.
+        * `server_name` - Override SNI name when connecting to server.
+        * `disable_host_verification` - Boolean to disable verifying TLS server host. May not be available in all
+          Temporal clients. 💭 Why? Not all SDKs offer this feature today.
       * `codec` - Remote codec information to use for all encoding/decoding of payloads. May not be available in all
         Temporal clients. 💭 Why? Not all SDKs allow use of a remote codec today.
         * `endpoint` - Endpoint to the remote codec.
         * `auth` - Authorization header for the remote codec.
-      * `grpcMeta` - Object representing HTTP headers. Values must be strings for now (can discuss arrays later).
+      * `grpc_meta` - Object representing HTTP headers. Values must be strings for now (can discuss arrays later).
         ❓ Should we call this `headers`? We do in some cases and not others.
-  * 💭 Why JSON?
-    * Because YAML and TOML and others require a dependency in our SDKs. AWS for example has a homegrown INI-ish
-      implementation they have had to build in to every language.
-    * We accept that while JSON is technically human-authorable, it's not as easy as other formats. This is acceptable
-      since we will be providing tooling to mutate the config.
-    * ❓ Should we consider "json with comments" and some kind of very basic pre-parser in each language that strips
-      them? This could come later and not part of MVP.
-* This whole format will be defined in proto in the API repo in the `sdk` package.
-  * 💭 Why?
-    * Clear, centralized contract.
-    * Our SDKs already use proto dependency and this gives them stable JSON without requiring separate JSON dependency.
-    * Users can use the proto tooling to read/write configs programmatically since they are just proto JSON.
+  * 💭 Why TOML?
+    * Original document was JSON, but team discussion decided that the benefit to humans of TOML outweighed the concerns
+      of making SDKs have extensions with TOML support.
+* Each language will have its own models for this under an `envconfig`/`EnvConfig` namespace/package/module/extension
+  * 💭 Why not define model in proto?
+    * When JSON was the preferred format proto JSON made sense, but now that it is not, using proto only for SDK team's
+      benefit of shared contract is not the easiest for users. So each language will have language-idiomatic models.
 * Do not validate that all keys are known in the file.
   * 💭 Why?
     * Originally this section was strict validation, but it became clear that we should allow newer-CLI-created config
@@ -278,11 +245,13 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
   within SDK defaults.
   * Originally this section did say `address` and `namespace` were required, but as SDK implementations came about, it
     became clear that can't be done easily, so CLI/SDK defaults need to remain.
-* The default config file location is `<app-config-dir>/temporalio/temporal.json` for all platforms
+* The default config file location is `<app-config-dir>/temporalio/temporal-client.toml` for all platforms
   * This is as defined by https://pkg.go.dev/os#UserConfigDir which, as of this writing, is the logic defined in docs
     and in code at https://cs.opensource.google/go/go/+/refs/tags/go1.23.0:src/os/file.go;l=528.
   * Existing CLI used `~/.config/temporalio/temporal.yaml`
     * ❓ Is this confusing for them? Are we concerned about them vs what is best moving forward?
+  * 💭 Why `temporal-client.toml` instead of `temporal.toml`?
+    * There were concerns that other non-client config may come one day and we didn't want to squat on this name
 
 ### Environment variables
 
@@ -291,8 +260,8 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
   * 💭 Why `TEMPORAL` prefix?
     * Reasonable to differentiate.
   * So for example, the `address` key is `TEMPORAL_ADDRESS`, etc.
-  * This means that camel case parts are separated by underscores.
-    * So a config value of `tls.clientCertPath` is `TEMPORAL_TLS_CLIENT_CERT_PATH`.
+  * This means that dot parts are separated by underscores.
+    * So a config value of `tls.client_cert_path` is `TEMPORAL_TLS_CLIENT_CERT_PATH`.
     * 💭 Why?
       * This is clearer for users.
 * Case-sensitivity is a platform specific thing, but Temporal uses all-caps.
@@ -304,7 +273,7 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
   * `TEMPORAL_TLS` - works just fine.
   * `TEMPORAL_TLS_CERT`, `TEMPORAL_TLS_CERT_DATA`, and other mTLS client values - need to be deprecated and replaced
     with newer forms (only slight changes here).
-    * 💭 Why not just have the `tls` config field be `certData` instead of `clientCertData` so this doesn't have to
+    * 💭 Why not just have the `tls` config field be `cert_data` instead of `client_cert_data` so this doesn't have to
       change?
       * Not being clear this is for mTLS client use is confusing to users. And we'd have to change the path one anyways
         because the CLI is not suffixed with path.
@@ -315,15 +284,28 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
     * It is more sane/reasonable to have a simple to understand config-field-to-env-var format than it is to have these
       special environment variables be inconsistent outliers.
     * For non-CLI uses (i.e. SDKs), it is unreasonable to burden them with past CLI choices.
+* For gRPC metadata (i.e. HTTP headers), the environment variable format is `TEMPORAL_GRPC_META_<name>`.
+  * `<name>` is canonicalized into HTTP header format (gRPC libraries do this for you).
+  * Like all HTTP headers, comma-delimited values are supported for multi-headers.
+  * This does require that environment variable lists be scanned for prefixes. This is deemed an acceptable tradeoff.
+  * 💭 Why not `TEMPORAL_GRPC_META` as a single var that accepts some kind of structured format?
+    * There isn't really a good structured format. Comma-delimited key=value would require users to escape commas in the
+      value (common in HTTP values), there's not a good delimiter for other-delimited key=value, and requiring a JSON
+      object as the env var value is a bit hard to use.
+  * 💭 Why not `TEMPORAL_GRPC_META_<index>` as `key: value`?
+    * Scanning has to happen anyways.
+    * `TEMPORAL_GRPC_META_AUTHORIZATION` as `Bearer my-token` is cleaner than `TEMPORAL_GRPC_META_0` as
+      `Authorization: Bearer my-token`.
+    * Users shouldn't have to keep up with indexes.
+  * 💭 Why not `TEMPORAL_GRPC_META` as a multiline set of headers?
+    * This can be added later if wanted.
+    * People want to be able to set individual headers.
+    * If we use traditional header format, requires HTTP header parsing which is not as trivial as it may seem (and
+      parsers may not be present/accessible in every standard library). Granted we could accept our own multiline format
+      or only support a simple subset of the header format.
 * There are some special environment variables respected by clients:
   * `TEMPORAL_PROFILE` - the name of the profile to load if one is not provided at load time. The default is  `default`.
-  * `TEMPORAL_CONFIG_FILE` - the path to the config file. The default is `~/.config/temporalio/temporal-client.json`.
-* ❓ How to do grpc-meta as env var? Like for `My-Header: My-Value`
-  * Env var names are case-insensitive on some platforms and don't use dashes, so we can't put header name in env var
-    name. And we may not want to canonicalize the header names even though most gRPC clients do it for you.
-  * There's no obvious env var approach to array of strings, and it can't be completely comma-delimited because header
-    values often contain commas. Would rather not force users to have an index in the env var name. Should we just not
-    support gRPC meta from env var until we think this through?
+  * `TEMPORAL_CONFIG_FILE` - the path to the config file. The default is `~/.config/temporalio/temporal-client.toml`.
 
 ### Loading Configuration
 
@@ -355,7 +337,7 @@ is SDK specific).
         * This is the new way and we should not try to support both at the same time, it can get confusing.
   * The default is `default`, and this can also be set via `TEMPORAL_PROFILE` env var.
 * CLI will accept `--config-file`.
-  * Default is `~/.config/temporalio/temporal-client.json`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
+  * Default is `~/.config/temporalio/temporal-client.toml`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
 * CLI will have a whole new set of `config` commands that operate similar to `env` commands today.
   * Will not go into detail in this proposal, but it's very similar.
   * We will strictly validate keys when setting whereas we did not with `env`.
@@ -379,33 +361,40 @@ without overthinking shortcuts or merging or hierarchies.
 
 Some decisions here are explained here even though they apply to later SDKs. 
 
-* New function in `client`: `LoadConfig(LoadConfigOptions) (*proto.Config, error)`.
-  * This is mostly a helper if people want it.
-* `LoadConfigOptions` has the following:
+* New separately-versioned module at `go.temporal.io/sdk/contrib/envconfig`.
+  * 💭 Why not just in the SDK?
+    * We have to take a TOML dependency which is not fair to put on users that don't need this functionality.
+* `ClientConfig` model (and sub-models like `ClientConfigTLS`) are the typed form of the config.
+  * 💭 Why `ClientConfig` instead of `Config`?
+    * We may have another form of config in the future.
+* Function `LoadClientConfig(LoadClientConfigOptions) (ClientConfig, error)`.
+  * This is an advanced helper, most would use `LoadClientOptionsFromConfig` below.
+* `LoadClientConfigOptions` has the following:
   * `ConfigFile string` - Override the file to use.
   * `DisableFile bool` - Disable reading from file.
   * `DisableEnv bool` - Disable reading from env vars.
-* New function in `client`: `LoadOptionsFromConfig(string profile, LoadConfigOptions) (Options, error)`.
+* Function `LoadClientOptionsFromConfig(string profile, LoadClientConfigOptions) (client.Options, error)`
+  * Create Go SDK client options from config.
   * 💭 Why require profile, isn't there a default of `default`?
     * Yes, and maybe that's what empty string is too, but in general Go doesn't have good parameter defaults and we
       don't want a differently named overload just for this.
-* New function in `client`: `NewOptionsFromConfig(*proto.ConfigProfile) (Options, error)`.
-  * 💭 Why is this needed if `LoadOptionsFromConfig` exists?
+* Function `NewClientOptionsFromConfig(ClientConfig) (client.Options, error)`
+  * 💭 Why is this needed if `LoadClientOptionsFromConfig` exists?
     * People need a way to provide the config to load from instead of always assuming it can be loaded.
-  * 💭 Why not have the config proto to use in the `LoadConfigOptions` instead?
+  * 💭 Why not have the config struct to use in the `LoadClientConfigOptions` instead?
     * It gets to be a bit of a merge game if you have a `BaseConfig` there, and it's a bit confusing if you have
       `PreloadedConfig` there which implies all other options don't matter.
 * 💭 Why not just have the load config options on the client options and let dialing load?
   * People need to adjust options _after_ loaded (overwrite defaults, etc).
-* 💭 Why not have `(*Options).LoadFromConfig` helper method on the options instead?
+* 💭 Why not have `(*ClientConfig).LoadFromConfig` helper method on the options instead?
   * The merging logic gets far too complicated to know what to overwrite and what not to. It's better to force the user
     to start from config and handle merging themselves if they need that.
 * Go SDK _does_ support codec settings because it supports remote codecs.
   * If the remote codec setting is set, the data converter option will be set.
   * 💭 Why not have a `PayloadCodecFromConfig` type of thing?
-    * This is easy enough for users to do with the `LoadConfig` helper and the remote codec objects.
-    * Most won't need it because regular `LoadOptionsFromConfig` creates it with default payload conversion. Only those
-      that need customized payload conversion will need to create the remote codec themselves.
+    * This is easy enough for users to do with the `LoadClientOptionsFromConfig` helper and the remote codec objects.
+    * Most won't need it because regular `LoadClientOptionsFromConfig` creates it with default payload conversion. Only
+      those that need customized payload conversion will need to create the remote codec themselves.
 * Options like grpc-meta sets header provider, API key sets credentials, etc.
   * 💭 Why make a user that just wants to _add_ a header on top of config have to use `LoadConfig` and do it the hard
     way?
@@ -414,7 +403,7 @@ Some decisions here are explained here even though they apply to later SDKs.
 Simplest example:
 
 ```go
-options, err := client.LoadOptionsFromConfig("default", LoadConfigOptions{})
+options, err := envconfig.LoadClientOptionsFromConfig("default", LoadClientConfigOptions{})
 if err != nil {
   return err
 }
@@ -423,17 +412,15 @@ cl, err := client.Dial(options)
 
 #### Java SDK Idea
 
-* New static `ServiceStubsOptions.loadConfig()` and
-  `ServiceStubsOptions.loadConfig(@Nullable String configFile, boolean disableFile, boolean disableEnv)` that return the
-  full protobuf `Config` object.
-  * ❓Any better place to put this? It's a proto utility, not a service stub utility.
-* New static `WorkflowServiceStubsOptions.loadBuilderFromConfig()` and
-  `WorkflowServiceStubsOptions.loadBuilderFromConfig(@Nullable String profile, @Nullable configFile, ` +
-  `boolean disableFile, boolean disableEnv)` and
-  `WorkflowServiceStubsOptions.newBuilderFromConfig(ConfigProfile profile)`.
-  * 💭 Why not have these loaders as instance methods on the builder?
-    * Same reason as Go, because the merging logic of knowing what to do with existing data is too complicated and it's
-      best for the user to do that as needed.
+* New JAR project `temporal-envconfig`.
+  * 💭 Why not just in the SDK?
+    * We have to take a TOML dependency which is not fair to put on users that don't need this functionality.
+* New models for `ClientConfig` (and other things as needed).
+* New static `ClientConfig.load()` and
+  `ClientConfig.load(@Nullable String configFile, boolean disableFile, boolean disableEnv)` that return `ClientConfig`.
+  * ❓Any better place to put this? It's a config utility, not a service stub utility.
+* New instance `ClientConfig#toWorkflowServiceStubsOptions()` and static helpers like
+  `ClientConfig.loadWorkflowServiceStubsOptions()` and the overload like `load` has.
 * Need the same for operator and cloud service stubs options.
 * Need same methods for `WorkflowClientOptions`.
   * Unfortunately with how Java works, there are separate client options, and they too can be in config.
@@ -443,23 +430,25 @@ cl, err := client.Dial(options)
 Simplest example:
 
 ```java
-var stubsOptions = WorkflowServiceStubsOptions.loadBuilderFromConfig().build();
+var stubsOptions = ClientConfig.loadWorkflowServiceStubsOptions();
 var stubs = WorkflowServiceStubs.newServiceStubs(stubsOptions);
-var clientOptions = WorkflowClientOptions.loadBuilderFromConfig().build();
+var clientOptions = ClientConfig.loadWorkflowClientOptions();
 var client = WorkflowClient.newInstance(stubs, clientOptions);
 ```
 
 #### TypeScript SDK Idea
 
-* New `client` module function `loadConfig(options?)` where the `options` type is
-  `{ configFile?: string, disableFile?: bool, disableEnv?: bool }` and it returns a `proto.Config`.
-* New `client` module function `loadOptionsFromConfig(options?)` where the optional `options` are
-  either `proto.ConfigProfile` or `{ profile?: string, configFile?: string, disableFile?: bool, disableEnv?: bool }` and
+* New package and module for `envconfig`.
+  * 💭 Why not just in the SDK?
+    * We have to take a TOML dependency which is not fair to put on users that don't need this functionality.
+* Needs `ClientConfig` interface (and other interfaces as needed).
+* Needs `loadClientConfig(options?)` where the `options` type is
+  `{ configFile?: string, disableFile?: bool, disableEnv?: bool }` and it returns a `ClientConfig`.
+* Needs `loadClientOptionsFromConfig(options?)` where the optional `options` are
+  either `ClientConfig` or `{ profile?: string, configFile?: string, disableFile?: bool, disableEnv?: bool }` and
   it returns a `ConnectionOptions & ClientOptions`.
   * Could also have it return `{ connectionOptions: ConnectionOptions, clientOptions: ClientOptions }` if that makes
     more sense than a union.
-* Consider a new async `Client.connect` static method that accepts `ConnectionOptions & ClientOptions` and is a
-  shortcut to the two-step process today.
 * TypeScript SDK _does not_ support codec settings and will error if seen in config.
   * 💭 Why error?
     * Because a user with a profile configured with a codec should expect that codec to be used, not silently ignored.
@@ -467,60 +456,57 @@ var client = WorkflowClient.newInstance(stubs, clientOptions);
 Simplest example:
 
 ```typescript
-const options = loadOptionsFromConfig();
+const options = loadClientOptionsFromConfig();
 const connection = Connection.connect(options);
 const client = new Client({ connection, ...options });
 
 // Or maybe:
 
-const { connectionOptions, clientOptions } = loadOptionsFromConfig();
+const { connectionOptions, clientOptions } = loadClientOptionsFromConfig();
 const connection = Connection.connect(connectionOptions);
 const client = new Client({ connection, ...clientOptions });
 ```
 
 #### Python SDK Idea
 
-* In `service` module, new function `load_config` with kwarg parameters of `config_file: Optional[str] = None`,
-  `disable_file: bool = False`, `disable_env: bool = False` and it returns a `proto.Config`.
-* In `service` module, new static method `ConnectConfig.load_from_config` with positional parameter of
+* Either new `temporalio.contrib.envconfig` module and "extra" for the TOML library, or new
+  `temporalio.client.envconfig` module that uses Rust Core.
+  * ❓ Should we use Rust Core for the toml/env loading?
+* New `ClientConfig` dataclass (and others as needed).
+* Static method `ClientConfig.load` with kwarg parameters of `config_file: Optional[str] = None`,
+  `disable_file: bool = False`, `disable_env: bool = False` and it returns a `ClientConfig`.
+* New `TypedDict` in `client` for `ConnectConfig` that matches all params in `connect`.
+* Static method `ClientConfig.load_client_connect_config` with positional parameter of
   `profile: str = 'default'` and kwarg parameters of `config_file: Optional[str] = None`, `disable_file: bool = False`,
-  and `disable_env: bool = False` and it returns a `ConnectConfig`.
-* In `service` module, new static method `ConnectConfig.from_config` that accepts a single positional parameter of
-  `proto.ConfigProfile`.
-* In `client` module, new static methods for `ClientConfig.load_from_config` and `ClientConfig.from_config` same as
-  above two for service module.
-* In `client` module, new `TypedDict` class called `ClientConnectConfig` that extends `ClientConfig` but adds all the
-  other parameters for `connect`.
-  * On that class, new static methods for `load_from_config` and `from_config` that are like the others.
-  * This config can mutated and splatted as the args to `Client.connect`.
-    * 💭 Why not a separate `connect` call purely for config?
-      * Many users want to set other options after config loads, and like with other SDKs adding config loading at the
-        same time has option setting has many merge problems, so we need them to be separate steps.
+  and `disable_env: bool = False` and it returns a `client.ConnectConfig`
+  * 💭 Why not call it `load_client_config`?
+    * Because this class is a connect config and that is confusing.
+* Instance method `to_client_connect_config` on the `ClientConfig`.
 * Like TypeScript, Python SDK _does not_ support codec settings and will error if seen in config.
 
 Simplest example:
 
 ```python
-config = ClientConnectConfig.load_from_config()
+config = envconfig.ClientConfig.load_client_connect_config()
 client = await Client.connect(**config)
 ```
 
 #### .NET SDK Idea
 
-* New static methods on `TemporalConnectionOptions` for `LoadConfig()` and
-  `LoadConfig(string? configFile, bool disableFile, bool disableEnv)` and it returns `proto.Config`.
-  * ❓Like Java, any better place to put this? It's a proto utility, not an options utility.
-* New static methods on `TemporalConnectionOptions` for `LoadFromConfig()`,
-  `LoadFromConfig(string profile = "default", string? configFile, bool disableFile, bool disableEnv)`.
-  and `LoadFromConfig(proto.ConfigProfile)` that all return `TemporalConnectionOptions`.
-* Same static methods on `TemporalClientConnectOptions`.
-* Same static methods on `TemporalClientOptions`.
+* Either new `Temporalio.Extensions.EnvConfig` project with TOML dependency, or new `Temporalio.Client.EnvConfig`
+  namespace that uses Rust Core.
+  * ❓ Should we use Rust Core for the toml/env loading?
+* New `ClientConfig` record (and others as needed).
+* Static method `ClientConfig.Load(string? configFile = null, bool disableFile = false, bool disableEnv = false)` that
+  returns `ClientConfig`.
+* Static method `ClientConfig.LoadClientConnectOptions` with same params.
+* Instance method on `ClientConfig` for `ToClientConnectOptions`.
 * Like TypeScript, .NET SDK _does not_ support codec settings and will error if seen in config.
 
 Simplest example:
 
 ```csharp
-var options = TemporalClientConnectOptions.LoadFromConfig();
+var options = ClientConfig.LoadClientConnectOptions();
 var client = await TemporalClient.ConnectAsync(options);
 ```
 
