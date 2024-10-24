@@ -77,8 +77,8 @@ class GreetingWorkflow < Temporalio::Workflow
 
   workflow_query
   def languages(input)
-    return [:chinese, :english] if input[:include_unsupported]
-    greetings.keys.sort
+    return CallGreetingServiceActivity::GREETINGS.keys.sort if input[:include_unsupported]
+    @greetings.keys.sort
   end
 
   workflow_signal
@@ -127,7 +127,7 @@ client = Temporalio::Client.connect('localhost:7233', 'my-namespace')
 worker = Temporalio::Worker.new(
   client:,
   task_queue: 'my-task-queue',
-  activities: [GreetingActivity]
+  activities: [GreetingActivity],
   workflows: [GreetingWorkflow]
 )
 worker.run(shutdown_signals: ['SIGINT'])
@@ -259,7 +259,7 @@ module Temporalio
     # Class methods that can only be called during runtime in a workflow context
     ########
 
-    # No start_activity because that can be in a future (see next section).
+    # No start_activity because that can be in a future (see asynchrony section).
     def self.execute_activity(activity, *args, **left_off_for_brevity)
     def self.execute_local_activity(activity, *args, **left_off_for_brevity)
 
@@ -275,6 +275,9 @@ module Temporalio
     def self.signal_handlers
     def self.query_handlers
     def self.update_handlers
+
+    def info
+    def current_update_info
 
     def self.search_attributes
     def self.upsert_search_attributes(*updates)
@@ -408,9 +411,9 @@ class Future
   # Nil if not (yet) failed
   def failure
 
-  # Raises on failure
+  # Raises on failure or returns result
   def wait
-  # Does not raise on failure, returns
+  # Returns result or nil on failure (does not raise)
   def wait_no_raise
 
   class Setter
@@ -466,11 +469,12 @@ Example of running many activities and waiting on all to complete:
 ```ruby
 class ManyActivityWorkflow < Temporalio::Workflow
   def execute(count)
-    Temporalio::Workflow::Future.all_of(count.times.map do
+    futures = count.times.map do
       Future.new do
         Workflow.execute_activity(MyActivity, 'some arg' start_to_close_timeout: 5)
       end
-    end).wait
+    end
+    Temporalio::Workflow::Future.all_of(*futures).wait
   end
 end
 ```
@@ -489,8 +493,10 @@ few milliseconds to run, they still use a thread and so we need to give the user
     * ❓ Is this an acceptable default? Python uses `[Etc.nprocessors, 4].max` as the max threads, but we figure it can
       be unbounded here and remain bounded by the Core `max_concurrent_workflow_tasks` (TODO: expose this, it was left
       off in `main`).
+    * ❓ Should the default share the same thread pool as activity executor?
   * `Temporalio::Worker::WorkflowTaskExecutor::Ractor` that runs workflows as Ractors.
     * There is a `default` class method with a lazily created global default.
+    * See "Ractors" section for more detail.
 * Worker option called `workflow_task_executor` will exist that accepts this.
   * ❓ What is the default here? We want Ractors for safety but they are experimental. See the "Ractors" section. Maybe
     for now require that users provide this value? Or default to Ractors?
@@ -554,10 +560,10 @@ will do a quick lookup on a hash (or a hash of hashes) to check whether the call
 exception will be raised.
 
 If a user needs to disable this for any reason (e.g. OTel libraries or advanced metrics/logging calls), they can run
-their code inside a block given to `Workflow::Unsafe.illegal_call_tracing_disabled`. Initially there will be no way to
-turn this off globally or at the worker level, though we can consider it if there's enough interest.
+their code inside a block given to `Workflow::Unsafe.illegal_call_tracing_disabled`. There will also be
+`disable_workflow_tracing` worker option that will default to `false`.
 
-❓ Determine performance impact with this present vs not
+* ❓ Determine performance impact with this present vs not
 
 ### Ractors
 
@@ -565,5 +571,5 @@ We will offer a way to run workflows in a `Ractor`. This will provide us protect
 is that not only are Ractors not stable and may have bugs, but they also give off a warning. A workflow instance will be
 in a Ractor and Core activations will be communicated.
 
-❓ Should we enable this by default, disable this by default, or somehow force the user to make a choice
-❓ Determine performance impact with this present vs not
+* ❓ Should we enable this by default, disable this by default, or somehow force the user to make a choice
+* ❓ Determine performance impact with this present vs not
