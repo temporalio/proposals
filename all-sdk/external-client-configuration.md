@@ -141,13 +141,13 @@ API key is created, make sure you copy it here because it is not stored:
 
 Alternatively, you can download it as a configuration file:
 
-    <some button or something that downloads a file name temporalio-client.toml>
+    <some button or something that downloads a file name temporalio.toml>
 
 You can place this configuration file in the default place used by CLIs/SDKs:
 
-* macOS - `$HOME/Library/Application Support/temporalio/temporal-client.toml`
-* Windows - `%AppData%/temporalio/temporal-client.toml` (often `C:\Users\<myuser>\AppData\Roaming\temporalio\temporal-client.toml`)
-* Linux - `$HOME/.config/temporalio/temporal-client.toml`
+* macOS - `$HOME/Library/Application Support/temporalio/temporal.toml`
+* Windows - `%AppData%/temporalio/temporal.toml` (often `C:\Users\<myuser>\AppData\Roaming\temporalio\temporal.toml`)
+* Linux - `$HOME/.config/temporalio/temporal.toml`
 
 This will be automatically consumed by the SDKs/CLI. This file can also be put anywhere else and `TEMPORAL_CONFIG_FILE`
 environment variable can be set to point to it.
@@ -174,7 +174,7 @@ Some users may want the same configuration for multiple namespaces (or multiple 
 whatever). Users can supply partial configuration. For instance, you can have this config:
 
 ```toml
-[profile.temporal-cloud]
+[profile.default]
 address = "my-dev-ns.a1b2c.tmprl.cloud:7233"
 tls.client_cert_path = "path/to/my/dev-cert.pem"
 tls.client_key_path = "path/to/my/dev-cert.pem"
@@ -229,6 +229,11 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
   * 💭 Why TOML?
     * Original document was JSON, but team discussion decided that the benefit to humans of TOML outweighed the concerns
       of making SDKs have extensions with TOML support.
+* For settings that accept files above, they are relative to the current working directory.
+  * 💭 Why not relative to the config file directory?
+    * Because we also accept these config values as environment variables or programmatically, and it is confusing to
+      have different rules for the same key in different ways. We want the environment variable to literally override
+      the config file value, not also change the behavior.
 * Each language will have its own models for this under an `envconfig`/`EnvConfig` namespace/package/module/extension
   * 💭 Why not define model in proto?
     * When JSON was the preferred format proto JSON made sense, but now that it is not, using proto only for SDK team's
@@ -245,13 +250,15 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
   within SDK defaults.
   * Originally this section did say `address` and `namespace` were required, but as SDK implementations came about, it
     became clear that can't be done easily, so CLI/SDK defaults need to remain.
-* The default config file location is `<app-config-dir>/temporalio/temporal-client.toml` for all platforms
+* The default config file location is `<app-config-dir>/temporalio/temporal.toml` for all platforms.
   * This is as defined by https://pkg.go.dev/os#UserConfigDir which, as of this writing, is the logic defined in docs
     and in code at https://cs.opensource.google/go/go/+/refs/tags/go1.23.0:src/os/file.go;l=528.
   * Existing CLI used `~/.config/temporalio/temporal.yaml`
     * ❓ Is this confusing for them? Are we concerned about them vs what is best moving forward?
-  * 💭 Why `temporal-client.toml` instead of `temporal.toml`?
-    * There were concerns that other non-client config may come one day and we didn't want to squat on this name
+  * 💭 Why `temporal.toml` instead of `temporal-client.toml`?
+    * After discussion, it was decided future non-client use of this config (which may never occur) can be sub keys of
+      this file instead of having a separate file or separate config for every separate use. And client is the common
+      enough initial (and maybe only) use case to get the top-level without burdening users.
 
 ### Environment variables
 
@@ -337,7 +344,7 @@ is SDK specific).
         * This is the new way and we should not try to support both at the same time, it can get confusing.
   * The default is `default`, and this can also be set via `TEMPORAL_PROFILE` env var.
 * CLI will accept `--config-file`.
-  * Default is `~/.config/temporalio/temporal-client.toml`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
+  * Default is `~/.config/temporalio/temporal.toml`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
 * CLI will have a whole new set of `config` commands that operate similar to `env` commands today.
   * Will not go into detail in this proposal, but it's very similar.
   * We will strictly validate keys when setting whereas we did not with `env`.
@@ -366,7 +373,8 @@ Some decisions here are explained here even though they apply to later SDKs.
     * We have to take a TOML dependency which is not fair to put on users that don't need this functionality.
 * `ClientConfig` model (and sub-models like `ClientConfigTLS`) are the typed form of the config.
   * 💭 Why `ClientConfig` instead of `Config`?
-    * We may have another form of config in the future.
+    * We may have another form of config in the future. And if we get there and need an overarching `Config` to hold the
+      separate ones we can have it.
 * Function `LoadClientConfig(LoadClientConfigOptions) (ClientConfig, error)`.
   * This is an advanced helper, most would use `LoadClientOptionsFromConfig` below.
 * `LoadClientConfigOptions` has the following:
@@ -412,7 +420,7 @@ cl, err := client.Dial(options)
 
 #### Java SDK Idea
 
-* New JAR project `temporal-envconfig`.
+* New JAR project `temporal-envconfig` with package at `io.temporal.envconfig`.
   * 💭 Why not just in the SDK?
     * We have to take a TOML dependency which is not fair to put on users that don't need this functionality.
 * New models for `ClientConfig` (and other things as needed).
@@ -441,6 +449,9 @@ var client = WorkflowClient.newInstance(stubs, clientOptions);
 * New package and module for `envconfig`.
   * 💭 Why not just in the SDK?
     * We have to take a TOML dependency which is not fair to put on users that don't need this functionality.
+  * ❓ What about "native connection"?
+    * Python and .NET and Ruby will use Rust Core to load this, so TypeScript may have to have two forms too, up to
+      implementer.
 * Needs `ClientConfig` interface (and other interfaces as needed).
 * Needs `loadClientConfig(options?)` where the `options` type is
   `{ configFile?: string, disableFile?: bool, disableEnv?: bool }` and it returns a `ClientConfig`.
@@ -469,9 +480,12 @@ const client = new Client({ connection, ...clientOptions });
 
 #### Python SDK Idea
 
-* Either new `temporalio.contrib.envconfig` module and "extra" for the TOML library, or new
-  `temporalio.client.envconfig` module that uses Rust Core.
-  * ❓ Should we use Rust Core for the toml/env loading?
+* `temporalio.envconfig` module that uses Rust Core.
+  * 💭 Why not pure Python TOML? At this time it was decided that the loading of the config is involved enough that we
+    can use the Rust core (and not have a dependency). We acknowledge that pure in-language TOML could have value for
+    saving at some later date, but this is good for now.
+  * 💭 Why a separate module? Every other SDK is doing it.
+  * ❓ Would we rather `temporalio.runtime.envconfig`? Other non-Core SDKs are just putting top-level.
 * New `ClientConfig` dataclass (and others as needed).
 * Static method `ClientConfig.load` with kwarg parameters of `config_file: Optional[str] = None`,
   `disable_file: bool = False`, `disable_env: bool = False` and it returns a `ClientConfig`.
@@ -493,9 +507,12 @@ client = await Client.connect(**config)
 
 #### .NET SDK Idea
 
-* Either new `Temporalio.Extensions.EnvConfig` project with TOML dependency, or new `Temporalio.Client.EnvConfig`
-  namespace that uses Rust Core.
-  * ❓ Should we use Rust Core for the toml/env loading?
+* `Temporalio.EnvConfig` namespace that uses Rust Core.
+  * 💭 Why not pure .NET TOML? At this time it was decided that the loading of the config is involved enough that we
+    can use the Rust core (and not have a dependency). We acknowledge that pure in-language TOML could have value for
+    saving at some later date, but this is good for now.
+  * 💭 Why a separate namespace? Every other SDK is doing it.
+  * ❓ Would we rather `Temporalio.Runtime.Envconfig` namespace? Other non-Core SDKs are just putting top-level.
 * New `ClientConfig` record (and others as needed).
 * Static method `ClientConfig.Load(string? configFile = null, bool disableFile = false, bool disableEnv = false)` that
   returns `ClientConfig`.
