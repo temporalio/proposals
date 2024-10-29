@@ -13,19 +13,14 @@ Notes for this proposal (like phase 1):
 
 Here is a high-level overview of potentially controversial decisions:
 
-* `Temporalio::Workflow` is both the class to extend and the class with class methods for calling statically to do
-  things.
-  * The `workflow_` class methods on the `Temporalio::Workflow` can only be called at class definition time and cannot
-    be called on `Temporalio::Workflow` directly. These are for adjusting the definition.
-  * All other explicitly-defined class methods on `Temporalio::Workflow` are for use in workflow, can only be used at
-    workflow runtime, and must be called on the workflow class itself (e.g. it is a failure to call
-    `MyWorkflow.wait_condition`).
+* Base class for activities is now `Temporalio::Activity::Definition` to be consistent with the base class
 * Class methods are dynamically made available for signals, queries, and updates to use from clients.
   * So `MyWorkflow.my_signal` can be used in a client, and it just returns a signal definition, unlike the instance
     form.
 * By default `TracePoint` will be enabled for workflow threads that will make sure users are not calling illegal calls,
   but there is a way to disable for blocks of code.
-* `Ractor`s will be used for state isolation (TBD what is enabled by default).
+* `Ractor`s will be used for state isolation by default assuming decent performance but easy to disable and mostly
+  hidden from users.
 
 These points are explained below.
 
@@ -38,7 +33,7 @@ many comments about general non-Ruby behavior are inline.
 Example definition:
 
 ```ruby
-class CallGreetingServiceActivity < Temporalio::Activity
+class CallGreetingServiceActivity < Temporalio::Activity::Definition
   GREETINGS = {
     arabic: 'مرحبا بالعالم',
     chinese: '你好，世界',
@@ -46,7 +41,7 @@ class CallGreetingServiceActivity < Temporalio::Activity
     french: 'Bonjour, monde',
     hindi: 'नमस्ते दुनिया',
     portuguese: 'Olá mundo',
-    spanish: '¡Hola mundo'
+    spanish: 'Hola mundo'
   }
 
   def execute(language)
@@ -56,7 +51,7 @@ class CallGreetingServiceActivity < Temporalio::Activity
   end
 end
 
-class GreetingWorkflow < Temporalio::Workflow
+class GreetingWorkflow < Temporalio::Workflow::Definition
   workflow_query_attr :language
 
   def initialize(name)
@@ -180,9 +175,11 @@ puts "Workflow result: #{wf_handle.result}"
 
 Things to note about workflow definition:
 
-* Workflows must extend (directly or indirectly) from `Temporalio::Workflow`.
+* Workflows must extend (directly or indirectly) from `Temporalio::Workflow::Definition`.
   * It must implement `execute` which is the entry point.
   * Workflow can customize its name via `workflow_name <name>` in the workflow somewhere.
+  * **NOTE** As part of this proposal, we are changing the activity base class from `Temporalio::Activity` class to
+    `Temporalio::Activity::Definition` to be consistent with the base class for workflows.
   * 💭 Why a class?
     * This fits well with the Ruby mindset and many of our SDKs utilize classes to encapsulate workflows and their
       handlers/state.
@@ -198,62 +195,65 @@ Things to note about workflow definition:
 
 ## Workflow API
 
-Approximate guess of how the `Workflow` class methods may look:
+Approximate guess of how the `Workflow` module may look:
 
 ```ruby
 module Temporalio
-  class Workflow
+  module Workflow
 
-    ########
-    # Class methods that can only be called during class definition time
-    ########
+    # Class users must extend for a workflow
+    class Definition
+      class << self
+        # Protected because they are only for this implementation
+        protected
 
-    # Placed above handlers. See dynamic section for dynamic. Raw args means the
-    # handlers will be given their arguments as RawValue instead of converted.
-    #
-    # ❓ Notice raw_args. We could instead make type hints this way, e.g. via
-    # `args: [String, Integer]` or something and plumb that all the way through
-    # to the converter for a user's custom converter to use (same for activities
-    # and the workflow as a whole). If we did that we would also need to allow
-    # return type hints. Do we want to support this hacky form of type hints?
-    def self.workflow_signal(name: nil, dynamic: false, raw_args: false,
-                             unfinished_policy: HandlerUnfinishedPolicy::WARN_AND_ABANDON)
-    def self.workflow_query(name: nil, dynamic: false, raw_args: false)
-    def self.workflow_update(name: nil, dynamic: false, raw_args: false,
-                             unfinished_policy: HandlerUnfinishedPolicy::WARN_AND_ABANDON)
-    def self.workflow_update_validator(update_method)
+        # Placed above handlers. See dynamic section for dynamic. Raw args means the
+        # handlers will be given their arguments as RawValue instead of converted.
+        #
+        # ❓ Notice raw_args. We could instead make type hints this way, e.g. via
+        # `args: [String, Integer]` or something and plumb that all the way through
+        # to the converter for a user's custom converter to use (same for activities
+        # and the workflow as a whole). If we did that we would also need to allow
+        # return type hints. Do we want to support this hacky form of type hints?
+        def self.workflow_signal(name: nil, dynamic: false, raw_args: false,
+                                unfinished_policy: HandlerUnfinishedPolicy::WARN_AND_ABANDON)
+        def self.workflow_query(name: nil, dynamic: false, raw_args: false)
+        def self.workflow_update(name: nil, dynamic: false, raw_args: false,
+                                unfinished_policy: HandlerUnfinishedPolicy::WARN_AND_ABANDON)
+        def self.workflow_update_validator(update_method)
 
-    # Exposes an attribute as a query. 💭 Why? We found this _very_ valuable in
-    # .NET. Think of it as attr_reader for workflows. It was also decided there
-    # was not enough value to have attr_accessor shortcut for update or
-    # attr_writer shortcut for signals since both are not commonly just
-    # getter/setter.
-    def self.workflow_query_attr(query_method)
+        # Exposes an attribute as a query. 💭 Why? We found this _very_ valuable in
+        # .NET. Think of it as attr_reader for workflows. It was also decided there
+        # was not enough value to have attr_accessor shortcut for update or
+        # attr_writer shortcut for signals since both are not commonly just
+        # getter/setter.
+        def self.workflow_query_attr(query_method)
 
-    # Called in the workflow definition to change the name from the default.
-    def self.workflow_name(name)
+        # Called in the workflow definition to change the name from the default.
+        def self.workflow_name(name)
 
-    # Placed above initialize to get start arguments.
-    def self.workflow_init
+        # Placed above initialize to get start arguments.
+        def self.workflow_init
 
-    # See dynamic section.
-    def self.workflow_dynamic
+        # See dynamic section.
+        def self.workflow_dynamic
 
-    # Called in the workflow definition for initialize and execute to get
-    # RawValue arguments (useful for dynamic workflows).
-    def self.workflow_raw_args
+        # Called in the workflow definition for initialize and execute to get
+        # RawValue arguments (useful for dynamic workflows).
+        def self.workflow_raw_args
+      end
+
+      # User must implement
+      def execute(*args)
+    end
 
     ########
     # Class methods that can only be called during runtime, but don't have to be
     # in a workflow context
     ########
 
-    # Whether in a workflow (can only be called on Workflow class, not child).
+    # Whether in a workflow
     def self.in_workflow?
-
-    # Built, fixed workflow definition (can only be called on a class extending
-    # workflow, not workflow itself).
-    def self.definition
 
     ########
     # Class methods that can only be called during runtime in a workflow context
@@ -301,6 +301,15 @@ module Temporalio
     def self.uuid
     def self.wait_condition(&)
 
+    # See async primitives section later
+    def self.sleep(summary: nil, cancellation: Workflow.cancellation)
+    def self.timeout(sec, klass = nil, message = nil, summary: nil, cancellation: Workflow.cancellation, &)
+    Timeout ::Timeout
+    Mutex = ::Mutex
+    ConditionVariable = ::ConditionVariable
+    Queue = ::Queue
+    SizedQueue = ::SizedQueue
+
     class ContinueAsNewError < Error
       def initialize(*args, workflow: nil, **left_off_for_brevity)
     end
@@ -321,15 +330,11 @@ Notes:
 * Notice lack of `timeout` on `wait_condition`, we will support Ruby `Timeout` via the fiber scheduler.
 * Notice lack of `sleep`, we will support Ruby `sleep` via the fiber scheduler.
 * A `cancellation` can be provided to every async thing, but by default it's the workflow-level one.
-* A workflow builds a `Workflow::Definition` object which contains metadata about the structure including a set of
+* A workflow builds a `Workflow::Definition::Info` object which contains metadata about the structure including a set of
   `Workflow::Definition::Signal`s, `Workflow::Definition::Query`s, and `Workflow::Definition::Update`s built from the
   handlers (but of course handlers can be added/removed at runtime via the `_handlers` hashes).
 * The `workflow_` methods above can only be called during class definition time not workflow runtime.
-* The runtime class methods above can only be called during runtime and can only be called on the `Workflow` class
-  itself. This means `Workflow.wait_condition` is ok, but `FooWorkflow.wait_condition` or `self.class.wait_condition`
-  is not.
-  * ❓ Is this acceptable? This is a consequence of us wanting to share workflow context class with workflow base
-    class. Basically at the top of these calls there's a `if self != Workflow` check.
+* The runtime class methods above can only be called during runtime.
 * `respond_to_missing?` + `inherited` will be leveraged such that all definition-time defined handlers will return their
   definition if they are called as class methods. So `FooWorkflow.some_signal` will return a
   `Workflow::Definition::Signal` if an instance method of `some_signal` exists marked as a `workflow_signal`.
@@ -361,18 +366,32 @@ Notes:
 
 Ruby does not have a built-in task/promise/future/etc concept. However it does have fibers and we can leverage those.
 
-### Custom Fiber Scheduler
+### Custom Fiber Scheduler and Async Primitives
 
 We will write a custom Fiber scheduler. This will provide the following benefits:
 
-* Can leverage `Timeout` for timeouts.
-* Can leverage `sleep` for sleeps.
-* Able to fail some IO calls.
-* Allows usage of most of https://github.com/socketry/async.
-  * We will have many tests confirming many behaviors here but we still get to avoid a runtime dependency.
-  * ❓ Why not just take a dependency on `async` gem? It does have a deterministic scheduler and does a decent job of
-    everything we want, but not only do we want to avoid transitive dependencies in our library (for versioning and
-    other reasons), we cannot rely on its logic into the future.
+* Will write custom fiber scheduler.
+* Can leverage stdlib `Timeout`, `sleep`, `Queue`, `SizedQueue`, `Mutex`, and `ConditionVariable`, but also alias/wrap
+  them inside `Workflow` module.
+  * `sleep` and `timeout` are calls on `Workflow` that provide more options.
+  * Classes are just aliased at this time.
+  * 💭 Why not disable these and require use of `Workflow` equivalents like other async primitives?
+    * We have seen some confusion in some languages for reusing async primitives, but this is a bit different because
+      these are standard library items _expected_ to work in all concurrent environments (i.e. threads _and_ fibers).
+  * 💭 Why alias/wrap?
+    * For aliasing, there's not enough benefit to just copying every stdlib signature.
+    * For wrapping, some of these will have extra options. For instance, sleep and timeout can have a "summary" visible
+      in the UI.
+* All blocking/timer things sent to scheduler that are part of stdlib items will have the cancellation assumed to be
+  the workflow cancellation.
+  * ❓ Should we have a way to change the current default cancellation "in scope" so users can override this?
+* Able to fail some IO calls in Fiber scheduler, but most things rely on `TracePoint` (see later).
+* While it will technically work, discourage use of https://github.com/socketry/async.
+  * 💭 Why discourage use? After a lot of team discussion and learnings from Python and .NET, we learned:
+    1. Non-Temporal asynchronous helpers can be confusing for users (because often only half can be used)
+    2. The implementations can have surprising non-determinisms
+    3. Implementations can make internal changes in incompatible ways in newer versions
+    4. Java and Go have a very minimal set of async primitives and that is plenty for users
 
 ### Futures
 
@@ -385,18 +404,22 @@ class Future
   def new_with_setter
 
   # Returns future whose result is set to the first completed future's result or
-  # failed with the first future's failure.
+  # failed with the first future's failure. Therefore, this will raise on
+  # failure when `wait`ed.
   def self.any_of(*futures)
   # Returns future whose result is set to nil when all futures succeed or
-  # has its failure set to the first failure.
+  # has its failure set to the first failure. Therefore, this will raise on
+  # failure when `wait`ed.
   def self.all_of(*futures)
 
   # Returns future whose result is set to the first future completed (so a
-  # future in a future).
-  def self.any_of_no_raise(*futures)
+  # future in a future). Therefore, this will not raise on failure when
+  # `wait`ed.
+  def self.try_any_of(*futures)
   # Returns future whose result is set to nil when all futures complete
-  # regardless of whether any future failed.
-  def self.all_of_no_raise(*futures)
+  # regardless of whether any future failed. Therefore, this will not raise on
+  # failure when `wait`ed.
+  def self.try_all_of(*futures)
 
   # Starts the provided block in the background. Block result will be future result,
   # block exception will be future failure.
@@ -453,15 +476,15 @@ Notes:
   and exception situation should be across the industry in different languages. We're taking a very simple approach
   and if users struggle with `any_of` and needing to know which future succeeded/failed, they can be more specific in
   their return/raise inside their future block.
-  * We chose to add an `any_of_no_raise` that does not raise.
+  * We chose to add an `try_any_of` that does not raise on `wait`.
     * 💭 Why not just an arg? Because it would change return value which is a confusing thing to do just based on arg.
     * 💭 Why not `any_of!`? Because it's not necessarily more dangerous needing `!`, just a different behavior.
 * We chose not to make whether `all_of` raises be configurable. There is a lot of confusion about what return value
   and exception situation should be across the industry in different languages. We're taking a very simple approach
   and if users struggle with `all_of` need to wait for other futures to succeed when one fails, they need to make sure
   none fail (can return exception instead or something).
-  * We chose to add an `all_of_no_raise` that does not raise.
-    * 💭 Why not just an arg? Because we have `any_of_no_raise` and this is consistent with that.
+  * We chose to add an `try_all_of` that does not raise on `wait`.
+    * 💭 Why not just an arg? Because we have `try_any_of` and this is consistent with that.
     * 💭 Why not `all_of!`? Because it's not necessarily more dangerous needing `!`, just a different behavior.
 
 Example of running many activities and waiting on all to complete:
@@ -487,19 +510,19 @@ few milliseconds to run, they still use a thread and so we need to give the user
 * We will extract the thread pool from `Temporalio::Worker::ActivityExecutor::ThreadPool` to
   `Temporalio::Worker::ThreadPool` (and have activity executor use it).
 * `Temporalio::Worker::WorkflowTaskExecutor` will exist with two implementations
+  * `Temporalio::Worker::WorkflowTaskExecutor::Ractor` that runs workflows as Ractors.
+    * This is the default workflow task executor for workers at this time. See "Ractors" section for more detail.
+    * There is a `default` class method with a lazily created global default.
   * `Temporalio::Worker::WorkflowTaskExecutor::ThreadPool` that accepts a thread pool which defaults to max threads
     unbounded.
+    * This is the executor to use to not use "Ractors".
     * There is a `default` class method with a lazily created global default.
     * ❓ Is this an acceptable default? Python uses `[Etc.nprocessors, 4].max` as the max threads, but we figure it can
       be unbounded here and remain bounded by the Core `max_concurrent_workflow_tasks` (TODO: expose this, it was left
       off in `main`).
     * ❓ Should the default share the same thread pool as activity executor?
-  * `Temporalio::Worker::WorkflowTaskExecutor::Ractor` that runs workflows as Ractors.
-    * There is a `default` class method with a lazily created global default.
-    * See "Ractors" section for more detail.
 * Worker option called `workflow_task_executor` will exist that accepts this.
-  * ❓ What is the default here? We want Ractors for safety but they are experimental. See the "Ractors" section. Maybe
-    for now require that users provide this value? Or default to Ractors?
+  * Defaults to `Ractor` implementation. See the "Ractors" section.
 * 💭 Why not hide some of this and just accept some worker options that govern them?
   * There is some value in reusing this across workers.
   * _Technically_ users may want to customize task running, but we should strongly discourage it.
@@ -563,7 +586,7 @@ If a user needs to disable this for any reason (e.g. OTel libraries or advanced 
 their code inside a block given to `Workflow::Unsafe.illegal_call_tracing_disabled`. There will also be
 `disable_workflow_tracing` worker option that will default to `false`.
 
-* ❓ Determine performance impact with this present vs not
+* ❓ Determine performance impact with this present vs not.
 
 ### Ractors
 
@@ -571,5 +594,12 @@ We will offer a way to run workflows in a `Ractor`. This will provide us protect
 is that not only are Ractors not stable and may have bugs, but they also give off a warning. A workflow instance will be
 in a Ractor and Core activations will be communicated.
 
-* ❓ Should we enable this by default, disable this by default, or somehow force the user to make a choice
-* ❓ Determine performance impact with this present vs not
+* The default task executor will be the Ractor task executor. 💭 Why?
+  * We will never be able to change the default to a more-restrictive default later.
+  * The value of state isolation and our non-advanced use of of Ractors outweighed Ractor stability concerns.
+  * It was unreasonable to not have any default at all and force users to pick the workflow task executor.
+  * Yes users will see the Ractor warning, which may actually be a good thing.
+  * We will provide an easy, well-documented way to not use Ractors (it's just setting
+    `workflow_task_executor: Temporalio::Worker::WorkflowTaskExecutor::ThreadPool.default` for worker).
+  * Subject to benchmarking (i.e. if we find performance is terrible, we may change our decision).
+* ❓ Determine performance impact with this present vs not.
