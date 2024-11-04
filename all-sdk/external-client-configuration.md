@@ -259,6 +259,14 @@ client = await Client.connect(namespace="my-specific-namespace", **config)
     * After discussion, it was decided future non-client use of this config (which may never occur) can be sub keys of
       this file instead of having a separate file or separate config for every separate use. And client is the common
       enough initial (and maybe only) use case to get the top-level without burdening users.
+* Unlike all other ways to provide settings, all file paths inside configuration files must be absolute or loading
+  should fail, no relative paths
+  * 💭 Why?
+    * We don't want to make paths relative to the config file, because people load this config into a common structure
+      and different meanings for different-sourced values (CLI vs env var vs config file vs programmatic) is confusing
+      and can't be represented well
+    * We're replacing `env set` with `config set` and the former supports relative to the calling user, so it'd be
+      confusing to change that
 
 ### Environment variables
 
@@ -344,7 +352,7 @@ is SDK specific).
         * This is the new way and we should not try to support both at the same time, it can get confusing.
   * The default is `default`, and this can also be set via `TEMPORAL_PROFILE` env var.
 * CLI will accept `--config-file`.
-  * Default is `~/.config/temporalio/temporal.toml`, also can be set via `TEMPORAL_CONFIG_FILE` env var.
+  * Has default specified before, also can be set via `TEMPORAL_CONFIG_FILE` env var.
 * CLI will have a whole new set of `config` commands that operate similar to `env` commands today.
   * Will not go into detail in this proposal, but it's very similar.
   * We will strictly validate keys when setting whereas we did not with `env`.
