@@ -52,7 +52,7 @@ class CallGreetingServiceActivity < Temporalio::Activity::Definition
 end
 
 class GreetingWorkflow < Temporalio::Workflow::Definition
-  workflow_query_attr :language
+  workflow_query_attr_reader :language
 
   def initialize(name)
     @greetings = {
@@ -227,7 +227,7 @@ module Temporalio
         # was not enough value to have attr_accessor shortcut for update or
         # attr_writer shortcut for signals since both are not commonly just
         # getter/setter.
-        def self.workflow_query_attr(query_method)
+        def self.workflow_query_attr_reader(query_method)
 
         # Called in the workflow definition to change the name from the default.
         def self.workflow_name(name)
@@ -276,8 +276,8 @@ module Temporalio
     def self.query_handlers
     def self.update_handlers
 
-    def info
-    def current_update_info
+    def self.info
+    def self.current_update_info
 
     def self.search_attributes
     def self.upsert_search_attributes(*updates)
