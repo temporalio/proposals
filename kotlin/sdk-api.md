@@ -382,6 +382,100 @@ override suspend fun workflowWithTimeout(): String {
 
 > **Note:** Versioning (`KWorkflow.getVersion`), continue-as-new (`KWorkflow.continueAsNew`), side effects (`KWorkflow.sideEffect`), and search attributes (`KWorkflow.upsertSearchAttributes`) use the same patterns as the Java SDK.
 
+## Cancellation
+
+Kotlin's built-in coroutine cancellation replaces Java SDK's `CancellationScope`. This provides a more idiomatic experience while maintaining full Temporal semantics.
+
+### How Cancellation Works
+
+When a workflow is cancelled (from the server or programmatically), the Kotlin SDK translates this into coroutine cancellation. Cancellation is **cooperative**—it's checked at suspension points (`delay`, activity execution, child workflow execution, etc.):
+
+```kotlin
+override suspend fun processOrder(order: Order): OrderResult = coroutineScope {
+    // Cancellation is checked at each suspension point
+    val validated = KWorkflow.executeActivity(...)  // ← cancellation checked here
+    delay(5.minutes)                                 // ← cancellation checked here
+    val result = KWorkflow.executeActivity(...)      // ← cancellation checked here
+    result
+}
+```
+
+### Explicit Cancellation Checks
+
+In rare cases where workflow code doesn't have suspension points (e.g., tight loops), you can check cancellation explicitly using `isActive` or `ensureActive()`. However, CPU-bound work should typically be delegated to activities.
+
+### Parallel Execution and Cancellation
+
+`coroutineScope` provides structured concurrency—if one child fails or the scope is cancelled, all children are automatically cancelled:
+
+```kotlin
+override suspend fun parallelWorkflow(): String = coroutineScope {
+    val a = async { KWorkflow.executeActivity(...) }
+    val b = async { KWorkflow.executeActivity(...) }
+
+    // If either activity fails, the other is cancelled
+    // If workflow is cancelled, both activities are cancelled
+    "${a.await()} - ${b.await()}"
+}
+```
+
+### Detached Scopes (Cleanup Logic)
+
+Use `withContext(NonCancellable)` for cleanup code that must run even when the workflow is cancelled:
+
+```kotlin
+override suspend fun processOrder(order: Order): OrderResult {
+    try {
+        return doProcessOrder(order)
+    } catch (e: CancellationException) {
+        // Cleanup runs even though workflow is cancelled
+        withContext(NonCancellable) {
+            KWorkflow.executeActivity(
+                OrderActivities::releaseReservation,
+                order,
+                ActivityOptions { startToCloseTimeout = 30.seconds }
+            )
+        }
+        throw e  // Re-throw to propagate cancellation
+    }
+}
+```
+
+This is equivalent to Java's `Workflow.newDetachedCancellationScope()`.
+
+### Cancellation with Timeout
+
+Use `withTimeout` to cancel a block after a duration:
+
+```kotlin
+override suspend fun processWithDeadline(order: Order): OrderResult {
+    return withTimeout(1.hours) {
+        // Everything in this block is cancelled if it takes > 1 hour
+        val validated = KWorkflow.executeActivity(...)
+        val charged = KWorkflow.executeActivity(...)
+        OrderResult(success = true)
+    }
+}
+
+// Or use withTimeoutOrNull to get null instead of exception
+override suspend fun tryProcess(order: Order): OrderResult? {
+    return withTimeoutOrNull(30.minutes) {
+        KWorkflow.executeActivity(...)
+    }
+}
+```
+
+### Comparison with Java SDK
+
+| Java SDK | Kotlin SDK |
+|----------|------------|
+| `Workflow.newCancellationScope(() -> { ... })` | `coroutineScope { ... }` |
+| `Workflow.newDetachedCancellationScope(() -> { ... })` | `withContext(NonCancellable) { ... }` |
+| `CancellationScope.cancel()` | `job.cancel()` |
+| `CancellationScope.isCancelRequested()` | `!isActive` |
+| `CancellationScope.throwCanceled()` | `ensureActive()` |
+| `scope.run()` with timeout | `withTimeout(duration) { ... }` |
+
 ## Activity Definition
 
 ### String-based Activity Execution (Phase 1)
@@ -1276,9 +1370,6 @@ interface OrderWorkflow {
     @WorkflowMethod
     suspend fun processOrder(order: Order): OrderResult
 
-    @SignalMethod
-    suspend fun cancelOrder(reason: String)
-
     @UpdateMethod
     suspend fun addItem(item: OrderItem): Boolean
 
@@ -1303,10 +1394,19 @@ interface OrderActivities {
     suspend fun reserveInventory(item: OrderItem): Boolean
 
     @ActivityMethod
+    suspend fun releaseInventory(item: OrderItem): Boolean
+
+    @ActivityMethod
     suspend fun chargePayment(order: Order): Boolean
 
     @ActivityMethod
+    suspend fun refundPayment(order: Order): Boolean
+
+    @ActivityMethod
     suspend fun shipOrder(order: Order): String
+
+    @ActivityMethod
+    suspend fun notifyCustomer(customerId: String, message: String)
 }
 
 // === Activity Implementation ===
@@ -1314,7 +1414,8 @@ interface OrderActivities {
 class OrderActivitiesImpl(
     private val inventoryService: InventoryService,
     private val paymentService: PaymentService,
-    private val shippingService: ShippingService
+    private val shippingService: ShippingService,
+    private val notificationService: NotificationService
 ) : OrderActivities {
 
     override suspend fun validateOrder(order: Order): Boolean {
@@ -1325,12 +1426,24 @@ class OrderActivitiesImpl(
         return inventoryService.reserve(item.productId, item.quantity)
     }
 
+    override suspend fun releaseInventory(item: OrderItem): Boolean {
+        return inventoryService.release(item.productId, item.quantity)
+    }
+
     override suspend fun chargePayment(order: Order): Boolean {
         return paymentService.charge(order.customerId, order.total)
     }
 
+    override suspend fun refundPayment(order: Order): Boolean {
+        return paymentService.refund(order.customerId, order.total)
+    }
+
     override suspend fun shipOrder(order: Order): String {
         return shippingService.createShipment(order)
+    }
+
+    override suspend fun notifyCustomer(customerId: String, message: String) {
+        notificationService.send(customerId, message)
     }
 }
 
@@ -1339,7 +1452,9 @@ class OrderActivitiesImpl(
 class OrderWorkflowImpl : OrderWorkflow {
     private var _status = OrderStatus.PENDING
     private var _progress = 0
-    private var canceled = false
+    private var _order: Order? = null
+    private var paymentCharged = false
+    private var reservedItems = mutableListOf<OrderItem>()
 
     override val status get() = _status
     override val progress get() = _progress
@@ -1353,9 +1468,24 @@ class OrderWorkflowImpl : OrderWorkflow {
         }
     }
 
-    override suspend fun processOrder(order: Order): OrderResult = coroutineScope {
+    override suspend fun processOrder(order: Order): OrderResult {
+        _order = order
         _status = OrderStatus.PROCESSING
 
+        return try {
+            doProcessOrder(order)
+        } catch (e: CancellationException) {
+            // Workflow was cancelled - run cleanup in detached scope
+            // This code runs even though the workflow is cancelled
+            withContext(NonCancellable) {
+                cleanup(order)
+            }
+            _status = OrderStatus.CANCELED
+            throw e  // Re-throw to complete workflow as cancelled
+        }
+    }
+
+    private suspend fun doProcessOrder(order: Order): OrderResult = coroutineScope {
         // Validate order - direct method reference, no stub needed
         _progress = 10
         val isValid = KWorkflow.executeActivity(
@@ -1367,41 +1497,43 @@ class OrderWorkflowImpl : OrderWorkflow {
             return@coroutineScope OrderResult(success = false, trackingNumber = null)
         }
 
-        // Check for cancellation
-        if (canceled) {
-            _status = OrderStatus.CANCELED
-            return@coroutineScope OrderResult(success = false, trackingNumber = null)
-        }
-
-        // Process items in parallel
+        // Reserve inventory for all items in parallel
+        // If workflow is cancelled here, all parallel activities are cancelled
         _progress = 30
         order.items.map { item ->
             async {
-                KWorkflow.executeActivity(
+                val reserved = KWorkflow.executeActivity(
                     OrderActivities::reserveInventory,
                     item,
                     defaultOptions
                 )
+                if (reserved) {
+                    reservedItems.add(item)  // Track for cleanup
+                }
+                reserved
             }
         }.awaitAll()
 
         _progress = 60
 
-        // Charge payment - longer timeout for payment processing
-        val charged = KWorkflow.executeActivity(
-            OrderActivities::chargePayment,
-            order,
-            ActivityOptions {
-                startToCloseTimeout = 2.minutes
-                retryOptions = RetryOptions {
-                    initialInterval = 5.seconds
-                    maximumAttempts = 5
+        // Charge payment with timeout - auto-cancels if takes too long
+        val charged = withTimeout(2.minutes) {
+            KWorkflow.executeActivity(
+                OrderActivities::chargePayment,
+                order,
+                ActivityOptions {
+                    startToCloseTimeout = 2.minutes
+                    retryOptions = RetryOptions {
+                        initialInterval = 5.seconds
+                        maximumAttempts = 5
+                    }
                 }
-            }
-        )
+            )
+        }
         if (!charged) {
             return@coroutineScope OrderResult(success = false, trackingNumber = null)
         }
+        paymentCharged = true
 
         _progress = 80
 
@@ -1418,9 +1550,47 @@ class OrderWorkflowImpl : OrderWorkflow {
         OrderResult(success = true, trackingNumber = trackingNumber)
     }
 
-    override suspend fun cancelOrder(reason: String) {
-        canceled = true
-        _status = OrderStatus.CANCELED
+    /**
+     * Cleanup logic that runs even when workflow is cancelled.
+     * Called from within withContext(NonCancellable) block.
+     */
+    private suspend fun cleanup(order: Order) {
+        // Release any reserved inventory
+        for (item in reservedItems) {
+            try {
+                KWorkflow.executeActivity(
+                    OrderActivities::releaseInventory,
+                    item,
+                    defaultOptions
+                )
+            } catch (e: Exception) {
+                // Log but continue cleanup
+            }
+        }
+
+        // Refund payment if it was charged
+        if (paymentCharged) {
+            try {
+                KWorkflow.executeActivity(
+                    OrderActivities::refundPayment,
+                    order,
+                    defaultOptions
+                )
+            } catch (e: Exception) {
+                // Log but continue cleanup
+            }
+        }
+
+        // Notify customer of cancellation
+        try {
+            KWorkflow.executeActivity(
+                OrderActivities::notifyCustomer,
+                order.customerId, "Your order has been cancelled",
+                defaultOptions
+            )
+        } catch (e: Exception) {
+            // Best effort notification
+        }
     }
 
     override fun validateAddItem(item: OrderItem) {
@@ -1443,6 +1613,7 @@ fun main() = runBlocking {
     val inventoryService = InventoryServiceImpl()
     val paymentService = PaymentServiceImpl()
     val shippingService = ShippingServiceImpl()
+    val notificationService = NotificationServiceImpl()
 
     val service = WorkflowServiceStubs.newLocalServiceStubs()
 
@@ -1457,7 +1628,7 @@ fun main() = runBlocking {
     // Plugin handles suspend functions automatically
     worker.registerWorkflowImplementationTypes(OrderWorkflowImpl::class)
     worker.registerActivitiesImplementations(
-        OrderActivitiesImpl(inventoryService, paymentService, shippingService)
+        OrderActivitiesImpl(inventoryService, paymentService, shippingService, notificationService)
     )
 
     factory.start()
@@ -1499,11 +1670,25 @@ fun main() = runBlocking {
     val added = existingHandle.executeUpdate(OrderWorkflow::addItem, newItem)
     println("Item added: $added")
 
-    // Send signal if needed
-    // existingHandle.signal(OrderWorkflow::cancelOrder, "Customer request")
+    // === Cancellation ===
+
+    // Cancel workflow - triggers CancellationException, cleanup block runs
+    // existingHandle.cancel()
+
+    // Or terminate immediately - no cleanup runs
+    // existingHandle.terminate("Emergency shutdown")
 
     // Wait for result - type inferred from startWorkflow method reference
-    val result = handle.result()
-    println("Order result: $result")
+    // If workflow was cancelled, this throws WorkflowFailedException
+    try {
+        val result = handle.result()
+        println("Order result: $result")
+    } catch (e: WorkflowFailedException) {
+        if (e.cause is CanceledFailure) {
+            println("Order was cancelled - cleanup activities were executed")
+        } else {
+            throw e
+        }
+    }
 }
 ```

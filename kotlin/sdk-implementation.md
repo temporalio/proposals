@@ -930,79 +930,52 @@ var ActivityOptions.Builder.startToCloseTimeout: KotlinDuration
 
 ## Open Questions
 
-### 1. Workflow Versioning with Coroutines
+### Workflow Versioning with Coroutines
 
 How do `Workflow.getVersion()` semantics work with coroutines?
 
 - **Version marker ordering**: Version checks record markers in the event history. With coroutines suspending and resuming, need to ensure markers are recorded in deterministic order during replay.
 - **Suspension points**: If `getVersion()` is called before a suspension point, does the version marker position remain stable across code changes?
-- **Recommendation**: Likely works the same as Java since version markers are recorded synchronously before any suspension. Needs validation during implementation.
+- **Expected behavior**: Likely works the same as Java since version markers are recorded synchronously before any suspension. Needs validation during implementation.
 
-### 2. CancellationScope Mapping
+## Resolved Decisions
 
-Best way to map Kotlin's structured concurrency to Temporal's cancellation scopes?
+### CancellationScope Mapping
 
-- **Semantic mismatch**: Kotlin's `coroutineScope {}` fails if any child fails, while Temporal's `CancellationScope` allows explicit cancellation handling.
-- **SupervisorJob patterns**: Kotlin's `supervisorScope {}` isolates child failures. How does this map to Temporal's cancellation model?
-- **Options**:
-  - A) `coroutineScope {}` creates implicit Temporal CancellationScope
-  - B) Require explicit `KWorkflow.cancellationScope {}` for Temporal semantics
-  - C) Hybrid approach with configuration
-- **Recommendation**: Start with Option B (explicit) to avoid surprising behavior, consider Option A for future phases.
+Kotlin's built-in coroutine cancellation replaces Java SDK's `CancellationScope`. The `KotlinCoroutineDispatcher` already provides deterministic execution, so standard Kotlin cancellation patterns work correctly with Temporal's replay mechanism.
 
-### 3. Kotlin Flow Support
+| Java SDK | Kotlin SDK | Notes |
+|----------|------------|-------|
+| `Workflow.newCancellationScope(() -> {...})` | `coroutineScope { ... }` | Parent cancellation propagates to children |
+| `Workflow.newDetachedCancellationScope(() -> {...})` | `withContext(NonCancellable) { ... }` | For cleanup code that must run |
+| `CancellationScope.cancel()` | `job.cancel()` | Explicit cancellation |
+| `CancellationScope.isCancelRequested()` | `!isActive` | Check without throwing |
+| `CancellationScope.throwCanceled()` | `ensureActive()` | Throws if cancelled |
+| `scope.run()` with timeout | `withTimeout(duration) { ... }` | Built-in timeout support |
 
-Should we support Kotlin Flow for streaming results?
+**Why this works:**
+- Server cancellation triggers coroutine cancellation via root `Job`
+- Cancellation state is recorded in workflow history for deterministic replay
+- `withContext(NonCancellable)` maps directly to detached scope semantics
+- No custom API needed—Kotlin's structured concurrency matches Temporal's model
 
-- **Use cases**: Streaming activity progress, signal batching, continuous query results
-- **Complexity**: Flow integration requires careful handling of backpressure, cancellation, and replay determinism
-- **Alternatives**: Existing patterns (heartbeat details, signals) cover most use cases
-- **Recommendation**: Defer to post-Phase 3. Evaluate demand and complexity once core SDK is stable.
+### DSL vs Annotations
 
-### 4. Kotlin Multiplatform
+**Decision**: Keep annotations (`@WorkflowMethod`, `@SignalMethod`) as the primary approach for consistency with Java SDK. Consider DSL as optional alternative in future phases if there's demand.
 
-Any consideration for Kotlin Multiplatform in the future?
+### SPI Stability
 
-- **Current state**: SDK is JVM-only due to Java SDK dependency
-- **Potential targets**: Kotlin/Native (server-side), Kotlin/JS (less relevant for workflows)
-- **Blockers**: Core SDK (Rust) would need different bindings; significant effort
-- **Recommendation**: Not a near-term priority. Document as potential future direction. May revisit if sdk-core provides C bindings that Kotlin/Native could use.
+**Decision**: Start with `@InternalApi` annotation for Phase 1. The affected interfaces (`WorkflowImplementationFactory`, `ReplayWorkflow`, `ReplayWorkflowContext`) will be promoted to a stable SPI package once they stabilize after real-world usage (likely post-Phase 3).
 
-### 5. DSL vs Annotations
+## Future Considerations
 
-Should we provide a pure DSL alternative to annotations for workflow/activity definitions?
+### Kotlin Flow Support
 
-- **Current approach**: Annotations (`@WorkflowMethod`, `@SignalMethod`) following Java SDK pattern
-- **DSL alternative**: Builder-style registration without annotations
-  ```kotlin
-  worker.registerWorkflow<OrderWorkflow> {
-      workflowMethod(OrderWorkflow::processOrder)
-      signalMethod(OrderWorkflow::cancelOrder)
-      queryMethod(OrderWorkflow::status)
-  }
-  ```
-- **Trade-offs**:
-  - Annotations: Familiar to Java developers, IDE support, compile-time validation
-  - DSL: More flexible, no annotation processing, but less discoverable
-- **Recommendation**: Keep annotations as primary approach for consistency with Java SDK. Consider DSL as optional alternative in future phase if there's demand.
+Streaming results via Kotlin Flow is deferred to post-Phase 3. Existing patterns (heartbeat details, signals) cover most use cases. Flow integration requires careful handling of backpressure, cancellation, and replay determinism.
 
-### 6. SPI Stability
+### Kotlin Multiplatform
 
-What's the right level of API stability for `WorkflowImplementationFactory` and related interfaces?
-
-- **Affected interfaces**:
-  - `WorkflowImplementationFactory`
-  - `ReplayWorkflow`
-  - `ReplayWorkflowContext`
-- **Options**:
-  - A) **SPI package** (`io.temporal.worker.spi`): Explicit extension point, semver guarantees
-  - B) **@InternalApi annotation**: Accessible but no stability guarantees
-  - C) **Hybrid**: SPI for stable interfaces, @InternalApi for evolving ones
-- **Considerations**:
-  - Third parties may want to build alternative execution models
-  - Premature stability commitments limit evolution
-  - Java SDK precedent: Most internal APIs are not stable
-- **Recommendation**: Start with Option B (@InternalApi) for Phase 1. Promote to SPI package once interfaces stabilize after real-world usage (likely post-Phase 3).
+Not a near-term priority. The SDK is JVM-only due to Java SDK dependency. May revisit if sdk-core provides C bindings that Kotlin/Native could use.
 
 ## References
 
