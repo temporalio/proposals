@@ -107,7 +107,7 @@ Implement the Kotlin client API for starting workflows, getting handles, and int
 **Summary:** Add Kotlin extension for starting workflows with method references
 
 **Scope:**
-- Add `WorkflowClient.startWorkflow(KFunction, args, options): KTypedWorkflowHandle<T, R>`
+- Add `WorkflowClient.startWorkflow(KFunction, options, args): KTypedWorkflowHandle<T, R>`
 - Capture result type from method reference
 - Support KFunction1-7 overloads
 
@@ -125,7 +125,7 @@ Implement the Kotlin client API for starting workflows, getting handles, and int
 **Summary:** Add extension for starting and waiting for workflow result
 
 **Scope:**
-- Add `WorkflowClient.executeWorkflow(KFunction, args, options): R`
+- Add `WorkflowClient.executeWorkflow(KFunction, options, args): R`
 - Start workflow and immediately await result
 - Support KFunction1-7 overloads
 
@@ -161,7 +161,7 @@ Implement the Kotlin client API for starting workflows, getting handles, and int
 **Summary:** Add atomic signal-with-start operation
 
 **Scope:**
-- Add `WorkflowClient.signalWithStart(workflow, workflowArg, signal, signalArg, options): KTypedWorkflowHandle`
+- Add `WorkflowClient.signalWithStart(workflow, options, workflowArg, signal, signalArg): KTypedWorkflowHandle`
 - Atomically start or signal existing workflow
 - Return typed handle
 
@@ -179,7 +179,7 @@ Implement the Kotlin client API for starting workflows, getting handles, and int
 **Summary:** Add atomic update-with-start operation
 
 **Scope:**
-- Add `WorkflowClient.updateWithStart(workflow, workflowArg, update, updateArg, options): Pair<KTypedWorkflowHandle, UpdateResult>`
+- Add `WorkflowClient.updateWithStart(workflow, options, workflowArg, update, updateArg): Pair<KTypedWorkflowHandle, UpdateResult>`
 - Atomically start or update existing workflow
 - Return handle and update result
 
