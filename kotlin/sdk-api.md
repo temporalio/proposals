@@ -899,15 +899,14 @@ Atomically start a workflow and send a signal. If the workflow already exists, o
 val handle = client.signalWithStart(
     // Workflow to start
     workflow = OrderWorkflow::processOrder,
-    workflowArg = order,
-    // Signal to send
-    signal = OrderWorkflow::cancelOrder,
-    signalArg = "Price changed",
-    // Options
     options = WorkflowOptions {
         workflowId = "order-123"
         taskQueue = "orders"
-    }
+    },
+    workflowArg = order,
+    // Signal to send
+    signal = OrderWorkflow::cancelOrder,
+    signalArg = "Price changed"
 )
 
 // Can use typed handle for queries/signals
