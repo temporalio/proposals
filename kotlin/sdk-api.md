@@ -29,6 +29,25 @@ The Kotlin SDK provides an idiomatic Kotlin experience for building Temporal wor
 
 > **Note:** Nexus support is a separate project and will be addressed independently.
 
+## Design Principle
+
+**Use idiomatic Kotlin language patterns wherever possible instead of custom APIs.**
+
+The Kotlin SDK should feel natural to Kotlin developers by leveraging standard `kotlinx.coroutines` primitives. Custom APIs should only be introduced when Temporal-specific semantics cannot be achieved through standard patterns.
+
+| Pattern | Standard Kotlin | Temporal Integration |
+|---------|-----------------|----------------------|
+| Parallel execution | `coroutineScope { async { ... } }` | Works via deterministic dispatcher |
+| Await multiple | `awaitAll(d1, d2)` | Standard kotlinx.coroutines |
+| Sleep/delay | `delay(duration)` | Intercepted via `Delay` interface |
+| Deferred results | `Deferred<T>` | Standard + `Promise<T>.toDeferred()` |
+
+This approach provides:
+- **Familiar patterns**: Kotlin developers use patterns they already know
+- **IDE support**: Full autocomplete and documentation for standard APIs
+- **Ecosystem compatibility**: Works with existing coroutine libraries and utilities
+- **Smaller API surface**: Less custom code to learn and maintain
+
 ## Kotlin Idioms
 
 The SDK leverages Kotlin-specific language features for an idiomatic experience.
@@ -42,20 +61,22 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.hours
 
-// Activity with timeouts
+// Activity with timeouts using existing DSL builders
 val result = KWorkflow.executeActivity<String>(
     "ProcessOrder",
-    orderData,
     ActivityOptions {
         startToCloseTimeout = 30.seconds
         scheduleToCloseTimeout = 5.minutes
         heartbeatTimeout = 10.seconds
-    }
+    },
+    orderData
 )
 
-// Timers
+// Timers - standard kotlinx.coroutines delay (intercepted for determinism)
 delay(1.hours)
 ```
+
+> **Note:** The `ActivityOptions { }` DSL already exists in the `temporal-kotlin` module. The `Delay` interface intercepts standard `delay()` calls and routes them through Temporal's deterministic timer.
 
 ### Null Safety
 
@@ -65,7 +86,7 @@ Nullable types replace `Optional<T>` throughout the API. The following Java SDK 
 |----------|------------|
 | `io.temporal.workflow.Workflow` | `KWorkflow` object |
 | `io.temporal.workflow.WorkflowInfo` | `KWorkflowInfo` |
-| `io.temporal.workflow.Promise<T>` | `KActivityHandle<T>` / `Deferred<T>` |
+| `io.temporal.workflow.Promise<T>` | Standard `Deferred<T>` via `Promise<T>.toDeferred()` |
 | `io.temporal.activity.Activity` | `KActivity` object |
 | `io.temporal.activity.ActivityExecutionContext` | `KActivityContext` |
 | `io.temporal.activity.ActivityInfo` | `KActivityInfo` |
@@ -151,8 +172,8 @@ class GreetingWorkflowImpl : GreetingWorkflow {
     override suspend fun getGreeting(name: String): String {
         return KWorkflow.executeActivity<String>(
             "composeGreeting",
-            "Hello", name,
-            ActivityOptions { startToCloseTimeout = 10.seconds }
+            ActivityOptions { startToCloseTimeout = 10.seconds },
+            "Hello", name
         )
     }
 }
@@ -187,7 +208,7 @@ interface OrderWorkflow {
 }
 
 // Parallel suspend interface for Kotlin implementation
-@KWorkflowImpl(workflow = OrderWorkflow::class)
+@KWorkflowImpl(workflowInterface = OrderWorkflow::class)
 interface OrderWorkflowSuspend {
     suspend fun processOrder(order: Order): OrderResult
     suspend fun cancelOrder(reason: String)
@@ -270,32 +291,37 @@ Child workflows use the same stub-less pattern as activities:
 override suspend fun parentWorkflow(): String {
     return KWorkflow.executeChildWorkflow(
         ChildWorkflow::doWork,
-        "input",
         ChildWorkflowOptions {
             workflowId = "child-workflow-id"
-        }
+        },
+        "input"
     )
 }
 
-// Parallel case - start child workflow and get handle
+// Parallel case - use standard coroutineScope { async {} }
 override suspend fun parentWorkflowParallel(): String = coroutineScope {
-    // Start child and activity in parallel
-    val childHandle = KWorkflow.startChildWorkflow(
-        ChildWorkflow::doWork,
-        "input",
-        ChildWorkflowOptions {
-            workflowId = "child-workflow-id"
-        }
-    )
-    val activityHandle = KWorkflow.startActivity(
-        SomeActivities::doSomething,
-        ActivityOptions { startToCloseTimeout = 30.seconds }
-    )
+    // Start child and activity in parallel using standard Kotlin async
+    val childDeferred = async {
+        KWorkflow.executeChildWorkflow(
+            ChildWorkflow::doWork,
+            ChildWorkflowOptions { workflowId = "child-workflow-id" },
+            "input"
+        )
+    }
+    val activityDeferred = async {
+        KWorkflow.executeActivity(
+            SomeActivities::doSomething,
+            ActivityOptions { startToCloseTimeout = 30.seconds }
+        )
+    }
 
-    // Wait for both
-    "${childHandle.await()} - ${activityHandle.await()}"
+    // Wait for both using standard awaitAll
+    val (childResult, activityResult) = awaitAll(childDeferred, activityDeferred)
+    "$childResult - $activityResult"
 }
 ```
+
+> **Note:** We use standard `coroutineScope { async { } }` instead of custom `startChildWorkflow` or `startActivity` methods. The deterministic dispatcher ensures these execute correctly during replay.
 
 **ChildWorkflowOptions:**
 
@@ -327,31 +353,37 @@ override suspend fun workflowWithTimer(): String {
 
 ### Parallel Execution
 
-Use `coroutineScope` when you need `async` for parallel execution:
+Use standard `coroutineScope { async { } }` for parallel execution:
 
 ```kotlin
 val options = ActivityOptions { startToCloseTimeout = 30.seconds }
 
 override suspend fun parallelWorkflow(items: List<Item>): List<Result> = coroutineScope {
-    // Process all items in parallel
-    // coroutineScope is required because async needs a CoroutineScope
+    // Process all items in parallel using standard Kotlin patterns
     items.map { item ->
         async {
-            KWorkflow.executeActivity<Result>("process", item, options)
+            KWorkflow.executeActivity<Result>("process", options, item)
         }
-    }.awaitAll()
+    }.awaitAll()  // Standard kotlinx.coroutines.awaitAll
 }
 
 // Another example: parallel activities with different results
 override suspend fun getGreetings(name: String): String = coroutineScope {
-    val hello = async { KWorkflow.executeActivity<String>("greet", "Hello", name, options) }
-    val goodbye = async { KWorkflow.executeActivity<String>("greet", "Goodbye", name, options) }
+    val hello = async { KWorkflow.executeActivity<String>("greet", options, "Hello", name) }
+    val goodbye = async { KWorkflow.executeActivity<String>("greet", options, "Goodbye", name) }
 
-    "${hello.await()}\n${goodbye.await()}"
+    // Standard awaitAll works with any Deferred
+    val (helloResult, goodbyeResult) = awaitAll(hello, goodbye)
+    "$helloResult\n$goodbyeResult"
 }
 ```
 
-Note: `coroutineScope` provides structured concurrency—if one `async` fails, all others are automatically cancelled.
+**Why this works deterministically:**
+- All coroutines inherit the workflow's deterministic dispatcher
+- The dispatcher executes tasks in a FIFO queue ensuring consistent ordering
+- Same execution order during replay
+
+> **Note:** `coroutineScope` provides structured concurrency—if one `async` fails, all others are automatically cancelled. This maps naturally to Temporal's cancellation semantics.
 
 ### Await Condition
 
@@ -365,7 +397,7 @@ override suspend fun workflowWithCondition(): String {
     // ...
 
     // Wait until approved (blocks workflow until condition is true)
-    KWorkflow.condition { approved }
+    KWorkflow.awaitCondition { approved }
 
     return "Approved"
 }
@@ -374,7 +406,7 @@ override suspend fun workflowWithCondition(): String {
 override suspend fun workflowWithTimeout(): String {
     var approved = false
 
-    val wasApproved = KWorkflow.condition(timeout = 24.hours) { approved }
+    val wasApproved = KWorkflow.awaitCondition(timeout = 24.hours) { approved }
 
     return if (wasApproved) "Approved" else "Timed out"
 }
@@ -432,8 +464,8 @@ override suspend fun processOrder(order: Order): OrderResult {
         withContext(NonCancellable) {
             KWorkflow.executeActivity(
                 OrderActivities::releaseReservation,
-                order,
-                ActivityOptions { startToCloseTimeout = 30.seconds }
+                ActivityOptions { startToCloseTimeout = 30.seconds },
+                order
             )
         }
         throw e  // Re-throw to propagate cancellation
@@ -483,27 +515,28 @@ override suspend fun tryProcess(order: Order): OrderResult? {
 For calling activities by name (useful for cross-language interop or dynamic activity names):
 
 ```kotlin
-// Execute activity by string name
+// Execute activity by string name - suspend function, awaits result
 val result = KWorkflow.executeActivity<String>(
     "activityName",
-    arg1, arg2,
     ActivityOptions {
         startToCloseTimeout = 30.seconds
-        retryOptions = RetryOptions {
+        retryOptions {
             initialInterval = 1.seconds
             maximumAttempts = 3
         }
-    }
+    },
+    arg1, arg2
 )
 
-// Async execution by string name
-val handle = KWorkflow.startActivity<String>(
-    "activityName",
-    arg1, arg2,
-    ActivityOptions { startToCloseTimeout = 30.seconds }
-)
-val result = handle.await()
+// Parallel execution - use standard coroutineScope { async {} }
+val results = coroutineScope {
+    val d1 = async { KWorkflow.executeActivity<String>("activity1", options, arg1) }
+    val d2 = async { KWorkflow.executeActivity<String>("activity2", options, arg2) }
+    awaitAll(d1, d2)  // Returns List<String>
+}
 ```
+
+> **Note:** The `ActivityOptions { }` DSL already exists in `temporal-kotlin`. The nested `retryOptions { }` block is also supported.
 
 ### Typed Activities (Phase 2)
 
@@ -530,29 +563,29 @@ interface GreetingActivities {
 // In workflow - direct method reference, no stub needed
 val greeting = KWorkflow.executeActivity(
     GreetingActivities::composeGreeting,  // Direct reference to interface method
-    "Hello", "World",
     ActivityOptions {
         startToCloseTimeout = 30.seconds
-    }
+    },
+    "Hello", "World"
 )
 
 // Different activity, different options
 val result = KWorkflow.executeActivity(
     GreetingActivities::sendEmail,
-    email,
     ActivityOptions {
         startToCloseTimeout = 2.minutes
         retryOptions = RetryOptions {
             maximumAttempts = 5
         }
-    }
+    },
+    email
 )
 
 // Void activities work too
 KWorkflow.executeActivity(
     GreetingActivities::log,
-    "Processing started",
-    ActivityOptions { startToCloseTimeout = 5.seconds }
+    ActivityOptions { startToCloseTimeout = 5.seconds },
+    "Processing started"
 )
 ```
 
@@ -562,12 +595,12 @@ KWorkflow.executeActivity(
 // Compile error! Wrong argument types
 KWorkflow.executeActivity(
     GreetingActivities::composeGreeting,
-    123, true,  // ✗ Type mismatch: expected String, String
-    options
+    options,
+    123, true  // ✗ Type mismatch: expected String, String
 )
 ```
 
-**Parallel Execution:** Use `startActivity` to get handles for concurrent execution:
+**Parallel Execution:** Use standard `coroutineScope { async { } }` for concurrent execution:
 
 ```kotlin
 override suspend fun parallelGreetings(names: List<String>): List<String> = coroutineScope {
@@ -575,19 +608,22 @@ override suspend fun parallelGreetings(names: List<String>): List<String> = coro
         async {
             KWorkflow.executeActivity(
                 GreetingActivities::composeGreeting,
-                "Hello", name,
-                ActivityOptions { startToCloseTimeout = 10.seconds }
+                ActivityOptions { startToCloseTimeout = 10.seconds },
+                "Hello", name
             )
         }
-    }.awaitAll()
+    }.awaitAll()  // Standard kotlinx.coroutines.awaitAll
 }
 
-// Or with handles for more control
-val handle1 = KWorkflow.startActivity(GreetingActivities::composeGreeting, "Hello", "Alice", options)
-val handle2 = KWorkflow.startActivity(GreetingActivities::composeGreeting, "Hello", "Bob", options)
-// Do other work...
-val results = listOf(handle1.await(), handle2.await())
+// Multiple different activities in parallel
+val (result1, result2) = coroutineScope {
+    val d1 = async { KWorkflow.executeActivity(Activities::operation1, options, arg1) }
+    val d2 = async { KWorkflow.executeActivity(Activities::operation2, options, arg2) }
+    awaitAll(d1, d2)
+}
 ```
+
+> **Note:** We use standard Kotlin `async` instead of a custom `startActivity` method. The workflow's deterministic dispatcher ensures correct replay behavior.
 
 **Java Activity Interoperability:** Method references work regardless of whether the activity is defined in Kotlin or Java:
 
@@ -599,8 +635,8 @@ val results = listOf(handle1.await(), handle2.await())
 
 val result: PaymentResult = KWorkflow.executeActivity(
     JavaPaymentActivities::processPayment,
-    orderId, amount,
-    ActivityOptions { startToCloseTimeout = 2.minutes }
+    ActivityOptions { startToCloseTimeout = 2.minutes },
+    orderId, amount
 )
 ```
 
@@ -618,31 +654,24 @@ object KWorkflow {
     // 1 argument
     suspend fun <T, A1, R> executeActivity(
         activity: KFunction2<T, A1, R>,  // T::method with 1 arg
-        arg1: A1,
-        options: ActivityOptions
+        options: ActivityOptions,
+        arg1: A1
     ): R
 
     // 2 arguments
     suspend fun <T, A1, A2, R> executeActivity(
         activity: KFunction3<T, A1, A2, R>,  // T::method with 2 args
-        arg1: A1, arg2: A2,
-        options: ActivityOptions
+        options: ActivityOptions,
+        arg1: A1, arg2: A2
     ): R
 
     // ... up to 6 arguments
 
-    // Start activity (returns handle for async)
-    fun <T, A1, A2, R> startActivity(
-        activity: KFunction3<T, A1, A2, R>,
-        arg1: A1, arg2: A2,
-        options: ActivityOptions
-    ): KActivityHandle<R>
-
     // Local activity - same pattern
     suspend fun <T, A1, R> executeLocalActivity(
         activity: KFunction2<T, A1, R>,
-        arg1: A1,
-        options: LocalActivityOptions
+        options: LocalActivityOptions,
+        arg1: A1
     ): R
 
     // --- String-based overloads (untyped) ---
@@ -650,30 +679,27 @@ object KWorkflow {
     // Execute activity by name
     suspend inline fun <reified R> executeActivity(
         activityName: String,
-        vararg args: Any?,
-        options: ActivityOptions
+        options: ActivityOptions,
+        vararg args: Any?
     ): R
-
-    // Start activity by name (async)
-    inline fun <reified R> startActivity(
-        activityName: String,
-        vararg args: Any?,
-        options: ActivityOptions
-    ): KActivityHandle<R>
 
     // Execute local activity by name
     suspend inline fun <reified R> executeLocalActivity(
         activityName: String,
-        vararg args: Any?,
-        options: LocalActivityOptions
+        options: LocalActivityOptions,
+        vararg args: Any?
     ): R
 }
+```
 
-// Activity handle for async execution
-interface KActivityHandle<R> {
-    suspend fun await(): R
-    fun cancel()
-    val isCompleted: Boolean
+**Parallel Execution:** Use standard `coroutineScope { async { } }` instead of custom handle types:
+
+```kotlin
+// Standard Kotlin pattern for parallel execution
+val results = coroutineScope {
+    val d1 = async { KWorkflow.executeActivity<Int>("add", options, 1, 2) }
+    val d2 = async { KWorkflow.executeActivity<Int>("add", options, 3, 4) }
+    awaitAll(d1, d2)  // Returns standard Deferred<Int> instances
 }
 ```
 
@@ -717,8 +743,8 @@ class GreetingActivitiesImpl(
 // In workflow - direct method reference, no stub needed
 val greeting = KWorkflow.executeActivity(
     GreetingActivities::composeGreeting,
-    "Hello", "World",
-    ActivityOptions { startToCloseTimeout = 30.seconds }
+    ActivityOptions { startToCloseTimeout = 30.seconds },
+    "Hello", "World"
 )
 ```
 
@@ -764,8 +790,8 @@ class OrderActivitiesImpl(
 // In workflow - use the non-suspend interface for method references
 val isValid = KWorkflow.executeActivity(
     OrderActivities::validateOrder,
-    order,
-    ActivityOptions { startToCloseTimeout = 10.seconds }
+    ActivityOptions { startToCloseTimeout = 10.seconds },
+    order
 )
 ```
 
@@ -801,18 +827,18 @@ interface ValidationActivities {
 
 val isValid = KWorkflow.executeLocalActivity(
     ValidationActivities::validate,
-    input,
     LocalActivityOptions {
         startToCloseTimeout = 5.seconds
-    }
+    },
+    input
 )
 
 val sanitized = KWorkflow.executeLocalActivity(
     ValidationActivities::sanitize,
-    input,
     LocalActivityOptions {
         startToCloseTimeout = 1.seconds
-    }
+    },
+    input
 )
 ```
 
@@ -820,14 +846,21 @@ val sanitized = KWorkflow.executeLocalActivity(
 
 ## Client API
 
+> **Note:** Many client extensions already exist in the `temporal-kotlin` module, including:
+> - `WorkflowClient { }` DSL constructor
+> - `WorkflowClient.newWorkflowStub<T> { }` with reified generics
+> - `WorkflowStub.getResult<T>()` with reified generics
+> - `WorkflowOptions { }`, `WorkflowClientOptions { }` DSL builders
+
 ### Creating a Client
 
 ```kotlin
 val service = WorkflowServiceStubs.newLocalServiceStubs()
 
+// Uses existing WorkflowClient DSL extension
 val client = WorkflowClient(service) {
-    namespace = "default"
-    dataConverter = myConverter
+    setNamespace("default")
+    setDataConverter(myConverter)
 }
 ```
 
@@ -1249,22 +1282,24 @@ val client = WorkflowClient(service) {
 |----------|------------|
 | **Activities** | |
 | `Workflow.newUntypedActivityStub(opts)` | *(not needed - options passed per call)* |
-| `activities.execute("name", Cls, arg)` | `KWorkflow.executeActivity<R>("name", arg, options)` |
-| `stub.method(arg)` (typed activity) | `KWorkflow.executeActivity(Interface::method, arg, options)` |
-| `Async.function(stub::method, arg)` | `KWorkflow.startActivity(Interface::method, arg, options)` |
+| `activities.execute("name", Cls, arg)` | `KWorkflow.executeActivity<R>("name", options, arg)` |
+| `stub.method(arg)` (typed activity) | `KWorkflow.executeActivity(Interface::method, options, arg)` |
+| `Async.function(stub::method, arg)` | `coroutineScope { async { KWorkflow.executeActivity(...) } }` |
 | **Workflows** | |
-| `Workflow.newChildWorkflowStub(...)` | `KWorkflow.executeChildWorkflow(Interface::method, ...)` |
+| `Workflow.newChildWorkflowStub(...)` | `KWorkflow.executeChildWorkflow(Interface::method, options, ...)` |
 | `client.newWorkflowStub(...)` | `client.startWorkflow(Interface::method, ...)` → `KTypedWorkflowHandle<T, R>` |
 | `client.newWorkflowStub(Cls, id)` | `client.getKWorkflowHandle<T>(id)` → `KWorkflowHandle<T>` |
 | `stub.signal(arg)` | `handle.signal(T::method, arg)` |
 | `stub.query()` | `handle.query(T::method)` |
 | `handle.getResult()` | `handle.result()` (type inferred) or `handle.result<R>()` |
 | **Primitives** | |
-| `Workflow.sleep(duration)` | `delay(duration)` |
-| `Workflow.await(() -> cond)` | `KWorkflow.condition { cond }` |
-| `Promise<T>` | `Deferred<T>` / `KActivityHandle<R>` |
+| `Workflow.sleep(duration)` | `delay(duration)` - standard kotlinx.coroutines |
+| `Workflow.await(() -> cond)` | `KWorkflow.awaitCondition { cond }` |
+| `Promise<T>` | Standard `Deferred<T>` via `Promise<T>.toDeferred()` |
 | `Optional<T>` | `T?` |
 | `Duration.ofSeconds(30)` | `30.seconds` |
+| **Parallel Execution** | |
+| `Async.function(...)` + `Promise.get()` | `coroutineScope { async { ... } }` + `awaitAll()` |
 
 ### Before (Java)
 
@@ -1301,8 +1336,8 @@ class GreetingWorkflowImpl : GreetingWorkflow {
     override suspend fun getGreeting(name: String): String {
         return KWorkflow.executeActivity<String>(
             "greet",
-            name,
-            ActivityOptions { startToCloseTimeout = 30.seconds }
+            ActivityOptions { startToCloseTimeout = 30.seconds },
+            name
         )
     }
 }
@@ -1317,8 +1352,8 @@ override suspend fun processOrder(order: Order): String {
     // JavaActivities is a Java @ActivityInterface - no stub needed
     return KWorkflow.executeActivity(
         JavaActivities::process,
-        order,
-        ActivityOptions { startToCloseTimeout = 30.seconds }
+        ActivityOptions { startToCloseTimeout = 30.seconds },
+        order
     )
 }
 ```
@@ -1490,29 +1525,29 @@ class OrderWorkflowImpl : OrderWorkflow {
         _progress = 10
         val isValid = KWorkflow.executeActivity(
             OrderActivities::validateOrder,
-            order,
-            ActivityOptions { startToCloseTimeout = 10.seconds }
+            ActivityOptions { startToCloseTimeout = 10.seconds },
+            order
         )
         if (!isValid) {
             return@coroutineScope OrderResult(success = false, trackingNumber = null)
         }
 
-        // Reserve inventory for all items in parallel
+        // Reserve inventory for all items in parallel using standard async
         // If workflow is cancelled here, all parallel activities are cancelled
         _progress = 30
         order.items.map { item ->
             async {
                 val reserved = KWorkflow.executeActivity(
                     OrderActivities::reserveInventory,
-                    item,
-                    defaultOptions
+                    defaultOptions,
+                    item
                 )
                 if (reserved) {
                     reservedItems.add(item)  // Track for cleanup
                 }
                 reserved
             }
-        }.awaitAll()
+        }.awaitAll()  // Standard kotlinx.coroutines.awaitAll
 
         _progress = 60
 
@@ -1520,14 +1555,14 @@ class OrderWorkflowImpl : OrderWorkflow {
         val charged = withTimeout(2.minutes) {
             KWorkflow.executeActivity(
                 OrderActivities::chargePayment,
-                order,
                 ActivityOptions {
                     startToCloseTimeout = 2.minutes
-                    retryOptions = RetryOptions {
+                    retryOptions {
                         initialInterval = 5.seconds
                         maximumAttempts = 5
                     }
-                }
+                },
+                order
             )
         }
         if (!charged) {
@@ -1540,8 +1575,8 @@ class OrderWorkflowImpl : OrderWorkflow {
         // Ship order
         val trackingNumber = KWorkflow.executeActivity(
             OrderActivities::shipOrder,
-            order,
-            defaultOptions
+            defaultOptions,
+            order
         )
 
         _status = OrderStatus.SHIPPED
@@ -1560,8 +1595,8 @@ class OrderWorkflowImpl : OrderWorkflow {
             try {
                 KWorkflow.executeActivity(
                     OrderActivities::releaseInventory,
-                    item,
-                    defaultOptions
+                    defaultOptions,
+                    item
                 )
             } catch (e: Exception) {
                 // Log but continue cleanup
@@ -1573,8 +1608,8 @@ class OrderWorkflowImpl : OrderWorkflow {
             try {
                 KWorkflow.executeActivity(
                     OrderActivities::refundPayment,
-                    order,
-                    defaultOptions
+                    defaultOptions,
+                    order
                 )
             } catch (e: Exception) {
                 // Log but continue cleanup
@@ -1585,8 +1620,8 @@ class OrderWorkflowImpl : OrderWorkflow {
         try {
             KWorkflow.executeActivity(
                 OrderActivities::notifyCustomer,
-                order.customerId, "Your order has been cancelled",
-                defaultOptions
+                defaultOptions,
+                order.customerId, "Your order has been cancelled"
             )
         } catch (e: Exception) {
             // Best effort notification

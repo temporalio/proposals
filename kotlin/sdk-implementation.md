@@ -84,7 +84,7 @@ The `temporal-kotlin` module already provides Kotlin extensions for the Java SDK
 | **Core Workflow** | |
 | `KWorkflow` | Entry point for workflow APIs (like `Workflow` in Java) |
 | `KotlinWorkflowContext` | Internal workflow execution context |
-| `KotlinCoroutineDispatcher` | Deterministic coroutine dispatcher |
+| `KotlinCoroutineDispatcher` | Deterministic coroutine dispatcher with `Delay` implementation |
 | `KWorkerInterceptor` | Interceptor interface with suspend functions |
 | **Factory/Registration** | |
 | `KotlinPlugin` | Plugin for enabling coroutine support and registering interceptors |
@@ -99,10 +99,12 @@ The `temporal-kotlin` module already provides Kotlin extensions for the Java SDK
 | `WorkflowHandle` | Untyped workflow handle (string-based signals/queries) |
 | `KWorkflowHandle<T>` | Typed workflow handle for signals/queries/updates |
 | `KTypedWorkflowHandle<T, R>` | Extends KWorkflowHandle with typed result (returned by startWorkflow) |
-| `KActivityHandle<R>` | Handle for async activity execution |
 | `KUpdateHandle<R>` | Handle for async update execution |
 | **Extensions** | |
 | `DurationExt.kt` | Conversions between `kotlin.time.Duration` and `java.time.Duration` |
+| `PromiseExt.kt` | `Promise<T>.toDeferred()` to bridge Java SDK to standard coroutines |
+
+> **Note:** We deliberately **do not** have `KActivityHandle<R>` or `KChildWorkflowHandle<R>`. Instead, users use standard `coroutineScope { async { } }` with `Deferred<T>` for parallel execution. This follows the design principle of using idiomatic Kotlin patterns instead of custom APIs.
 
 ## Unified Worker Architecture
 
@@ -324,13 +326,13 @@ suspend fun condition(condition: () -> Boolean) {
  *
  * @return true if condition became true, false if timed out
  */
-suspend fun condition(timeout: Duration, condition: () -> Boolean): Boolean {
+suspend fun awaitCondition(timeout: Duration, condition: () -> Boolean): Boolean {
     return Async.await(timeout.toJava()) { condition() }.await()
 }
 ```
 
 **Implementation notes:**
-- **Prerequisite:** `Async.await()` does not currently exist in the Java SDK and must be added before `KWorkflow.condition()` can be implemented.
+- **Prerequisite:** `Async.await()` does not currently exist in the Java SDK and must be added before `KWorkflow.awaitCondition()` can be implemented.
 - Under the hood, this uses `Async.await()` which returns a `Promise` that completes when the condition becomes true. The condition is re-evaluated after each workflow event (signals, activity completions, timers, etc.).
 - The async version should integrate with the same condition-tracking mechanism used by the blocking `Workflow.await()`, completing the Promise when the condition becomes true or timeout expires.
 
@@ -423,17 +425,18 @@ fun Worker.registerKotlinWorkflowImplementationTypes(vararg types: KClass<*>) {
 
 ## KotlinCoroutineDispatcher
 
-The custom dispatcher ensures deterministic execution of coroutines:
+The custom dispatcher ensures deterministic execution of coroutines and implements the `Delay` interface to intercept standard `kotlinx.coroutines.delay()` calls:
 
-* Executes coroutines in a controlled, deterministic order
+* Executes coroutines in a controlled, deterministic order (FIFO queue)
 * Integrates with Temporal's replay mechanism
-* Supports `delay()` by mapping to Temporal timers
+* **Implements `Delay` interface** - standard `delay()` is automatically routed through Temporal timers
 * Handles cancellation scopes properly
+* All coroutines launched with this dispatcher inherit deterministic behavior
 
 ```kotlin
 internal class KotlinCoroutineDispatcher(
     private val workflowContext: KotlinWorkflowContext
-) : CoroutineDispatcher() {
+) : CoroutineDispatcher(), Delay {
 
     private val readyQueue = ArrayDeque<Runnable>()
     private var inEventLoop = false
@@ -446,6 +449,19 @@ internal class KotlinCoroutineDispatcher(
         // Otherwise, we need to signal the workflow to continue
         if (!inEventLoop) {
             workflowContext.signalReady()
+        }
+    }
+
+    /**
+     * Intercept standard delay() calls and route through Temporal timer.
+     * This allows users to write `delay(5.seconds)` and have it work deterministically.
+     */
+    override fun scheduleResumeAfterDelay(
+        timeMillis: Long,
+        continuation: CancellableContinuation<Unit>
+    ) {
+        workflowContext.scheduleTimer(timeMillis) {
+            continuation.resume(Unit)
         }
     }
 
@@ -477,26 +493,21 @@ internal class KotlinCoroutineDispatcher(
 
 ### Delay Implementation
 
-The `delay()` function is intercepted to create Temporal timers:
+The `Delay` interface implementation is integrated directly into `KotlinCoroutineDispatcher` (shown above). This allows standard `kotlinx.coroutines.delay()` to work deterministically:
 
 ```kotlin
-internal class KotlinDelay : Delay {
-    override fun scheduleResumeAfterDelay(
-        timeMillis: Long,
-        continuation: CancellableContinuation<Unit>
-    ) {
-        val timer = workflowContext.createTimer(Duration.ofMillis(timeMillis))
+// Users write standard Kotlin:
+delay(5.seconds)
 
-        timer.thenAccept {
-            continuation.resume(Unit)
-        }
-
-        continuation.invokeOnCancellation {
-            timer.cancel()
-        }
-    }
-}
+// The dispatcher's scheduleResumeAfterDelay is called automatically,
+// which routes through Temporal's deterministic timer mechanism
 ```
+
+**Why this works:**
+- When a coroutine calls `delay()`, kotlinx.coroutines checks if the dispatcher implements `Delay`
+- If it does, `scheduleResumeAfterDelay` is called instead of blocking
+- Our implementation schedules a Temporal timer that resumes the continuation when fired
+- This is completely transparent to user code - no custom `KWorkflow.delay()` needed
 
 ## KotlinReplayWorkflow
 
@@ -608,28 +619,17 @@ object KWorkflow {
     /**
      * Execute an activity by name with reified return type.
      *
-     * Usage: KWorkflow.executeActivity<String>("activityName", arg1, arg2, options)
+     * Usage: KWorkflow.executeActivity<String>("activityName", options, arg1, arg2)
      *
      * The `inline` + `reified` combination allows access to R::class.java at runtime.
      * At each call site, the compiler substitutes the actual type.
      */
     inline suspend fun <reified R> executeActivity(
         activityName: String,
-        vararg args: Any?,
-        options: ActivityOptions
+        options: ActivityOptions,
+        vararg args: Any?
     ): R {
-        return executeActivityInternal(activityName, R::class.java, args, options) as R
-    }
-
-    /**
-     * Start an activity by name (async).
-     */
-    inline fun <reified R> startActivity(
-        activityName: String,
-        vararg args: Any?,
-        options: ActivityOptions
-    ): KActivityHandle<R> {
-        return startActivityInternal(activityName, R::class.java, args, options)
+        return executeActivityInternal(activityName, R::class.java, options, args) as R
     }
 
     /**
@@ -639,27 +639,28 @@ object KWorkflow {
     internal suspend fun executeActivityInternal(
         activityName: String,
         resultType: Class<*>,
-        args: Array<out Any?>,
-        options: ActivityOptions
+        options: ActivityOptions,
+        args: Array<out Any?>
     ): Any? {
         val context = currentContext()
         val future = context.executeActivity(activityName, resultType, options, args)
         return future.await()  // Suspends until activity completes
     }
-
-    @PublishedApi
-    internal fun <R> startActivityInternal(
-        activityName: String,
-        resultType: Class<*>,
-        args: Array<out Any?>,
-        options: ActivityOptions
-    ): KActivityHandle<R> {
-        val context = currentContext()
-        val future = context.executeActivity(activityName, resultType, options, args)
-        return KActivityHandleImpl(future)
-    }
 }
 ```
+
+**Parallel Execution:** Instead of a custom `startActivity` method returning a handle, users use standard Kotlin patterns:
+
+```kotlin
+// Parallel activities using standard coroutineScope { async { } }
+val results = coroutineScope {
+    val d1 = async { KWorkflow.executeActivity<Int>("add", options, 1, 2) }
+    val d2 = async { KWorkflow.executeActivity<Int>("add", options, 3, 4) }
+    awaitAll(d1, d2)  // Standard Deferred<Int> instances
+}
+```
+
+This approach uses standard `Deferred<T>` instead of a custom `KActivityHandle<R>`, following the design principle of using idiomatic Kotlin patterns.
 
 **Why `inline` + `reified`?**
 
@@ -667,12 +668,12 @@ Kotlin generics are erased at runtime (like Java). Without `reified`, we cannot 
 
 ```kotlin
 // Does NOT work - R is erased at runtime
-suspend fun <R> executeActivity(activityName: String, vararg args: Any?, options: ActivityOptions): R {
+suspend fun <R> executeActivity(activityName: String, options: ActivityOptions, vararg args: Any?): R {
     val resultType = R::class.java  // Compile error: Cannot use 'R' as reified type parameter
 }
 
 // WORKS - inline + reified captures type at compile time
-inline suspend fun <reified R> executeActivity(activityName: String, vararg args: Any?, options: ActivityOptions): R {
+inline suspend fun <reified R> executeActivity(activityName: String, options: ActivityOptions, vararg args: Any?): R {
     val resultType = R::class.java  // OK: compiler substitutes actual type at call site
 }
 ```
@@ -681,10 +682,10 @@ inline suspend fun <reified R> executeActivity(activityName: String, vararg args
 
 ```kotlin
 // User writes:
-val result = KWorkflow.executeActivity<String>("greet", name, options)
+val result = KWorkflow.executeActivity<String>("greet", options, name)
 
 // Compiler inlines to (conceptually):
-val result = KWorkflow.executeActivityInternal("greet", String::class.java, arrayOf(name), options) as String
+val result = KWorkflow.executeActivityInternal("greet", String::class.java, options, arrayOf(name)) as String
 ```
 
 **Notes:**
@@ -711,7 +712,7 @@ inline suspend fun <reified R> executeActivity(...): R {
 
 ```kotlin
 // Works fine for simple types
-executeActivity<String>("greet", name, options)  // R::class.java = String::class.java
+executeActivity<String>("greet", options, name)  // R::class.java = String::class.java
 
 // Loses type parameter for generic types
 executeActivity<List<String>>("getNames", options)  // R::class.java = List::class.java (loses String)
@@ -724,13 +725,13 @@ Kotlin's `typeOf<R>()` (introduced in Kotlin 1.6) preserves full generic type in
 ```kotlin
 inline suspend fun <reified R> executeActivity(
     activityName: String,
-    vararg args: Any?,
-    options: ActivityOptions
+    options: ActivityOptions,
+    vararg args: Any?
 ): R {
     val kType: KType = typeOf<R>()  // Preserves full generic info
     val javaType = kType.javaType   // Converts to java.lang.reflect.Type
 
-    return executeActivityInternal(activityName, javaType, args, options) as R
+    return executeActivityInternal(activityName, javaType, options, args) as R
 }
 
 // Internal method accepts java.lang.reflect.Type (handles ParameterizedType)
@@ -738,8 +739,8 @@ inline suspend fun <reified R> executeActivity(
 internal suspend fun executeActivityInternal(
     activityName: String,
     resultType: java.lang.reflect.Type,  // Can be Class or ParameterizedType
-    args: Array<out Any?>,
-    options: ActivityOptions
+    options: ActivityOptions,
+    args: Array<out Any?>
 ): Any? {
     val context = currentContext()
     val future = context.executeActivity(activityName, resultType, options, args)
@@ -787,8 +788,8 @@ object KWorkflow {
      */
     suspend fun <T, A1, R> executeActivity(
         activity: KFunction2<T, A1, R>,
-        arg1: A1,
-        options: ActivityOptions
+        options: ActivityOptions,
+        arg1: A1
     ): R {
         val activityName = extractActivityName(activity)
         val resultType = extractReturnType(activity)
@@ -830,8 +831,8 @@ object KWorkflow {
 // User writes:
 val result = KWorkflow.executeActivity(
     GreetingActivities::composeGreeting,  // KFunction2<GreetingActivities, String, String>
-    name,
-    options
+    options,
+    name
 )
 
 // At runtime:
