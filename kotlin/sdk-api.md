@@ -147,8 +147,8 @@ interface OrderWorkflow {
     fun getItemCount(): Int  // Method syntax
 }
 
-// Client usage via typed handle
-val handle = client.getKWorkflowHandle<OrderWorkflow>("order-123")
+// Client usage via typed handle (using KWorkflowClient)
+val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
 val status = handle.query(OrderWorkflow::status)
 val count = handle.query(OrderWorkflow::getItemCount)
 ```
@@ -178,7 +178,7 @@ class GreetingWorkflowImpl : GreetingWorkflow {
     }
 }
 
-// Client call - same pattern as activities, no stub needed
+// Client call using KWorkflowClient - same pattern as activities, no stub needed
 val result = client.executeWorkflow(
     GreetingWorkflow::getGreeting,
     WorkflowOptions {
@@ -227,7 +227,7 @@ class OrderWorkflowImpl : OrderWorkflowSuspend {
     override val status: OrderStatus get() = OrderStatus.PENDING
 }
 
-// Client call - same pattern, blocking for Option B
+// Client call using KWorkflowClient - same pattern, suspends for result
 val result = client.executeWorkflow(
     OrderWorkflow::processOrder,
     WorkflowOptions {
@@ -321,7 +321,137 @@ override suspend fun parentWorkflowParallel(): String = coroutineScope {
 }
 ```
 
-> **Note:** We use standard `coroutineScope { async { } }` instead of custom `startChildWorkflow` or `startActivity` methods. The deterministic dispatcher ensures these execute correctly during replay.
+### Child Workflow Handle
+
+For cases where you need to interact with a child workflow (signal, query, cancel) rather than just wait for its result, use `startChildWorkflow` to get a handle:
+
+```kotlin
+// Start child workflow and get handle for interaction
+override suspend fun parentWorkflowWithHandle(): String {
+    val handle = KWorkflow.startChildWorkflow(
+        ChildWorkflow::doWork,
+        ChildWorkflowOptions {
+            workflowId = "child-workflow-id"
+        },
+        "input"
+    )
+
+    // Can signal the child workflow
+    handle.signal(ChildWorkflow::updateProgress, 50)
+
+    // Wait for result when ready
+    return handle.result()
+}
+
+// Get handle to existing child workflow by ID
+override suspend fun interactWithExistingChild(): String {
+    val handle = KWorkflow.getChildWorkflowHandle<ChildWorkflow, String>("child-workflow-id")
+
+    // Signal the child workflow
+    handle.signal(ChildWorkflow::updatePriority, Priority.HIGH)
+
+    return handle.result()
+}
+
+// Parallel child workflows with handles for interaction
+override suspend fun parallelChildrenWithHandles(): List<String> = coroutineScope {
+    val handles = listOf("child-1", "child-2", "child-3").map { id ->
+        KWorkflow.startChildWorkflow(
+            ChildWorkflow::doWork,
+            ChildWorkflowOptions { workflowId = id },
+            "input"
+        )
+    }
+
+    // Can interact with any child while they're running
+    handles.forEach { handle ->
+        handle.signal(ChildWorkflow::updatePriority, Priority.HIGH)
+    }
+
+    // Wait for all results
+    handles.map { async { it.result() } }.awaitAll()
+}
+```
+
+**KChildWorkflowHandle API:**
+
+```kotlin
+/**
+ * Handle for interacting with a started child workflow.
+ * Returned by startChildWorkflow() with result type captured from method reference.
+ *
+ * @param T The child workflow interface type
+ * @param R The result type of the child workflow method
+ */
+interface KChildWorkflowHandle<T, R> {
+    /** The child workflow's workflow ID */
+    val workflowId: String
+
+    /** The child workflow's first execution run ID */
+    val firstExecutionRunId: String
+
+    /**
+     * Wait for the child workflow to complete and return its result.
+     * Suspends until the child workflow finishes.
+     */
+    suspend fun result(): R
+
+    // Signals - type-safe method references
+    suspend fun signal(method: KFunction1<T, *>)
+    suspend fun <A1> signal(method: KFunction2<T, A1, *>, arg: A1)
+    suspend fun <A1, A2> signal(method: KFunction3<T, A1, A2, *>, arg1: A1, arg2: A2)
+
+    /**
+     * Request cancellation of the child workflow.
+     * The child workflow will receive a CancellationException at its next suspension point.
+     */
+    suspend fun cancel()
+}
+```
+
+**KWorkflow methods for child workflow handles:**
+
+```kotlin
+object KWorkflow {
+    /**
+     * Start a child workflow and return a handle for interaction.
+     * Use this when you need to signal, query, or cancel the child workflow.
+     *
+     * For simple fire-and-wait cases, prefer executeChildWorkflow() instead.
+     */
+    suspend fun <T, A1, R> startChildWorkflow(
+        workflow: KFunction2<T, A1, R>,
+        options: ChildWorkflowOptions,
+        arg: A1
+    ): KChildWorkflowHandle<T, R>
+
+    // Overloads for 0-6 arguments...
+    suspend fun <T, R> startChildWorkflow(
+        workflow: KFunction1<T, R>,
+        options: ChildWorkflowOptions
+    ): KChildWorkflowHandle<T, R>
+
+    suspend fun <T, A1, A2, R> startChildWorkflow(
+        workflow: KFunction3<T, A1, A2, R>,
+        options: ChildWorkflowOptions,
+        arg1: A1, arg2: A2
+    ): KChildWorkflowHandle<T, R>
+
+    /**
+     * Get a handle to an existing child workflow by workflow ID.
+     * Use this to interact with a child workflow started earlier in the same workflow execution.
+     *
+     * @param T The child workflow interface type
+     * @param R The expected result type (must match the child workflow's return type)
+     * @param workflowId The child workflow's workflow ID
+     */
+    inline fun <reified T, reified R> getChildWorkflowHandle(
+        workflowId: String
+    ): KChildWorkflowHandle<T, R>
+}
+```
+
+> **Note:** For simple parallel execution where you only need the result, use standard `coroutineScope { async { executeChildWorkflow(...) } }`. Use `startChildWorkflow` only when you need to interact with the child workflow while it's running.
 
 **ChildWorkflowOptions:**
 
@@ -857,17 +987,114 @@ val sanitized = KWorkflow.executeLocalActivity(
 ```kotlin
 val service = WorkflowServiceStubs.newLocalServiceStubs()
 
-// Uses existing WorkflowClient DSL extension
-val client = WorkflowClient(service) {
+// Create KWorkflowClient with DSL configuration
+val client = KWorkflowClient(service) {
     setNamespace("default")
     setDataConverter(myConverter)
+}
+
+// For blocking calls from non-suspend contexts, use runBlocking
+val result = runBlocking {
+    client.executeWorkflow(MyWorkflow::process, options, input)
+}
+```
+
+### KWorkflowClient
+
+`KWorkflowClient` provides Kotlin-specific APIs with suspend functions for starting and interacting with workflows:
+
+```kotlin
+/**
+ * Kotlin workflow client providing suspend functions and type-safe workflow APIs.
+ *
+ * @param service The WorkflowServiceStubs to connect to
+ * @param options DSL builder for WorkflowClientOptions
+ */
+class KWorkflowClient(
+    service: WorkflowServiceStubs,
+    options: WorkflowClientOptions.Builder.() -> Unit = {}
+) {
+    /** The underlying WorkflowClient for advanced use cases */
+    val workflowClient: WorkflowClient
+
+    /**
+     * Start a workflow and return a handle for interaction.
+     * Does not wait for the workflow to complete.
+     */
+    suspend fun <T, R> startWorkflow(
+        workflow: KFunction1<T, R>,
+        options: WorkflowOptions
+    ): KTypedWorkflowHandle<T, R>
+
+    suspend fun <T, A1, R> startWorkflow(
+        workflow: KFunction2<T, A1, R>,
+        options: WorkflowOptions,
+        arg: A1
+    ): KTypedWorkflowHandle<T, R>
+
+    // Overloads for 2-6 arguments...
+
+    /**
+     * Start a workflow and wait for its result.
+     * Suspends until the workflow completes.
+     */
+    suspend fun <T, R> executeWorkflow(
+        workflow: KFunction1<T, R>,
+        options: WorkflowOptions
+    ): R
+
+    suspend fun <T, A1, R> executeWorkflow(
+        workflow: KFunction2<T, A1, R>,
+        options: WorkflowOptions,
+        arg: A1
+    ): R
+
+    // Overloads for 2-6 arguments...
+
+    /**
+     * Get a typed handle for an existing workflow by ID.
+     * Use this to signal, query, or get results from a workflow started elsewhere.
+     */
+    inline fun <reified T> getWorkflowHandle(workflowId: String): KWorkflowHandle<T>
+    inline fun <reified T> getWorkflowHandle(workflowId: String, runId: String): KWorkflowHandle<T>
+
+    /**
+     * Get an untyped handle for an existing workflow by ID.
+     * Use when you don't know the workflow type at compile time.
+     */
+    fun getUntypedWorkflowHandle(workflowId: String): WorkflowHandle
+    fun getUntypedWorkflowHandle(workflowId: String, runId: String): WorkflowHandle
+
+    /**
+     * Atomically start a workflow and send a signal.
+     * If the workflow already exists, only the signal is sent.
+     */
+    suspend fun <T, A1, R, SA1> signalWithStart(
+        workflow: KFunction2<T, A1, R>,
+        options: WorkflowOptions,
+        workflowArg: A1,
+        signal: KFunction2<T, SA1, *>,
+        signalArg: SA1
+    ): KTypedWorkflowHandle<T, R>
+
+    /**
+     * Atomically start a workflow and send an update.
+     * Returns both the workflow handle and the update result.
+     */
+    suspend fun <T, A1, R, UA1, UR> updateWithStart(
+        workflow: KFunction2<T, A1, R>,
+        options: WorkflowOptions,
+        workflowArg: A1,
+        update: KFunction2<T, UA1, UR>,
+        updateArg: UA1
+    ): Pair<KTypedWorkflowHandle<T, R>, UR>
 }
 ```
 
 ### Starting Workflows
 
 ```kotlin
-// Execute workflow and wait for result - no stub needed
+// Execute workflow and wait for result (suspend function)
 val result = client.executeWorkflow(
     GreetingWorkflow::getGreeting,
     WorkflowOptions {
@@ -897,16 +1124,14 @@ Atomically start a workflow and send a signal. If the workflow already exists, o
 ```kotlin
 // Returns KTypedWorkflowHandle<OrderWorkflow, OrderResult> - result type captured from method reference
 val handle = client.signalWithStart(
-    // Workflow to start
     workflow = OrderWorkflow::processOrder,
     options = WorkflowOptions {
         workflowId = "order-123"
         taskQueue = "orders"
     },
     workflowArg = order,
-    // Signal to send
-    signal = OrderWorkflow::cancelOrder,
-    signalArg = "Price changed"
+    signal = OrderWorkflow::updatePriority,
+    signalArg = Priority.HIGH
 )
 
 // Can use typed handle for queries/signals
@@ -923,17 +1148,14 @@ Atomically start a workflow and send an update. If the workflow already exists, 
 // - handle with result type captured from workflow method reference
 // - updateResult typed by update method return type
 val (handle, updateResult: Boolean) = client.updateWithStart(
-    // Workflow to start
     workflow = OrderWorkflow::processOrder,
-    workflowArg = order,
-    // Update to send
-    update = OrderWorkflow::addItem,
-    updateArg = newItem,
-    // Options
     options = WorkflowOptions {
         workflowId = "order-123"
         taskQueue = "orders"
-    }
+    },
+    workflowArg = order,
+    update = OrderWorkflow::addItem,
+    updateArg = newItem
 )
 println("Item added: $updateResult")
 
@@ -946,11 +1168,11 @@ val result = handle.result()  // Type inferred as OrderResult
 For interacting with existing workflows (signals, queries, results, cancellation), use a typed or untyped handle:
 
 ```kotlin
-// Get typed handle for existing workflow by ID (like Python's get_workflow_handle_for)
-val handle = client.getKWorkflowHandle<OrderWorkflow>("order-123")
+// Get typed handle for existing workflow by ID
+val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
 
 // Send signal - method reference provides type safety
-handle.signal(OrderWorkflow::cancelOrder, "Customer request")
+handle.signal(OrderWorkflow::updatePriority, Priority.HIGH)
 
 // Query - method reference with compile-time type checking
 val status = handle.query(OrderWorkflow::status)
@@ -1044,8 +1266,8 @@ val handle = client.startWorkflow(
 )
 val result: OrderResult = handle.result()  // No type parameter needed!
 
-// getKWorkflowHandle doesn't know result type
-val existingHandle = client.getKWorkflowHandle<OrderWorkflow>(workflowId)
+// getWorkflowHandle doesn't know result type
+val existingHandle = client.getWorkflowHandle<OrderWorkflow>(workflowId)
 val result = existingHandle.result<OrderResult>()  // Must specify type
 ```
 
@@ -1057,10 +1279,10 @@ For cases where you don't know the workflow type at compile time:
 
 ```kotlin
 // Untyped handle - signal/query by string name
-val untypedHandle = client.getWorkflowHandle("order-123")
+val untypedHandle = client.getUntypedWorkflowHandle("order-123")
 
 // Operations use string names instead of method references
-untypedHandle.signal("cancelOrder", "Customer request")
+untypedHandle.signal("updatePriority", Priority.HIGH)
 val status = untypedHandle.query<OrderStatus>("status")
 val result = untypedHandle.result<OrderResult>()
 
@@ -1085,19 +1307,16 @@ interface WorkflowHandle {
 
 ## Worker API
 
-### Enabling Kotlin Coroutine Support
+### KWorkerFactory (Recommended)
 
-Kotlin coroutine support is enabled via a plugin passed to the client (similar to Python SDK's plugin system). The plugin provides custom workflow and activity executors that handle `suspend` functions.
+For pure Kotlin applications, use `KWorkerFactory` which automatically enables coroutine support:
 
 ```kotlin
 val service = WorkflowServiceStubs.newLocalServiceStubs()
+val client = KWorkflowClient(service) { ... }
 
-// Plugin is passed to the client and propagates to workers
-val client = WorkflowClient(service) {
-    plugins = listOf(KotlinPlugin())
-}
-
-val factory = WorkerFactory(client) {
+// KWorkerFactory automatically enables Kotlin coroutine support
+val factory = KWorkerFactory(client) {
     maxWorkflowThreadCount = 800
 }
 
@@ -1111,7 +1330,7 @@ worker.registerWorkflowImplementationTypes(
     OrderWorkflowImpl::class
 )
 
-// Register activities - plugin detects suspend functions automatically
+// Register activities - suspend functions handled automatically
 worker.registerActivitiesImplementations(
     GreetingActivitiesImpl(),  // Kotlin suspend activities
     JavaActivitiesImpl()        // Java activities work too
@@ -1121,7 +1340,46 @@ worker.registerActivitiesImplementations(
 factory.start()
 ```
 
-> **Note:** The plugin API will be defined separately. It follows the same pattern as Python SDK's plugin system, allowing custom workflow runners and activity executors.
+**KWorkerFactory API:**
+
+```kotlin
+/**
+ * Kotlin worker factory that automatically enables coroutine support.
+ * Wraps WorkerFactory with KotlinPlugin pre-configured.
+ */
+class KWorkerFactory(
+    client: KWorkflowClient,
+    options: WorkerFactoryOptions.Builder.() -> Unit = {}
+) {
+    /** The underlying WorkerFactory for advanced use cases */
+    val workerFactory: WorkerFactory
+
+    fun newWorker(taskQueue: String, options: WorkerOptions.Builder.() -> Unit = {}): Worker
+    fun start()
+    fun shutdown()
+    fun shutdownNow()
+    suspend fun awaitTermination(timeout: Duration)
+}
+```
+
+### KotlinPlugin (For Java Main)
+
+When your main application is written in Java and you need to register Kotlin workflows, use `KotlinPlugin` explicitly:
+
+```kotlin
+// Java main or mixed Java/Kotlin setup
+val service = WorkflowServiceStubs.newLocalServiceStubs()
+val client = WorkflowClient.newInstance(service)
+
+val factory = WorkerFactory.newInstance(client, WorkerFactoryOptions.newBuilder()
+    .addPlugin(KotlinPlugin())
+    .build())
+
+val worker = factory.newWorker("task-queue")
+
+// Register Kotlin workflows - plugin handles suspend functions
+worker.registerWorkflowImplementationTypes(KotlinWorkflowImpl::class.java)
+```
 
 ### Mixed Java and Kotlin
 
@@ -1286,8 +1544,10 @@ val client = WorkflowClient(service) {
 | `Async.function(stub::method, arg)` | `coroutineScope { async { KWorkflow.executeActivity(...) } }` |
 | **Workflows** | |
 | `Workflow.newChildWorkflowStub(...)` | `KWorkflow.executeChildWorkflow(Interface::method, options, ...)` |
+| `Async.function(childStub::method, arg)` | `KWorkflow.startChildWorkflow(Interface::method, options, ...)` → `KChildWorkflowHandle<T, R>` |
+| `Workflow.getWorkflowExecution(childStub)` | `childHandle.workflowId` / `childHandle.firstExecutionRunId` |
 | `client.newWorkflowStub(...)` | `client.startWorkflow(Interface::method, ...)` → `KTypedWorkflowHandle<T, R>` |
-| `client.newWorkflowStub(Cls, id)` | `client.getKWorkflowHandle<T>(id)` → `KWorkflowHandle<T>` |
+| `client.newWorkflowStub(Cls, id)` | `client.getWorkflowHandle<T>(id)` → `KWorkflowHandle<T>` |
 | `stub.signal(arg)` | `handle.signal(T::method, arg)` |
 | `stub.query()` | `handle.query(T::method)` |
 | `handle.getResult()` | `handle.result()` (type inferred) or `handle.result<R>()` |
@@ -1651,12 +1911,11 @@ fun main() = runBlocking {
 
     val service = WorkflowServiceStubs.newLocalServiceStubs()
 
-    // Enable Kotlin coroutine support via plugin
-    val client = WorkflowClient(service) {
-        plugins = listOf(KotlinPlugin())
-    }
+    // Create KWorkflowClient for Kotlin-specific APIs
+    val client = KWorkflowClient(service)
 
-    val factory = WorkerFactory(client)
+    // KWorkerFactory automatically enables Kotlin coroutine support
+    val factory = KWorkerFactory(client)
     val worker = factory.newWorker("orders")
 
     // Plugin handles suspend functions automatically
@@ -1697,7 +1956,7 @@ fun main() = runBlocking {
     println("Status: $status, Progress: $progress%")
 
     // Or get handle for existing workflow by ID
-    val existingHandle = client.getKWorkflowHandle<OrderWorkflow>(workflowId)
+    val existingHandle = client.getWorkflowHandle<OrderWorkflow>(workflowId)
 
     // Send update and wait for result
     val newItem = OrderItem("prod-3", 1, 19.99.toBigDecimal())

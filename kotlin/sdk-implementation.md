@@ -6,9 +6,9 @@ For public API and developer experience, see [sdk-api.md](./sdk-api.md).
 
 ## Phases
 
-* **Phase 1** - Coroutine-based workflows, untyped activity stubs, pluggable WorkflowImplementationFactory, core Kotlin idioms (Duration, null safety)
-* **Phase 2** - Typed activity stubs with suspend functions, signals/queries/updates, child workflows, property queries
-* **Phase 3** - Testing framework
+* **Phase 1 (COMPLETE)** - Coroutine-based workflows, untyped activity/child workflow stubs, pluggable WorkflowImplementationFactory, core Kotlin idioms (Duration, null safety, KWorkflowInfo), signals/queries/updates (annotation + dynamic handlers), standard `delay()` and `coroutineScope { async { } }` support
+* **Phase 2** - Typed activity stubs, typed child workflow stubs, KChildWorkflowHandle, KActivity/KActivityInfo/KActivityContext wrappers, client & worker API (KWorkflowClient, KWorkerFactory, KWorkflowHandle, startWorkflow, signalWithStart, etc.)
+* **Phase 3** - Interceptor interfaces, testing framework
 
 > **Note:** Nexus support is a separate project and will be addressed independently.
 
@@ -79,32 +79,37 @@ The `temporal-kotlin` module already provides Kotlin extensions for the Java SDK
 
 ## New Classes (Kotlin SDK)
 
-| Class | Purpose |
-|-------|---------|
-| **Core Workflow** | |
-| `KWorkflow` | Entry point for workflow APIs (like `Workflow` in Java) |
-| `KotlinWorkflowContext` | Internal workflow execution context |
-| `KotlinCoroutineDispatcher` | Deterministic coroutine dispatcher with `Delay` implementation |
-| `KWorkerInterceptor` | Interceptor interface with suspend functions |
-| **Factory/Registration** | |
-| `KotlinPlugin` | Plugin for enabling coroutine support and registering interceptors |
-| `KotlinWorkflowImplementationFactory` | Implements `WorkflowImplementationFactory` for coroutine workflows |
-| `KotlinWorkflowDefinition` | Metadata about a Kotlin workflow type |
-| `KotlinReplayWorkflow` | Implements `ReplayWorkflow` using coroutines |
-| `WorkerExt.kt` (additions) | Extension `registerKotlinWorkflowImplementationTypes()` |
-| **Kotlin Wrappers** | |
-| `KWorkflowInfo` | Kotlin wrapper for WorkflowInfo with nullable types |
-| `KActivityInfo` | Kotlin wrapper for ActivityInfo with nullable types |
-| `KActivityContext` | Kotlin wrapper for ActivityExecutionContext |
-| `WorkflowHandle` | Untyped workflow handle (string-based signals/queries) |
-| `KWorkflowHandle<T>` | Typed workflow handle for signals/queries/updates |
-| `KTypedWorkflowHandle<T, R>` | Extends KWorkflowHandle with typed result (returned by startWorkflow) |
-| `KUpdateHandle<R>` | Handle for async update execution |
-| **Extensions** | |
-| `DurationExt.kt` | Conversions between `kotlin.time.Duration` and `java.time.Duration` |
-| `PromiseExt.kt` | `Promise<T>.toDeferred()` to bridge Java SDK to standard coroutines |
+| Class | Purpose | Status |
+|-------|---------|--------|
+| **Core Workflow** | | |
+| `KWorkflow` | Entry point for workflow APIs (like `Workflow` in Java) | ✅ Done |
+| `KotlinWorkflowContext` | Internal workflow execution context | ✅ Done |
+| `KotlinCoroutineDispatcher` | Deterministic coroutine dispatcher with `Delay` implementation | ✅ Done |
+| `KWorkerInterceptor` | Interceptor interface with suspend functions | Phase 3 |
+| **Factory/Registration** | | |
+| `KotlinPlugin` | Plugin for enabling coroutine support and registering interceptors | ✅ Done |
+| `KotlinWorkflowImplementationFactory` | Implements `WorkflowImplementationFactory` for coroutine workflows | ✅ Done |
+| `KotlinWorkflowDefinition` | Metadata about a Kotlin workflow type | ✅ Done |
+| `KotlinReplayWorkflow` | Implements `ReplayWorkflow` using coroutines | ✅ Done |
+| `WorkerExt.kt` (additions) | Extension `registerKotlinWorkflowImplementationTypes()` | Phase 2 |
+| **Kotlin Wrappers** | | |
+| `KWorkflowInfo` | Kotlin wrapper for WorkflowInfo with nullable types | ✅ Done |
+| `KActivity` | Entry point for activity APIs (like `Activity` in Java) | Phase 2 |
+| `KActivityInfo` | Kotlin wrapper for ActivityInfo with nullable types | Phase 2 |
+| `KActivityContext` | Kotlin wrapper for ActivityExecutionContext | Phase 2 |
+| **Client & Worker API** | | |
+| `KWorkflowClient` | Kotlin client with suspend functions for starting/executing workflows | Phase 2 |
+| `KWorkerFactory` | Kotlin worker factory with KotlinPlugin pre-configured | Phase 2 |
+| `WorkflowHandle` | Untyped workflow handle (string-based signals/queries) | Phase 2 |
+| `KWorkflowHandle<T>` | Typed workflow handle for signals/queries/updates | Phase 2 |
+| `KTypedWorkflowHandle<T, R>` | Extends KWorkflowHandle with typed result (returned by startWorkflow) | Phase 2 |
+| `KUpdateHandle<R>` | Handle for async update execution | Phase 2 |
+| `KChildWorkflowHandle<T, R>` | Handle for interacting with started child workflows (signal, cancel, result) | Phase 2 |
+| **Extensions** | | |
+| `DurationExt.kt` | Conversions between `kotlin.time.Duration` and `java.time.Duration` | ✅ Done |
+| `PromiseExt.kt` | `Promise<T>.toDeferred()` to bridge Java SDK to standard coroutines | ✅ Done |
 
-> **Note:** We deliberately **do not** have `KActivityHandle<R>` or `KChildWorkflowHandle<R>`. Instead, users use standard `coroutineScope { async { } }` with `Deferred<T>` for parallel execution. This follows the design principle of using idiomatic Kotlin patterns instead of custom APIs.
+> **Note:** We deliberately **do not** have `KActivityHandle<R>`. Instead, users use standard `coroutineScope { async { } }` with `Deferred<T>` for parallel activity execution. This follows the design principle of using idiomatic Kotlin patterns instead of custom APIs. However, `KChildWorkflowHandle<T, R>` is provided because child workflows support signaling, which requires a handle.
 
 ## Unified Worker Architecture
 
@@ -315,7 +320,7 @@ This allows Kotlin to wrap it as a suspend function in `KWorkflow`:
  * This is the Kotlin equivalent of Java's [Workflow.await].
  * The condition is re-evaluated after each workflow event.
  */
-suspend fun condition(condition: () -> Boolean) {
+suspend fun awaitCondition(condition: () -> Boolean) {
     Async.await { condition() }.await()  // Promise.await() suspends
 }
 
