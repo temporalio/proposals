@@ -181,11 +181,11 @@ class GreetingWorkflowImpl : GreetingWorkflow {
 // Client call - same pattern as activities, no stub needed
 val result = client.executeWorkflow(
     GreetingWorkflow::getGreeting,
-    "Temporal",
     WorkflowOptions {
         workflowId = "greeting-123"
         taskQueue = "greetings"
-    }
+    },
+    "Temporal"
 )
 ```
 
@@ -230,11 +230,11 @@ class OrderWorkflowImpl : OrderWorkflowSuspend {
 // Client call - same pattern, blocking for Option B
 val result = client.executeWorkflow(
     OrderWorkflow::processOrder,
-    order,
     WorkflowOptions {
         workflowId = "order-123"
         taskQueue = "orders"
-    }
+    },
+    order
 )
 ```
 
@@ -870,22 +870,22 @@ val client = WorkflowClient(service) {
 // Execute workflow and wait for result - no stub needed
 val result = client.executeWorkflow(
     GreetingWorkflow::getGreeting,
-    "Temporal",
     WorkflowOptions {
         workflowId = "greeting-123"
         taskQueue = "greeting-queue"
         workflowExecutionTimeout = 1.hours
-    }
+    },
+    "Temporal"
 )
 
 // Or start async and get handle
 val handle = client.startWorkflow(
     GreetingWorkflow::getGreeting,
-    "Temporal",
     WorkflowOptions {
         workflowId = "greeting-123"
         taskQueue = "greeting-queue"
-    }
+    },
+    "Temporal"
 )
 val result = handle.result()  // Type inferred as String from method reference
 ```
@@ -1033,15 +1033,15 @@ interface KUpdateHandle<R> {
 // startWorkflow captures result type from method reference
 suspend fun <T, A1, R> startWorkflow(
     workflow: KFunction2<T, A1, R>,  // R is captured here
-    arg: A1,
-    options: WorkflowOptions
+    options: WorkflowOptions,
+    arg: A1
 ): KTypedWorkflowHandle<T, R>  // R is preserved in return type
 
 // Usage - result type is inferred
 val handle = client.startWorkflow(
     OrderWorkflow::processOrder,  // KFunction2<OrderWorkflow, Order, OrderResult>
-    order,
-    options
+    options,
+    order
 )
 val result: OrderResult = handle.result()  // No type parameter needed!
 
@@ -1363,8 +1363,8 @@ Java workflows can be invoked from Kotlin clients:
 ```kotlin
 val result = client.executeWorkflow(
     JavaWorkflowInterface::execute,
-    input,
-    WorkflowOptions { taskQueue = "java-queue" }
+    WorkflowOptions { taskQueue = "java-queue" },
+    input
 )
 ```
 
@@ -1684,11 +1684,11 @@ fun main() = runBlocking {
     // Start workflow and get handle
     val handle = client.startWorkflow(
         OrderWorkflow::processOrder,
-        order,
         WorkflowOptions {
             workflowId = workflowId
             taskQueue = "orders"
-        }
+        },
+        order
     )
     println("Started workflow: ${handle.workflowId}")
 
