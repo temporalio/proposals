@@ -59,10 +59,10 @@
 - ✅ `KWorkflowHandle<T>` - typed handle for signals/queries/updates
 - ✅ `KTypedWorkflowHandle<T, R>` - extends KWorkflowHandle with typed result
 - ✅ `WorkflowHandle` - untyped handle (string-based operations)
-- `KUpdateHandle<R>` - handle for async update execution - TODO
+- ✅ `KUpdateHandle<R>` - handle for async update execution
 - ✅ `startWorkflow()`, `executeWorkflow()` suspend functions (0-6 args)
 - ✅ `signalWithStart()`
-- `updateWithStart()` - TODO
+- `updateWithStart()` - TODO (lower priority)
 - ✅ `getWorkflowHandle()` and `getUntypedWorkflowHandle()`
 
 ### 2.5 Worker API ✅

@@ -47,14 +47,6 @@ Internal architecture and implementation details including:
 - Decision justifications
 - Open questions
 
-## Phases
-
-* **Phase 1** - Coroutine-based workflows, untyped activity execution, pluggable WorkflowImplementationFactory, core Kotlin idioms (Duration, null safety, standard delay/async)
-* **Phase 2** - Typed activity execution with method references, signals/queries/updates, child workflows, property queries
-* **Phase 3** - Testing framework
-
-> **Note:** Nexus support is a separate project and will be addressed independently.
-
 ## Quick Links
 
 - [Kotlin Coroutines Prototype PR #1792](https://github.com/temporalio/sdk-java/pull/1792)

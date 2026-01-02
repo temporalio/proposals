@@ -2180,45 +2180,49 @@ Kotlin coroutine cancellation is fully integrated with Temporal workflow cancell
 - Activities use `suspendCancellableCoroutine` with `invokeOnCancellation` to cancel via Temporal
 - Use standard Kotlin patterns: `try/finally`, `use { }`, `invokeOnCompletion`
 
-### Remaining Gaps (Future Work)
+### Implemented APIs (Java SDK Parity)
 
-The following Java SDK APIs do not yet have Kotlin equivalents:
+The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 
-#### High Priority
+#### Search Attributes & Memo ✅
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.getTypedSearchAttributes()` | ✅ `KWorkflow.getTypedSearchAttributes()` |
+| `Workflow.upsertTypedSearchAttributes(...)` | ✅ `KWorkflow.upsertTypedSearchAttributes()` |
+| `Workflow.getMemo(key, class)` | ✅ `KWorkflow.getMemo()` |
+| `Workflow.upsertMemo(...)` | ✅ `KWorkflow.upsertMemo()` |
 
-| Java SDK API | Use Case |
-|--------------|----------|
-| `Workflow.getSearchAttribute(name)` | Read search attributes |
-| `Workflow.getSearchAttributes()` | Read all search attributes |
-| `Workflow.getTypedSearchAttributes()` | Read typed search attributes |
-| `Workflow.upsertSearchAttributes(...)` | Update search attributes |
-| `Workflow.upsertTypedSearchAttributes(...)` | Update typed search attributes |
-| `Workflow.getMemo(key, class)` | Read workflow memo |
-| `Workflow.upsertMemo(...)` | Update workflow memo |
-| `Workflow.getLastCompletionResult(class)` | For cron/continue-as-new workflows |
-| `Workflow.getPreviousRunFailure()` | For cron/continue-as-new workflows |
-| `Workflow.isReplaying()` | Conditional logging/debugging |
+#### Workflow State & Context ✅
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.getLastCompletionResult(class)` | ✅ `KWorkflow.getLastCompletionResult()` |
+| `Workflow.getPreviousRunFailure()` | ✅ `KWorkflow.getPreviousRunFailure()` |
+| `Workflow.isReplaying()` | ✅ `KWorkflow.isReplaying()` |
+| `Workflow.getCurrentUpdateInfo()` | ✅ `KWorkflow.getCurrentUpdateInfo()` |
+| `Workflow.isEveryHandlerFinished()` | ✅ `KWorkflow.isEveryHandlerFinished()` |
+| `Workflow.setCurrentDetails(...)` | ✅ `KWorkflow.setCurrentDetails()` |
+| `Workflow.getCurrentDetails()` | ✅ `KWorkflow.getCurrentDetails()` |
+| `Workflow.getMetricsScope()` | ✅ `KWorkflow.getMetricsScope()` |
 
-#### Medium Priority
+#### Side Effects & Utilities ✅
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.sideEffect(...)` | ✅ `KWorkflow.sideEffect()` |
+| `Workflow.mutableSideEffect(...)` | ✅ `KWorkflow.mutableSideEffect()` |
+| `Workflow.getVersion(...)` | ✅ `KWorkflow.getVersion()` |
+| `Workflow.retry(...)` | ✅ `KWorkflow.retry()` |
+| `Workflow.randomUUID()` | ✅ `KWorkflow.randomUUID()` |
+| `Workflow.newRandom()` | ✅ `KWorkflow.newRandom()` |
 
-| Java SDK API | Use Case |
-|--------------|----------|
-| `Workflow.mutableSideEffect(...)` | Cache expensive computations across replays |
-| `Workflow.getCurrentUpdateInfo()` | Get current update context |
-| `Workflow.isEveryHandlerFinished()` | Check all handlers completed |
-| `Workflow.setCurrentDetails(...)` | Set workflow details for UI |
-| `Workflow.getCurrentDetails()` | Get workflow details |
-| `Workflow.getMetricsScope()` | Custom metrics |
-| `Workflow.registerListener(...)` | Register signal/query listeners dynamically |
+### Remaining Gaps
 
-#### Lower Priority / Deferred
-
-| Java SDK API | Notes |
-|--------------|-------|
-| `Workflow.retry(...)` | ✅ Implemented as `KWorkflow.retry()` |
-| `Workflow.newNexusServiceStub(...)` | Nexus support - separate project |
-| `Workflow.startNexusOperation(...)` | Nexus support - separate project |
-| `Workflow.getInstance()` | Advanced use case |
+| Java SDK API | Status |
+|--------------|--------|
+| `Workflow.registerListener(...)` | Dynamic signal/query/update handler registration - TODO |
+| `Workflow.newNexusServiceStub(...)` | Nexus support - deferred to separate project |
+| `Workflow.startNexusOperation(...)` | Nexus support - deferred to separate project |
+| `Workflow.getInstance()` | Advanced use case - low priority |
+| `KWorkflowClient.updateWithStart()` | Client API - TODO |
 
 ### KActivityInfo Gaps
 

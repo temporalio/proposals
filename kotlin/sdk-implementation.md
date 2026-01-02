@@ -6,8 +6,8 @@ For public API and developer experience, see [sdk-api.md](./sdk-api.md).
 
 ## Phases
 
-* **Phase 1 (COMPLETE)** - Coroutine-based workflows, untyped activity/child workflow stubs, pluggable WorkflowImplementationFactory, core Kotlin idioms (Duration, null safety, KWorkflowInfo), signals/queries/updates (annotation + dynamic handlers), standard `delay()` and `coroutineScope { async { } }` support
-* **Phase 2** - Typed activity stubs, typed child workflow stubs, KChildWorkflowHandle, KActivity/KActivityInfo/KActivityContext wrappers, client & worker API (KWorkflowClient, KWorkerFactory, KWorkflowHandle, startWorkflow, signalWithStart, etc.)
+* **Phase 1 (COMPLETE)** - Coroutine-based workflows, untyped activity/child workflow execution, pluggable WorkflowImplementationFactory, core Kotlin idioms (Duration, null safety, KWorkflowInfo), signals/queries (annotation + dynamic handlers), updates (annotation-based), standard `delay()` and `coroutineScope { async { } }` support
+* **Phase 2** - Typed activity execution, typed child workflow execution, KChildWorkflowHandle, dynamic update handlers, update validators, KActivity/KActivityInfo/KActivityContext wrappers, client & worker API (KWorkflowClient, KWorkerFactory, KWorkflowHandle, startWorkflow, signalWithStart, etc.)
 * **Phase 3** - Interceptor interfaces, testing framework
 
 > **Note:** Nexus support is a separate project and will be addressed independently.
@@ -147,11 +147,36 @@ The SDK uses a **single unified `WorkerFactory`** that supports both Java and Ko
 
 | Benefit | Description |
 |---------|-------------|
-| Single worker type | No need for separate `KotlinWorkerFactory` |
+| Single worker type | No need for separate worker infrastructure |
 | Mixed workflows | Java and Kotlin workflows on the same task queue |
 | Gradual migration | Convert workflows one at a time |
 | No Kotlin in Java SDK | All coroutine code stays in `temporal-kotlin` |
 | Per-instance execution | Dispatcher is per workflow instance, not per worker |
+
+### KWorkerFactory vs Unified Architecture
+
+The unified worker architecture describes the **internal implementation**—how Java and Kotlin workflows coexist in the same worker. The **API surface** provides two ways to configure this:
+
+| API | Use Case | What It Does |
+|-----|----------|--------------|
+| `KWorkerFactory` | Pure Kotlin applications | Convenience wrapper that creates `WorkerFactory` with `KotlinPlugin` pre-configured |
+| `WorkerFactory` + `KotlinPlugin` | Mixed Java/Kotlin or Java-main apps | Explicit plugin registration for more control |
+
+Both approaches produce the same result—a worker that can handle both Java and Kotlin workflows on the same task queue:
+
+```kotlin
+// Option 1: KWorkerFactory (recommended for Kotlin apps)
+val factory = KWorkerFactory(client) {
+    maxWorkflowThreadCount = 800
+}
+
+// Option 2: Explicit plugin (for Java-main or mixed scenarios)
+val factory = WorkerFactory.newInstance(client, WorkerFactoryOptions.newBuilder()
+    .addPlugin(KotlinPlugin())
+    .build())
+```
+
+`KWorkerFactory` is not a separate worker type—it's a Kotlin-idiomatic API that wraps the standard `WorkerFactory`. Under the hood, both options use the same unified architecture with pluggable `WorkflowImplementationFactory`.
 
 ## Java SDK Refactoring for Pluggability
 
