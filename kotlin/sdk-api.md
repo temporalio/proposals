@@ -2215,7 +2215,7 @@ The following Java SDK APIs do not yet have Kotlin equivalents:
 
 | Java SDK API | Notes |
 |--------------|-------|
-| `Workflow.retry(...)` | Can implement in user code |
+| `Workflow.retry(...)` | ✅ Implemented as `KWorkflow.retry()` |
 | `Workflow.newNexusServiceStub(...)` | Nexus support - separate project |
 | `Workflow.startNexusOperation(...)` | Nexus support - separate project |
 | `Workflow.getInstance()` | Advanced use case |

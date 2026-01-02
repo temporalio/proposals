@@ -29,43 +29,58 @@
 - ✅ Suspend function detection in registration
 
 ### 1.5 Signals, Queries, Updates
-- ✅ Signal handler registration with suspend support
+- ✅ Signal handler registration (annotation-based and dynamic) with suspend support
 - ✅ Query methods (annotation-based and dynamic)
-- ✅ Update methods with validators
+- ✅ Update methods (annotation-based only)
 
 ---
 
-## Phase 2: Typed APIs & Full Feature Set
+## Phase 2: Typed APIs & Full Feature Set ✅ COMPLETE
 
-### 2.1 Typed Activity Execution
-- `KFunction`-based `executeActivity()` overloads
-- Type extraction from method references
-- Local activity support with `executeLocalActivity()`
+### 2.1 Typed Activity Execution ✅
+- ✅ `KFunction`-based `executeActivity()` overloads (0-6 args)
+- ✅ Type extraction from method references
+- ✅ Local activity support with `executeLocalActivity()`
+- ✅ Suspend activity support with `registerSuspendActivities()`
 
-### 2.2 Typed Child Workflow Execution
-- `executeChildWorkflow()` with method references
-- `startChildWorkflow()` returning `KChildWorkflowHandle<T, R>`
-- `getChildWorkflowHandle()` for existing child workflows
-- `KChildWorkflowHandle<T, R>` interface (signal, cancel, result)
+### 2.2 Typed Child Workflow Execution ✅
+- ✅ Typed `executeChildWorkflow()` with method references
+- ✅ `startChildWorkflow()` returning `KChildWorkflowHandle<T, R>`
+- ✅ `getChildWorkflowHandle()` for existing child workflows
+- ✅ `KChildWorkflowHandle<T, R>` interface (signal, cancel, result)
+- ✅ Optional `KChildWorkflowOptions` (uses defaults when omitted)
 
-### 2.3 Client API
-- `KWorkflowClient` - Kotlin client with suspend functions and DSL constructor
-- `KWorkflowHandle<T>` - typed handle for signals/queries/updates
-- `KTypedWorkflowHandle<T, R>` - extends KWorkflowHandle with typed result
-- `WorkflowHandle` - untyped handle (string-based operations)
-- `KUpdateHandle<R>` - handle for async update execution
-- `startWorkflow()`, `executeWorkflow()` suspend functions
-- `signalWithStart()` and `updateWithStart()`
-- `getWorkflowHandle()` and `getUntypedWorkflowHandle()`
+### 2.3 Update Enhancements
+- Dynamic update handler registration (`registerUpdateHandler`, `registerDynamicUpdateHandler`) - TODO
+- ✅ Update validator support (`@UpdateValidatorMethod`) - Uses Java SDK annotations
 
-### 2.4 Worker API
-- `KWorkerFactory` - Kotlin worker factory with KotlinPlugin pre-configured
-- DSL builders for worker options
+### 2.4 Client API ✅
+- ✅ `KWorkflowClient` - Kotlin client with suspend functions and DSL constructor
+- ✅ `KWorkflowHandle<T>` - typed handle for signals/queries/updates
+- ✅ `KTypedWorkflowHandle<T, R>` - extends KWorkflowHandle with typed result
+- ✅ `WorkflowHandle` - untyped handle (string-based operations)
+- `KUpdateHandle<R>` - handle for async update execution - TODO
+- ✅ `startWorkflow()`, `executeWorkflow()` suspend functions (0-6 args)
+- ✅ `signalWithStart()`
+- `updateWithStart()` - TODO
+- ✅ `getWorkflowHandle()` and `getUntypedWorkflowHandle()`
 
-### 2.5 Kotlin Activity Wrappers
-- `KActivity` object (entry point for activity APIs)
-- `KActivityContext` with suspend `heartbeat()`
-- `KActivityInfo` with null safety
+### 2.5 Worker API ✅
+- ✅ `KWorkerFactory` - Kotlin worker factory with KotlinPlugin pre-configured
+- ✅ DSL builders for worker options
+
+### 2.6 Kotlin Activity API ✅
+- ✅ `KActivity` object (entry point for activity APIs)
+- ✅ `KActivity.getInfo()`, `heartbeat()`, `suspendHeartbeat()` methods
+- ✅ `KActivity.logger()` for idiomatic logging
+- ✅ `KActivityInfo` with null safety
+- ✅ Suspend activity support via `SuspendActivityWrapper`
+
+### 2.7 Kotlin Workflow API ✅
+- ✅ `KWorkflow.logger()` for idiomatic logging
+- ✅ `KWorkflow.async {}` for eager parallel execution
+- ✅ `KWorkflow.continueAsNew()` with `KContinueAsNewOptions`
+- ✅ `KWorkflow.retry()` for workflow-level retry with exponential backoff
 
 ---
 
