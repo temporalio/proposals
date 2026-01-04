@@ -1571,19 +1571,74 @@ class KWorkflowClient(
         signalArg: SA1
     ): KTypedWorkflowHandle<T, R>
 
-    /**
-     * Atomically start a workflow and send an update.
-     * Returns both the workflow handle and the update result.
-     */
-    suspend fun <T, A1, R, UA1, UR> updateWithStart(
-        workflow: KFunction2<T, A1, R>,
-        options: WorkflowOptions,
-        workflowArg: A1,
-        update: KFunction2<T, UA1, UR>,
-        updateArg: UA1
-    ): Pair<KTypedWorkflowHandle<T, R>, UR>
+    // --- Update With Start ---
 
-    // --- KWorkflowOptions variants ---
+    /**
+     * Create a workflow start operation for use with update-with-start.
+     * Captures the workflow method, arguments, and options for atomic execution.
+     */
+    fun <T, R> withStartWorkflowOperation(
+        workflow: KFunction1<T, R>,
+        options: KWorkflowOptions
+    ): KWithStartWorkflowOperation<T, R>
+
+    fun <T, A1, R> withStartWorkflowOperation(
+        workflow: KFunction2<T, A1, R>,
+        options: KWorkflowOptions,
+        arg1: A1
+    ): KWithStartWorkflowOperation<T, R>
+
+    // Overloads for 2-6 workflow arguments...
+    // Also KSuspendFunction variants for suspend workflow methods...
+
+    /**
+     * Atomically start a workflow and send an update, returning immediately after
+     * the update reaches the specified wait stage.
+     *
+     * If the workflow is not running, starts it and sends the update.
+     * Behavior for existing workflows depends on [KWorkflowOptions.workflowIdConflictPolicy]:
+     * - USE_EXISTING: sends update to existing workflow
+     * - FAIL: throws WorkflowExecutionAlreadyStarted
+     *
+     * @param update Update method reference (must be suspend)
+     * @param options Options containing the start operation and wait stage
+     * @return Handle to track the update result
+     */
+    suspend fun <T, R, UR> startUpdateWithStart(
+        update: KSuspendFunction1<T, UR>,
+        options: KUpdateWithStartOptions<T, R, UR>
+    ): KUpdateHandle<UR>
+
+    suspend fun <T, R, UA1, UR> startUpdateWithStart(
+        update: KSuspendFunction2<T, UA1, UR>,
+        options: KUpdateWithStartOptions<T, R, UR>,
+        updateArg1: UA1
+    ): KUpdateHandle<UR>
+
+    // Overloads for 2-6 update arguments...
+
+    /**
+     * Atomically start a workflow and execute an update, waiting for completion.
+     * Convenience method equivalent to startUpdateWithStart with waitForStage=COMPLETED.
+     *
+     * @param update Update method reference (must be suspend)
+     * @param options Options containing the start operation
+     * @return The update result
+     */
+    suspend fun <T, R, UR> executeUpdateWithStart(
+        update: KSuspendFunction1<T, UR>,
+        options: KUpdateWithStartOptions<T, R, UR>
+    ): UR
+
+    suspend fun <T, R, UA1, UR> executeUpdateWithStart(
+        update: KSuspendFunction2<T, UA1, UR>,
+        options: KUpdateWithStartOptions<T, R, UR>,
+        updateArg1: UA1
+    ): UR
+
+    // Overloads for 2-6 update arguments...
+
+    // --- Signal With Start ---
 
     suspend fun <T, A1, R, SA1> signalWithStart(
         workflow: KFunction2<T, A1, R>,
@@ -1593,13 +1648,7 @@ class KWorkflowClient(
         signalArg: SA1
     ): KTypedWorkflowHandle<T, R>
 
-    suspend fun <T, A1, R, UA1, UR> updateWithStart(
-        workflow: KFunction2<T, A1, R>,
-        options: KWorkflowOptions,
-        workflowArg: A1,
-        update: KFunction2<T, UA1, UR>,
-        updateArg: UA1
-    ): Pair<KTypedWorkflowHandle<T, R>, UR>
+    // Overloads for different argument counts...
 }
 ```
 
@@ -1653,26 +1702,107 @@ val result = handle.result()  // Type inferred as OrderResult
 
 ### UpdateWithStart
 
-Atomically start a workflow and send an update. If the workflow already exists, only the update is sent:
+Atomically start a workflow and send an update. Behavior depends on `workflowIdConflictPolicy`:
+- `USE_EXISTING`: sends update to existing workflow
+- `FAIL`: throws exception if workflow already exists
+
+**Supporting Types:**
 
 ```kotlin
-// Returns Pair<KTypedWorkflowHandle<OrderWorkflow, OrderResult>, Boolean>
-// - handle with result type captured from workflow method reference
-// - updateResult typed by update method return type
-val (handle, updateResult: Boolean) = client.updateWithStart(
-    workflow = OrderWorkflow::processOrder,
-    options = KWorkflowOptions(
+/**
+ * Represents a workflow start operation for use with update-with-start.
+ * Created via KWorkflowClient.withStartWorkflowOperation().
+ */
+class KWithStartWorkflowOperation<T, R> {
+    /** Get the workflow result after the operation completes. */
+    fun getResult(): R
+}
+
+/**
+ * Options for update-with-start operations.
+ * Bundles the start operation with update-specific options.
+ */
+data class KUpdateWithStartOptions<T, R, UR>(
+    /** The workflow start operation (required) */
+    val startWorkflowOperation: KWithStartWorkflowOperation<T, R>,
+
+    /** Stage to wait for before returning (required for startUpdateWithStart) */
+    val waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+
+    /** Optional update ID for idempotency */
+    val updateId: String? = null
+)
+```
+
+**Usage - Execute and wait for completion:**
+
+```kotlin
+// Step 1: Create the workflow start operation
+val startOp = client.withStartWorkflowOperation(
+    OrderWorkflow::processOrder,
+    KWorkflowOptions(
         workflowId = "order-123",
-        taskQueue = "orders"
+        taskQueue = "orders",
+        workflowIdConflictPolicy = WorkflowIdConflictPolicy.USE_EXISTING  // Required
     ),
-    workflowArg = order,
-    update = OrderWorkflow::addItem,
-    updateArg = newItem
+    order
+)
+
+// Step 2: Execute update with start (waits for update completion)
+val updateResult: Boolean = client.executeUpdateWithStart(
+    OrderWorkflow::addItem,  // Must be suspend function
+    KUpdateWithStartOptions(startWorkflowOperation = startOp),
+    newItem
 )
 println("Item added: $updateResult")
 
-// Can use typed handle for further operations
-val result = handle.result()  // Type inferred as OrderResult
+// Step 3: Access workflow result if needed
+val workflowResult: OrderResult = startOp.getResult()
+```
+
+**Usage - Start async (don't wait for completion):**
+
+```kotlin
+val startOp = client.withStartWorkflowOperation(
+    OrderWorkflow::processOrder,
+    KWorkflowOptions(
+        workflowId = "order-456",
+        taskQueue = "orders",
+        workflowIdConflictPolicy = WorkflowIdConflictPolicy.FAIL
+    ),
+    order
+)
+
+// Start update and return immediately after it's accepted
+val updateHandle: KUpdateHandle<Boolean> = client.startUpdateWithStart(
+    OrderWorkflow::addItem,
+    KUpdateWithStartOptions(
+        startWorkflowOperation = startOp,
+        waitForStage = WorkflowUpdateStage.ACCEPTED
+    ),
+    newItem
+)
+
+// Later: get the update result
+val result = updateHandle.result()
+```
+
+**Usage - No arguments:**
+
+```kotlin
+val startOp = client.withStartWorkflowOperation(
+    GreetingWorkflow::greet,
+    KWorkflowOptions(
+        workflowId = "greeting-789",
+        taskQueue = "greetings",
+        workflowIdConflictPolicy = WorkflowIdConflictPolicy.USE_EXISTING
+    )
+)
+
+val status: String = client.executeUpdateWithStart(
+    GreetingWorkflow::getStatus,  // suspend fun getStatus(): String
+    KUpdateWithStartOptions(startWorkflowOperation = startOp)
+)
 ```
 
 ### Workflow Handle
@@ -1832,7 +1962,7 @@ val factory = KWorkerFactory(client) {
     maxWorkflowThreadCount = 800
 }
 
-val worker = factory.newWorker("task-queue") {
+val worker: KWorker = factory.newWorker("task-queue") {
     maxConcurrentActivityExecutionSize = 100
 }
 
@@ -1866,13 +1996,54 @@ class KWorkerFactory(
     /** The underlying WorkerFactory for advanced use cases */
     val workerFactory: WorkerFactory
 
-    fun newWorker(taskQueue: String, options: WorkerOptions.Builder.() -> Unit = {}): Worker
+    fun newWorker(taskQueue: String, options: WorkerOptions.Builder.() -> Unit = {}): KWorker
     fun start()
     fun shutdown()
     fun shutdownNow()
     suspend fun awaitTermination(timeout: Duration)
 }
 ```
+
+**KWorker API:**
+
+```kotlin
+/**
+ * Kotlin worker that provides idiomatic APIs for registering
+ * Kotlin workflows and suspend activities.
+ *
+ * Use KWorker for pure Kotlin implementations. For mixed Java/Kotlin
+ * scenarios, access the underlying Worker via the [worker] property.
+ */
+class KWorker {
+    /** The underlying Java Worker for interop scenarios */
+    val worker: Worker
+
+    /** Register Kotlin workflow implementation types using reified generics */
+    inline fun <reified T : Any> registerWorkflowImplementationTypes()
+
+    /** Register Kotlin workflow implementation types using KClass */
+    fun registerWorkflowImplementationTypes(vararg workflowClasses: KClass<*>)
+
+    /** Register Kotlin workflow implementation types with options */
+    fun registerWorkflowImplementationTypes(
+        options: WorkflowImplementationOptions,
+        vararg workflowClasses: KClass<*>
+    )
+
+    /** Register activity implementations (automatically detects suspend functions) */
+    fun registerActivitiesImplementations(vararg activities: Any)
+
+    /** Register suspend activity implementations explicitly */
+    fun registerSuspendActivities(vararg activities: Any)
+
+    /** Register Nexus service implementations */
+    fun registerNexusServiceImplementations(vararg services: Any)
+}
+```
+
+**When to use KWorker vs Worker:**
+- Use `KWorker` for pure Kotlin implementations (recommended)
+- Use `Worker` (via `kworker.worker`) when mixing Java and Kotlin workflows/activities on the same worker
 
 ### KotlinPlugin (For Java Main)
 
@@ -1972,53 +2143,688 @@ val client = WorkflowClient(service) {
 
 ## Interceptors
 
-### Kotlin Interceptor Interface
+Interceptors allow you to intercept workflow and activity executions to add cross-cutting concerns like logging, metrics, tracing, and custom error handling. The Kotlin SDK provides suspend-function-aware interceptors that integrate naturally with coroutines.
+
+### KWorkerInterceptor
+
+The main entry point for interceptors. Registered with `KWorkerFactory` and called when workflows or activities are instantiated.
 
 ```kotlin
+/**
+ * Intercepts workflow and activity executions.
+ *
+ * Prefer extending [KWorkerInterceptorBase] and overriding only the methods you need.
+ */
 interface KWorkerInterceptor {
-    fun interceptWorkflow(next: KWorkflowInboundCallsInterceptor): KWorkflowInboundCallsInterceptor {
-        return next
-    }
+    /**
+     * Called when a workflow is instantiated. May create a [KWorkflowInboundCallsInterceptor].
+     * The returned interceptor must forward all calls to [next].
+     */
+    fun interceptWorkflow(next: KWorkflowInboundCallsInterceptor): KWorkflowInboundCallsInterceptor
 
-    fun interceptActivity(next: KActivityInboundCallsInterceptor): KActivityInboundCallsInterceptor {
-        return next
-    }
+    /**
+     * Called when an activity task is received. May create a [KActivityInboundCallsInterceptor].
+     * The returned interceptor must forward all calls to [next].
+     */
+    fun interceptActivity(next: KActivityInboundCallsInterceptor): KActivityInboundCallsInterceptor
 }
 
+/**
+ * Base implementation that passes through all calls. Extend this class and override only needed methods.
+ */
+open class KWorkerInterceptorBase : KWorkerInterceptor {
+    override fun interceptWorkflow(next: KWorkflowInboundCallsInterceptor) = next
+    override fun interceptActivity(next: KActivityInboundCallsInterceptor) = next
+}
+```
+
+### KWorkflowInboundCallsInterceptor
+
+Intercepts inbound calls to workflow execution (workflow method, signals, queries, updates).
+
+```kotlin
+/**
+ * Intercepts inbound calls to workflow execution.
+ *
+ * All methods except [handleQuery] are suspend functions, allowing coroutine-based interception.
+ * The [init] method receives the outbound interceptor for intercepting outgoing calls.
+ *
+ * Prefer extending [KWorkflowInboundCallsInterceptorBase] and overriding only needed methods.
+ */
 interface KWorkflowInboundCallsInterceptor {
+
+    /**
+     * Called when the workflow is instantiated. Use this to wrap the outbound interceptor.
+     */
     suspend fun init(outboundCalls: KWorkflowOutboundCallsInterceptor)
-    suspend fun execute(input: WorkflowInput): WorkflowOutput
-    suspend fun handleSignal(input: SignalInput)
-    suspend fun handleUpdate(input: UpdateInput): UpdateOutput
-    fun handleQuery(input: QueryInput): QueryOutput
+
+    /**
+     * Called when the workflow main method is invoked.
+     */
+    suspend fun execute(input: KWorkflowInput): KWorkflowOutput
+
+    /**
+     * Called when a signal is delivered to the workflow.
+     */
+    suspend fun handleSignal(input: KSignalInput)
+
+    /**
+     * Called when a query is made to the workflow.
+     * Note: Queries must be synchronous and cannot modify workflow state.
+     */
+    fun handleQuery(input: KQueryInput): KQueryOutput
+
+    /**
+     * Called to validate an update before execution.
+     * Throw an exception to reject the update.
+     */
+    fun validateUpdate(input: KUpdateInput)
+
+    /**
+     * Called to execute an update after validation passes.
+     */
+    suspend fun executeUpdate(input: KUpdateInput): KUpdateOutput
 }
 
+/**
+ * Base implementation that forwards all calls to the next interceptor.
+ */
+open class KWorkflowInboundCallsInterceptorBase(
+    protected val next: KWorkflowInboundCallsInterceptor
+) : KWorkflowInboundCallsInterceptor {
+    override suspend fun init(outboundCalls: KWorkflowOutboundCallsInterceptor) = next.init(outboundCalls)
+    override suspend fun execute(input: KWorkflowInput) = next.execute(input)
+    override suspend fun handleSignal(input: KSignalInput) = next.handleSignal(input)
+    override fun handleQuery(input: KQueryInput) = next.handleQuery(input)
+    override fun validateUpdate(input: KUpdateInput) = next.validateUpdate(input)
+    override suspend fun executeUpdate(input: KUpdateInput) = next.executeUpdate(input)
+}
+```
+
+#### Workflow Inbound Input/Output Classes
+
+```kotlin
+/**
+ * Input to workflow execution.
+ */
+data class KWorkflowInput(
+    val header: Header,
+    val arguments: Array<Any?>
+)
+
+/**
+ * Output from workflow execution.
+ */
+data class KWorkflowOutput(
+    val result: Any?
+)
+
+/**
+ * Input to signal handler.
+ */
+data class KSignalInput(
+    val signalName: String,
+    val arguments: Array<Any?>,
+    val eventId: Long,
+    val header: Header
+)
+
+/**
+ * Input to query handler.
+ */
+data class KQueryInput(
+    val queryName: String,
+    val arguments: Array<Any?>,
+    val header: Header
+)
+
+/**
+ * Output from query handler.
+ */
+data class KQueryOutput(
+    val result: Any?
+)
+
+/**
+ * Input to update handler (validation and execution).
+ */
+data class KUpdateInput(
+    val updateName: String,
+    val arguments: Array<Any?>,
+    val header: Header
+)
+
+/**
+ * Output from update execution.
+ */
+data class KUpdateOutput(
+    val result: Any?
+)
+```
+
+### KWorkflowOutboundCallsInterceptor
+
+Intercepts outbound calls from workflow code to Temporal APIs (activities, child workflows, timers, etc.).
+
+```kotlin
+/**
+ * Intercepts outbound calls from workflow code to Temporal APIs.
+ *
+ * All calls execute in workflow context and must follow determinism rules.
+ *
+ * Prefer extending [KWorkflowOutboundCallsInterceptorBase] and overriding only needed methods.
+ */
 interface KWorkflowOutboundCallsInterceptor {
-    suspend fun <R> executeActivity(input: ActivityInput<R>): ActivityOutput<R>
-    fun <R> startActivity(input: ActivityInput<R>): KActivityHandle<R>
-    suspend fun <R> executeChildWorkflow(input: ChildWorkflowInput<R>): ChildWorkflowOutput<R>
-    fun <R> startChildWorkflow(input: ChildWorkflowInput<R>): ChildWorkflowHandle<R>
+
+    // --- Activities ---
+
+    /**
+     * Intercepts activity execution. Returns a Deferred that completes when the activity completes.
+     */
+    fun <R> executeActivity(input: KActivityInvocationInput<R>): Deferred<R>
+
+    /**
+     * Intercepts local activity execution.
+     */
+    fun <R> executeLocalActivity(input: KLocalActivityInvocationInput<R>): Deferred<R>
+
+    // --- Child Workflows ---
+
+    /**
+     * Intercepts child workflow execution.
+     */
+    fun <R> executeChildWorkflow(input: KChildWorkflowInvocationInput<R>): KChildWorkflowInvocationOutput<R>
+
+    // --- Timers and Delays ---
+
+    /**
+     * Intercepts delay/sleep calls.
+     */
+    suspend fun delay(duration: Duration)
+
+    /**
+     * Intercepts timer creation.
+     */
+    fun newTimer(duration: Duration): Deferred<Unit>
+
+    // --- Await Conditions ---
+
+    /**
+     * Intercepts await with timeout.
+     * @return true if condition was satisfied, false if timed out
+     */
+    suspend fun awaitCondition(timeout: Duration, reason: String, condition: () -> Boolean): Boolean
+
+    /**
+     * Intercepts await without timeout.
+     */
+    suspend fun awaitCondition(reason: String, condition: () -> Boolean)
+
+    // --- Side Effects ---
+
+    /**
+     * Intercepts side effect execution.
+     */
+    fun <R> sideEffect(resultClass: Class<R>, func: () -> R): R
+
+    /**
+     * Intercepts mutable side effect execution.
+     */
+    fun <R> mutableSideEffect(
+        id: String,
+        resultClass: Class<R>,
+        updated: (R?, R?) -> Boolean,
+        func: () -> R
+    ): R
+
+    // --- Versioning ---
+
+    /**
+     * Intercepts version check.
+     */
+    fun getVersion(changeId: String, minSupported: Int, maxSupported: Int): Int
+
+    // --- Continue As New ---
+
+    /**
+     * Intercepts continue-as-new.
+     */
+    fun continueAsNew(input: KContinueAsNewInput): Nothing
+
+    // --- External Workflow Communication ---
+
+    /**
+     * Intercepts signal to external workflow.
+     */
+    fun signalExternalWorkflow(input: KSignalExternalInput): Deferred<Unit>
+
+    /**
+     * Intercepts cancel request to external workflow.
+     */
+    fun cancelWorkflow(input: KCancelWorkflowInput): Deferred<Unit>
+
+    // --- Search Attributes and Memo ---
+
+    /**
+     * Intercepts search attribute updates.
+     */
+    fun upsertTypedSearchAttributes(vararg updates: SearchAttributeUpdate<*>)
+
+    /**
+     * Intercepts memo updates.
+     */
+    fun upsertMemo(memo: Map<String, Any>)
+
+    // --- Utilities ---
+
+    /**
+     * Intercepts random number generation.
+     */
+    fun newRandom(): Random
+
+    /**
+     * Intercepts UUID generation.
+     */
+    fun randomUUID(): UUID
+
+    /**
+     * Intercepts current time access.
+     */
+    fun currentTimeMillis(): Long
 }
 
-interface KActivityInboundCallsInterceptor {
-    suspend fun execute(input: ActivityInput): ActivityOutput
+/**
+ * Base implementation that forwards all calls to the next interceptor.
+ */
+open class KWorkflowOutboundCallsInterceptorBase(
+    protected val next: KWorkflowOutboundCallsInterceptor
+) : KWorkflowOutboundCallsInterceptor {
+    override fun <R> executeActivity(input: KActivityInvocationInput<R>) = next.executeActivity(input)
+    override fun <R> executeLocalActivity(input: KLocalActivityInvocationInput<R>) = next.executeLocalActivity(input)
+    override fun <R> executeChildWorkflow(input: KChildWorkflowInvocationInput<R>) = next.executeChildWorkflow(input)
+    override suspend fun delay(duration: Duration) = next.delay(duration)
+    override fun newTimer(duration: Duration) = next.newTimer(duration)
+    override suspend fun awaitCondition(timeout: Duration, reason: String, condition: () -> Boolean) =
+        next.awaitCondition(timeout, reason, condition)
+    override suspend fun awaitCondition(reason: String, condition: () -> Boolean) =
+        next.awaitCondition(reason, condition)
+    override fun <R> sideEffect(resultClass: Class<R>, func: () -> R) = next.sideEffect(resultClass, func)
+    override fun <R> mutableSideEffect(id: String, resultClass: Class<R>, updated: (R?, R?) -> Boolean, func: () -> R) =
+        next.mutableSideEffect(id, resultClass, updated, func)
+    override fun getVersion(changeId: String, minSupported: Int, maxSupported: Int) =
+        next.getVersion(changeId, minSupported, maxSupported)
+    override fun continueAsNew(input: KContinueAsNewInput) = next.continueAsNew(input)
+    override fun signalExternalWorkflow(input: KSignalExternalInput) = next.signalExternalWorkflow(input)
+    override fun cancelWorkflow(input: KCancelWorkflowInput) = next.cancelWorkflow(input)
+    override fun upsertTypedSearchAttributes(vararg updates: SearchAttributeUpdate<*>) =
+        next.upsertTypedSearchAttributes(*updates)
+    override fun upsertMemo(memo: Map<String, Any>) = next.upsertMemo(memo)
+    override fun newRandom() = next.newRandom()
+    override fun randomUUID() = next.randomUUID()
+    override fun currentTimeMillis() = next.currentTimeMillis()
 }
+```
+
+#### Workflow Outbound Input/Output Classes
+
+```kotlin
+/**
+ * Input for activity invocation.
+ */
+data class KActivityInvocationInput<R>(
+    val activityName: String,
+    val resultClass: Class<R>,
+    val resultType: Type,
+    val arguments: Array<Any?>,
+    val options: KActivityOptions,
+    val header: Header
+)
+
+/**
+ * Input for local activity invocation.
+ */
+data class KLocalActivityInvocationInput<R>(
+    val activityName: String,
+    val resultClass: Class<R>,
+    val resultType: Type,
+    val arguments: Array<Any?>,
+    val options: KLocalActivityOptions,
+    val header: Header
+)
+
+/**
+ * Input for child workflow invocation.
+ */
+data class KChildWorkflowInvocationInput<R>(
+    val workflowId: String,
+    val workflowType: String,
+    val resultClass: Class<R>,
+    val resultType: Type,
+    val arguments: Array<Any?>,
+    val options: KChildWorkflowOptions,
+    val header: Header
+)
+
+/**
+ * Output from child workflow start.
+ */
+data class KChildWorkflowInvocationOutput<R>(
+    val result: Deferred<R>,
+    val workflowExecution: Deferred<WorkflowExecution>
+)
+
+/**
+ * Input for continue-as-new.
+ */
+data class KContinueAsNewInput(
+    val workflowType: String?,
+    val options: KContinueAsNewOptions?,
+    val arguments: Array<Any?>,
+    val header: Header
+)
+
+/**
+ * Input for signaling external workflow.
+ */
+data class KSignalExternalInput(
+    val execution: WorkflowExecution,
+    val signalName: String,
+    val arguments: Array<Any?>,
+    val header: Header
+)
+
+/**
+ * Input for canceling external workflow.
+ */
+data class KCancelWorkflowInput(
+    val execution: WorkflowExecution,
+    val reason: String?
+)
+```
+
+### KActivityInboundCallsInterceptor
+
+Intercepts inbound calls to activity execution.
+
+```kotlin
+/**
+ * Intercepts inbound calls to activity execution.
+ *
+ * The [execute] method is a suspend function, supporting both regular and suspend activities.
+ *
+ * Prefer extending [KActivityInboundCallsInterceptorBase] and overriding only needed methods.
+ */
+interface KActivityInboundCallsInterceptor {
+
+    /**
+     * Called when activity is initialized. Provides access to the activity execution context.
+     */
+    fun init(context: ActivityExecutionContext)
+
+    /**
+     * Called when activity method is invoked.
+     * This is a suspend function to support suspend activities.
+     */
+    suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput
+}
+
+/**
+ * Base implementation that forwards all calls to the next interceptor.
+ */
+open class KActivityInboundCallsInterceptorBase(
+    protected val next: KActivityInboundCallsInterceptor
+) : KActivityInboundCallsInterceptor {
+    override fun init(context: ActivityExecutionContext) = next.init(context)
+    override suspend fun execute(input: KActivityExecutionInput) = next.execute(input)
+}
+
+/**
+ * Input to activity execution.
+ */
+data class KActivityExecutionInput(
+    val header: Header,
+    val arguments: Array<Any?>
+)
+
+/**
+ * Output from activity execution.
+ */
+data class KActivityExecutionOutput(
+    val result: Any?
+)
+```
+
+### Registering Interceptors
+
+Interceptors are registered via `KWorkerFactory`:
+
+```kotlin
+val factory = KWorkerFactory(client) {
+    workerInterceptors = listOf(
+        LoggingInterceptor(),
+        MetricsInterceptor(),
+        TracingInterceptor()
+    )
+}
+
+val worker = factory.newWorker("task-queue")
+worker.registerWorkflowImplementationTypes<MyWorkflowImpl>()
+worker.registerActivitiesImplementations(MyActivitiesImpl())
+
+factory.start()
 ```
 
 ### Example: Logging Interceptor
 
 ```kotlin
-class LoggingInterceptor : KWorkerInterceptor {
+class LoggingInterceptor : KWorkerInterceptorBase() {
+
+    override fun interceptWorkflow(
+        next: KWorkflowInboundCallsInterceptor
+    ): KWorkflowInboundCallsInterceptor {
+        return LoggingWorkflowInterceptor(next)
+    }
+
+    override fun interceptActivity(
+        next: KActivityInboundCallsInterceptor
+    ): KActivityInboundCallsInterceptor {
+        return LoggingActivityInterceptor(next)
+    }
+}
+
+private class LoggingWorkflowInterceptor(
+    next: KWorkflowInboundCallsInterceptor
+) : KWorkflowInboundCallsInterceptorBase(next) {
+
+    private val log = KWorkflow.logger()
+
+    override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
+        log.info("Workflow started with ${input.arguments.size} arguments")
+        return try {
+            next.execute(input)
+        } catch (e: Exception) {
+            log.error("Workflow failed", e)
+            throw e
+        } finally {
+            log.info("Workflow completed")
+        }
+    }
+
+    override suspend fun handleSignal(input: KSignalInput) {
+        log.info("Signal received: ${input.signalName}")
+        next.handleSignal(input)
+    }
+
+    override fun handleQuery(input: KQueryInput): KQueryOutput {
+        log.debug("Query received: ${input.queryName}")
+        return next.handleQuery(input)
+    }
+}
+
+private class LoggingActivityInterceptor(
+    next: KActivityInboundCallsInterceptor
+) : KActivityInboundCallsInterceptorBase(next) {
+
+    override suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput {
+        val info = KActivity.getInfo()
+        val log = KActivity.logger()
+
+        log.info("Activity ${info.activityType} started")
+        val startTime = System.currentTimeMillis()
+
+        return try {
+            next.execute(input)
+        } finally {
+            val duration = System.currentTimeMillis() - startTime
+            log.info("Activity ${info.activityType} completed in ${duration}ms")
+        }
+    }
+}
+```
+
+### Example: Tracing Interceptor with OpenTelemetry
+
+```kotlin
+class TracingInterceptor(
+    private val tracer: Tracer
+) : KWorkerInterceptorBase() {
+
+    override fun interceptWorkflow(
+        next: KWorkflowInboundCallsInterceptor
+    ): KWorkflowInboundCallsInterceptor {
+        return TracingWorkflowInboundInterceptor(next, tracer)
+    }
+
+    override fun interceptActivity(
+        next: KActivityInboundCallsInterceptor
+    ): KActivityInboundCallsInterceptor {
+        return TracingActivityInterceptor(next, tracer)
+    }
+}
+
+private class TracingWorkflowInboundInterceptor(
+    next: KWorkflowInboundCallsInterceptor,
+    private val tracer: Tracer
+) : KWorkflowInboundCallsInterceptorBase(next) {
+
+    private lateinit var outboundInterceptor: TracingWorkflowOutboundInterceptor
+
+    override suspend fun init(outboundCalls: KWorkflowOutboundCallsInterceptor) {
+        // Wrap the outbound interceptor to trace outgoing calls
+        outboundInterceptor = TracingWorkflowOutboundInterceptor(outboundCalls, tracer)
+        next.init(outboundInterceptor)
+    }
+
+    override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
+        // Extract trace context from header
+        val parentContext = extractContext(input.header)
+
+        val span = tracer.spanBuilder("workflow.execute")
+            .setParent(parentContext)
+            .setAttribute("workflow.type", KWorkflow.getInfo().workflowType)
+            .startSpan()
+
+        return try {
+            withContext(span.asContextElement()) {
+                next.execute(input)
+            }
+        } catch (e: Exception) {
+            span.recordException(e)
+            span.setStatus(StatusCode.ERROR)
+            throw e
+        } finally {
+            span.end()
+        }
+    }
+}
+
+private class TracingWorkflowOutboundInterceptor(
+    next: KWorkflowOutboundCallsInterceptor,
+    private val tracer: Tracer
+) : KWorkflowOutboundCallsInterceptorBase(next) {
+
+    override fun <R> executeActivity(input: KActivityInvocationInput<R>): Deferred<R> {
+        val span = tracer.spanBuilder("activity.schedule")
+            .setAttribute("activity.name", input.activityName)
+            .startSpan()
+
+        // Inject trace context into header
+        val headerWithTrace = injectContext(input.header, span.context)
+        val inputWithTrace = input.copy(header = headerWithTrace)
+
+        span.end()
+        return next.executeActivity(inputWithTrace)
+    }
+
+    override fun <R> executeChildWorkflow(
+        input: KChildWorkflowInvocationInput<R>
+    ): KChildWorkflowInvocationOutput<R> {
+        val span = tracer.spanBuilder("child_workflow.start")
+            .setAttribute("workflow.type", input.workflowType)
+            .setAttribute("workflow.id", input.workflowId)
+            .startSpan()
+
+        val headerWithTrace = injectContext(input.header, span.context)
+        val inputWithTrace = input.copy(header = headerWithTrace)
+
+        span.end()
+        return next.executeChildWorkflow(inputWithTrace)
+    }
+}
+```
+
+### Example: Metrics Interceptor
+
+```kotlin
+class MetricsInterceptor(
+    private val meterProvider: MeterProvider
+) : KWorkerInterceptorBase() {
+
+    private val meter = meterProvider.get("temporal.sdk")
+    private val workflowCounter = meter.counterBuilder("workflow.executions").build()
+    private val activityCounter = meter.counterBuilder("activity.executions").build()
+    private val activityDuration = meter.histogramBuilder("activity.duration").build()
+
     override fun interceptWorkflow(
         next: KWorkflowInboundCallsInterceptor
     ): KWorkflowInboundCallsInterceptor {
         return object : KWorkflowInboundCallsInterceptorBase(next) {
-            override suspend fun execute(input: WorkflowInput): WorkflowOutput {
-                log.info("Workflow started: ${input.workflowType}")
+            override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
+                val workflowType = KWorkflow.getInfo().workflowType
+                workflowCounter.add(1, Attributes.of(
+                    AttributeKey.stringKey("workflow.type"), workflowType
+                ))
+                return next.execute(input)
+            }
+        }
+    }
+
+    override fun interceptActivity(
+        next: KActivityInboundCallsInterceptor
+    ): KActivityInboundCallsInterceptor {
+        return object : KActivityInboundCallsInterceptorBase(next) {
+            override suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput {
+                val info = KActivity.getInfo()
+                val startTime = System.nanoTime()
+
                 return try {
-                    super.execute(input)
+                    val result = next.execute(input)
+                    activityCounter.add(1, Attributes.of(
+                        AttributeKey.stringKey("activity.type"), info.activityType,
+                        AttributeKey.stringKey("status"), "success"
+                    ))
+                    result
+                } catch (e: Exception) {
+                    activityCounter.add(1, Attributes.of(
+                        AttributeKey.stringKey("activity.type"), info.activityType,
+                        AttributeKey.stringKey("status"), "failure"
+                    ))
+                    throw e
                 } finally {
-                    log.info("Workflow completed: ${input.workflowType}")
+                    val durationMs = (System.nanoTime() - startTime) / 1_000_000.0
+                    activityDuration.record(durationMs, Attributes.of(
+                        AttributeKey.stringKey("activity.type"), info.activityType
+                    ))
                 }
             }
         }
@@ -2026,22 +2832,38 @@ class LoggingInterceptor : KWorkerInterceptor {
 }
 ```
 
-### Registering Interceptors
-
-Kotlin interceptors are registered via the `KotlinPlugin`, which propagates them to all workers:
+### Example: Authentication/Authorization Interceptor
 
 ```kotlin
-val client = WorkflowClient(service) {
-    plugins = listOf(
-        KotlinPlugin {
-            workerInterceptors = listOf(
-                LoggingInterceptor(),
-                MetricsInterceptor()
-            )
+class AuthInterceptor(
+    private val authService: AuthService
+) : KWorkerInterceptorBase() {
+
+    override fun interceptWorkflow(
+        next: KWorkflowInboundCallsInterceptor
+    ): KWorkflowInboundCallsInterceptor {
+        return object : KWorkflowInboundCallsInterceptorBase(next) {
+
+            override suspend fun handleSignal(input: KSignalInput) {
+                // Validate authorization from header before processing signal
+                val authToken = input.header["authorization"]?.firstOrNull()
+                if (authToken != null && !authService.isAuthorized(authToken, "signal:${input.signalName}")) {
+                    throw IllegalAccessException("Unauthorized signal: ${input.signalName}")
+                }
+                next.handleSignal(input)
+            }
+
+            override suspend fun executeUpdate(input: KUpdateInput): KUpdateOutput {
+                // Validate authorization for updates
+                val authToken = input.header["authorization"]?.firstOrNull()
+                if (authToken != null && !authService.isAuthorized(authToken, "update:${input.updateName}")) {
+                    throw IllegalAccessException("Unauthorized update: ${input.updateName}")
+                }
+                return next.executeUpdate(input)
+            }
         }
-    )
+    }
 }
-```
 
 ## Migration from Java SDK
 
@@ -2521,7 +3343,7 @@ fun main() = runBlocking {
 
     // KWorkerFactory automatically enables Kotlin coroutine support
     val factory = KWorkerFactory(client)
-    val worker = factory.newWorker("orders")
+    val worker: KWorker = factory.newWorker("orders")
 
     // Plugin handles suspend functions automatically
     worker.registerWorkflowImplementationTypes(OrderWorkflowImpl::class)
