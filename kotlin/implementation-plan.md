@@ -67,6 +67,8 @@
 
 ### 2.5 Worker API ✅
 - ✅ `KWorkerFactory` - Kotlin worker factory with KotlinPlugin pre-configured
+- ✅ `KWorker` - Kotlin worker wrapper with reified generics, KClass support, DSL options for workflow/activity/Nexus registration
+- ✅ `KWorkerFactory.newWorker()` returns `KWorker` for idiomatic Kotlin usage
 - ✅ DSL builders for worker options
 
 ### 2.6 Kotlin Activity API ✅
@@ -86,19 +88,26 @@
 
 ## Phase 3: Testing Framework & Interceptors
 
-### 3.1 Test Environment
-- Kotlin-friendly test workflow environment
-- Coroutine test utilities integration
+### 3.1 Test Environment ✅ COMPLETE
+- ✅ `KTestActivityEnvironment` - typed executeActivity/executeLocalActivity, suspend activity support, heartbeat/cancellation testing
+- ✅ `KTestWorkflowEnvironment` - worker creation (returns `KWorker`), client access, time manipulation, delayed callbacks, lifecycle management
+- ✅ `KTestEnvironmentOptions` and `KTestEnvironmentOptionsBuilder` - DSL configuration
+- ✅ `KTestActivityExtension` - JUnit 5 extension with parameter resolution and lifecycle management
+- ✅ `KTestWorkflowExtension` - JUnit 5 extension with workflow stub injection, diagnostics on failure
+- ✅ `@WorkflowInitialTime` annotation for test-specific initial time
+- ✅ Time skipping utilities (`sleep()`, `registerDelayedCallback()`)
+- ✅ Search attribute registration in test environment
 
 ### 3.2 Mocking Support
-- Activity mocking with suspend functions
-- Time skipping utilities
+- Activity mocking with suspend functions - TODO (may use existing Java mocking patterns)
 
-### 3.3 Interceptors
-- `KWorkerInterceptor` interface
-- `KWorkflowInboundCallsInterceptor` with suspend functions
-- `KWorkflowOutboundCallsInterceptor`
-- `KActivityInboundCallsInterceptor`
+### 3.3 Interceptors (Design Complete - see sdk-api.md)
+- `KWorkerInterceptor` interface with `KWorkerInterceptorBase`
+- `KWorkflowInboundCallsInterceptor` with suspend functions and input/output data classes
+- `KWorkflowOutboundCallsInterceptor` with full API (activities, child workflows, timers, side effects, etc.)
+- `KActivityInboundCallsInterceptor` with suspend support
+- Base classes for convenience (`*Base` classes)
+- Examples: logging, tracing (OpenTelemetry), metrics, auth
 
 ---
 
