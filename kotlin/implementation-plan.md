@@ -62,7 +62,11 @@
 - ✅ `KUpdateHandle<R>` - handle for async update execution
 - ✅ `startWorkflow()`, `executeWorkflow()` suspend functions (0-6 args)
 - ✅ `signalWithStart()`
-- `updateWithStart()` - TODO (lower priority)
+- ✅ `updateWithStart()` - Atomically start workflow + send update
+  - ✅ `withStartWorkflowOperation()` factory methods (0-6 workflow args, regular and suspend)
+  - ✅ `startUpdateWithStart()` / `executeUpdateWithStart()` with `KUpdateWithStartOptions` (0-6 update args)
+  - ✅ `KWithStartWorkflowOperation<T, R>` to capture workflow start metadata
+  - ✅ `KUpdateWithStartOptions<T, R, UR>` with waitForStage and updateId options
 - ✅ `getWorkflowHandle()` and `getUntypedWorkflowHandle()`
 
 ### 2.5 Worker API ✅
@@ -98,8 +102,11 @@
 - ✅ Time skipping utilities (`sleep()`, `registerDelayedCallback()`)
 - ✅ Search attribute registration in test environment
 
-### 3.2 Mocking Support
-- Activity mocking with suspend functions - TODO (may use existing Java mocking patterns)
+### 3.2 Mocking Support ✅ COMPLETE
+- ✅ `KActivityMockRegistry` - thread-safe registry for activity mocks
+- ✅ `KMockDynamicActivityHandler` - dynamic activity handler routing calls to mocks
+- ✅ Support for both regular and suspend activity mocks
+- ✅ Integration with `KTestWorkflowExtension` for automatic mock registration
 
 ### 3.3 Interceptors (Design Complete - see sdk-api.md)
 - `KWorkerInterceptor` interface with `KWorkerInterceptorBase`
