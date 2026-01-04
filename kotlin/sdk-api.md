@@ -448,6 +448,62 @@ interface OrderWorkflow {
 }
 ```
 
+#### Dynamic Handler Registration
+
+For workflows that need to handle signals, queries, or updates dynamically (without annotations), use the registration APIs:
+
+```kotlin
+class DynamicWorkflowImpl : DynamicWorkflow {
+    private var state = mutableMapOf<String, Any>()
+
+    override suspend fun execute(input: String): String {
+        // Register a named update handler with validator
+        KWorkflow.registerUpdateHandler(
+            "updateState",
+            validator = { args ->
+                val key = args.get(0, String::class.java)
+                require(key.isNotBlank()) { "Key cannot be blank" }
+            },
+            handler = { args ->
+                val key = args.get(0, String::class.java)
+                val value = args.get(1, Any::class.java)
+                state[key] = value
+                "Updated $key"
+            }
+        )
+
+        // Register a named signal handler
+        KWorkflow.registerSignalHandler("notify") { args ->
+            val message = args.get(0, String::class.java)
+            println("Received: $message")
+        }
+
+        // Register a named query handler
+        KWorkflow.registerQueryHandler("getState") { args ->
+            val key = args.get(0, String::class.java)
+            state[key]
+        }
+
+        // Register dynamic handlers for unknown names (catch-all)
+        KWorkflow.registerDynamicUpdateHandler { updateName, args ->
+            "Handled unknown update: $updateName"
+        }
+
+        KWorkflow.registerDynamicSignalHandler { signalName, args ->
+            println("Unknown signal: $signalName")
+        }
+
+        KWorkflow.registerDynamicQueryHandler { queryName, args, resultClass ->
+            "Unknown query: $queryName"
+        }
+
+        // Wait for completion signal
+        KWorkflow.awaitCondition { state["done"] == true }
+        return "Completed"
+    }
+}
+```
+
 ### Child Workflows
 
 Child workflows use the same stub-less pattern as activities:
@@ -3036,15 +3092,24 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 | `Workflow.randomUUID()` | ✅ `KWorkflow.randomUUID()` |
 | `Workflow.newRandom()` | ✅ `KWorkflow.newRandom()` |
 
+#### Dynamic Handler Registration ✅
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.registerListener(DynamicSignalHandler)` | ✅ `KWorkflow.registerDynamicSignalHandler()` |
+| `Workflow.registerListener(DynamicQueryHandler)` | ✅ `KWorkflow.registerDynamicQueryHandler()` |
+| `Workflow.registerListener(DynamicUpdateHandler)` | ✅ `KWorkflow.registerDynamicUpdateHandler()` |
+| N/A (new in Kotlin SDK) | ✅ `KWorkflow.registerSignalHandler()` |
+| N/A (new in Kotlin SDK) | ✅ `KWorkflow.registerQueryHandler()` |
+| N/A (new in Kotlin SDK) | ✅ `KWorkflow.registerUpdateHandler()` |
+| N/A (new in Kotlin SDK) | ✅ `KWorkflow.registerDynamicUpdateValidator()` |
+
 ### Remaining Gaps
 
 | Java SDK API | Status |
 |--------------|--------|
-| `Workflow.registerListener(...)` | Dynamic signal/query/update handler registration - TODO |
 | `Workflow.newNexusServiceStub(...)` | Nexus support - deferred to separate project |
 | `Workflow.startNexusOperation(...)` | Nexus support - deferred to separate project |
 | `Workflow.getInstance()` | Advanced use case - low priority |
-| `KWorkflowClient.updateWithStart()` | Client API - TODO |
 
 ### KActivityInfo Gaps
 
