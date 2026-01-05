@@ -154,14 +154,14 @@ object KWorkflow {
  * @param R The result type of the child workflow method
  */
 interface KChildWorkflowHandle<T, R> {
-    /** The child workflow's workflow ID */
+    /** The child workflow's workflow ID (available immediately) */
     val workflowId: String
 
     /**
-     * Get the child workflow's execution info.
-     * Suspends until the child workflow starts and execution info is available.
+     * Get the child workflow's run ID.
+     * Suspends until the child workflow starts.
      */
-    suspend fun getExecution(): WorkflowExecution
+    suspend fun runId(): String
 
     /**
      * Wait for the child workflow to complete and return its result.
