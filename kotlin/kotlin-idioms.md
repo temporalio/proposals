@@ -54,15 +54,13 @@ interface KWorkflowInfo {
     // ... other properties
 }
 
-// Access via KWorkflow / KActivity objects
+// Access via KWorkflow object
 val info: KWorkflowInfo = KWorkflow.getInfo()
-val parentId: String? = info.parentWorkflowId
+val parentId: String? = info.parentWorkflowId  // null if no parent
 
-// KActivity.getContext() returns KActivityContext (matches Java's Activity.getExecutionContext())
-val context: KActivityContext = KActivity.getContext()
-val activityInfo: KActivityInfo = context.info
-context.heartbeat("progress")                  // Record heartbeat progress
-val logger = context.logger()                  // Get activity logger
+// Activity heartbeat details - nullable instead of Optional
+val progress: Int? = KActivity.getContext().getHeartbeatDetails()
+val startIndex = progress ?: 0  // Kotlin's elvis operator
 ```
 
 This eliminates `.orElse(null)`, `.isPresent`, and other Optional ceremony.
