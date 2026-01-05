@@ -15,7 +15,7 @@ The Kotlin SDK should feel natural to Kotlin developers by leveraging standard `
 | Sleep/delay | `delay(duration)` | Intercepted via `Delay` interface |
 | Deferred results | `Deferred<T>` | Standard + `Promise<T>.toDeferred()` |
 
-## [SDK API](./sdk-api.md)
+## [SDK API](../README.md)
 
 Public API and developer experience documentation including:
 

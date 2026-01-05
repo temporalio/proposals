@@ -2,7 +2,7 @@
 
 This document describes the internal architecture and implementation details for the Temporal Kotlin SDK.
 
-For public API and developer experience, see [sdk-api.md](./sdk-api.md).
+For public API and developer experience, see the [SDK API documentation](../README.md).
 
 ## Phases
 

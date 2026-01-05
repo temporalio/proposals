@@ -108,7 +108,7 @@
 - ✅ Support for both regular and suspend activity mocks
 - ✅ Integration with `KTestWorkflowExtension` for automatic mock registration
 
-### 3.3 Interceptors (Design Complete - see sdk-api.md)
+### 3.3 Interceptors (Design Complete - see [interceptors.md](../configuration/interceptors.md))
 - `KWorkerInterceptor` interface with `KWorkerInterceptorBase`
 - `KWorkflowInboundCallsInterceptor` with suspend functions and input/output data classes
 - `KWorkflowOutboundCallsInterceptor` with full API (activities, child workflows, timers, side effects, etc.)
