@@ -32,6 +32,31 @@ val result = client.executeWorkflow(
 
 ## Java Interoperability
 
+### Kotlin Calling Java Workflows
+
+Kotlin clients can call Java workflows using typed method references:
+
+```kotlin
+// Java workflow interface (defined in Java)
+// @WorkflowInterface
+// public interface OrderWorkflow {
+//     @WorkflowMethod
+//     OrderResult processOrder(Order order);
+// }
+
+// Kotlin client calling Java workflow - works seamlessly
+val result: OrderResult = client.executeWorkflow(
+    OrderWorkflow::processOrder,
+    KWorkflowOptions(
+        workflowId = "order-123",
+        taskQueue = "orders"
+    ),
+    order
+)
+```
+
+### Java Calling Kotlin Workflows
+
 Java clients can invoke Kotlin suspend workflows using **untyped workflow stubs**. The workflow type name defaults to the interface name.
 
 ```java

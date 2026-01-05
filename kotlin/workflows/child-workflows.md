@@ -1,6 +1,6 @@
 # Child Workflows
 
-Child workflows use the same stub-less pattern as activities.
+Child workflows are invoked using direct method references - no stub creation needed.
 
 ## Execute and Wait
 
@@ -77,7 +77,7 @@ override suspend fun parentWorkflowWithHandle(): String {
 
 // Get handle to existing child workflow by ID
 override suspend fun interactWithExistingChild(): String {
-    val handle = KWorkflow.getChildWorkflowHandle<ChildWorkflow, String>("child-workflow-id")
+    val handle = KWorkflow.getChildWorkflowHandle(ChildWorkflow::doWork, "child-workflow-id")
 
     // Signal the child workflow
     handle.signal(ChildWorkflow::updatePriority, Priority.HIGH)
@@ -153,8 +153,17 @@ object KWorkflow {
 
     /**
      * Get a handle to an existing child workflow by ID.
+     * Types are inferred from the method reference.
      */
-    fun <T, R> getChildWorkflowHandle(workflowId: String): KChildWorkflowHandle<T, R>
+    fun <T, A1, R> getChildWorkflowHandle(
+        workflow: KFunction2<T, A1, R>,
+        workflowId: String
+    ): KChildWorkflowHandle<T, R>
+
+    fun <T, R> getChildWorkflowHandle(
+        workflow: KFunction1<T, R>,
+        workflowId: String
+    ): KChildWorkflowHandle<T, R>
 }
 ```
 

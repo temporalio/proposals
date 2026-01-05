@@ -114,7 +114,7 @@
 - `KWorkflowOutboundCallsInterceptor` with full API (activities, child workflows, timers, side effects, etc.)
 - `KActivityInboundCallsInterceptor` with suspend support
 - Base classes for convenience (`*Base` classes)
-- Examples: logging, tracing (OpenTelemetry), metrics, auth
+- Example: logging interceptor
 
 ---
 

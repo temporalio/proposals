@@ -109,18 +109,19 @@ data class KUpdateOutput(val result: Any?)
 
 Intercepts outbound calls from workflow code to Temporal APIs (activities, child workflows, timers, etc.).
 
+All async operations are `suspend` functions. For parallel execution, use standard `async { }` pattern.
+
 ```kotlin
 interface KWorkflowOutboundCallsInterceptor {
-    // Activities
-    fun <R> executeActivity(input: KActivityInvocationInput<R>): Deferred<R>
-    fun <R> executeLocalActivity(input: KLocalActivityInvocationInput<R>): Deferred<R>
+    // Activities - suspend, use async {} for parallel execution
+    suspend fun <R> executeActivity(input: KActivityInvocationInput<R>): R
+    suspend fun <R> executeLocalActivity(input: KLocalActivityInvocationInput<R>): R
 
-    // Child Workflows
-    fun <R> executeChildWorkflow(input: KChildWorkflowInvocationInput<R>): KChildWorkflowInvocationOutput<R>
+    // Child Workflows - returns handle with Deferred result
+    suspend fun <T, R> startChildWorkflow(input: KChildWorkflowInvocationInput<R>): KChildWorkflowHandle<T, R>
 
-    // Timers and Delays
+    // Timers
     suspend fun delay(duration: Duration)
-    fun newTimer(duration: Duration): Deferred<Unit>
 
     // Await Conditions
     suspend fun awaitCondition(timeout: Duration, reason: String, condition: () -> Boolean): Boolean
@@ -137,8 +138,8 @@ interface KWorkflowOutboundCallsInterceptor {
     fun continueAsNew(input: KContinueAsNewInput): Nothing
 
     // External Workflow Communication
-    fun signalExternalWorkflow(input: KSignalExternalInput): Deferred<Unit>
-    fun cancelWorkflow(input: KCancelWorkflowInput): Deferred<Unit>
+    suspend fun signalExternalWorkflow(input: KSignalExternalInput)
+    suspend fun cancelWorkflow(input: KCancelWorkflowInput)
 
     // Search Attributes and Memo
     fun upsertTypedSearchAttributes(vararg updates: SearchAttributeUpdate<*>)
@@ -156,11 +157,10 @@ interface KWorkflowOutboundCallsInterceptor {
 open class KWorkflowOutboundCallsInterceptorBase(
     protected val next: KWorkflowOutboundCallsInterceptor
 ) : KWorkflowOutboundCallsInterceptor {
-    override fun <R> executeActivity(input: KActivityInvocationInput<R>) = next.executeActivity(input)
-    override fun <R> executeLocalActivity(input: KLocalActivityInvocationInput<R>) = next.executeLocalActivity(input)
-    override fun <R> executeChildWorkflow(input: KChildWorkflowInvocationInput<R>) = next.executeChildWorkflow(input)
+    override suspend fun <R> executeActivity(input: KActivityInvocationInput<R>) = next.executeActivity(input)
+    override suspend fun <R> executeLocalActivity(input: KLocalActivityInvocationInput<R>) = next.executeLocalActivity(input)
+    override suspend fun <T, R> startChildWorkflow(input: KChildWorkflowInvocationInput<R>) = next.startChildWorkflow<T, R>(input)
     override suspend fun delay(duration: Duration) = next.delay(duration)
-    override fun newTimer(duration: Duration) = next.newTimer(duration)
     override suspend fun awaitCondition(timeout: Duration, reason: String, condition: () -> Boolean) =
         next.awaitCondition(timeout, reason, condition)
     override suspend fun awaitCondition(reason: String, condition: () -> Boolean) =
@@ -171,8 +171,8 @@ open class KWorkflowOutboundCallsInterceptorBase(
     override fun getVersion(changeId: String, minSupported: Int, maxSupported: Int) =
         next.getVersion(changeId, minSupported, maxSupported)
     override fun continueAsNew(input: KContinueAsNewInput) = next.continueAsNew(input)
-    override fun signalExternalWorkflow(input: KSignalExternalInput) = next.signalExternalWorkflow(input)
-    override fun cancelWorkflow(input: KCancelWorkflowInput) = next.cancelWorkflow(input)
+    override suspend fun signalExternalWorkflow(input: KSignalExternalInput) = next.signalExternalWorkflow(input)
+    override suspend fun cancelWorkflow(input: KCancelWorkflowInput) = next.cancelWorkflow(input)
     override fun upsertTypedSearchAttributes(vararg updates: SearchAttributeUpdate<*>) =
         next.upsertTypedSearchAttributes(*updates)
     override fun upsertMemo(memo: Map<String, Any>) = next.upsertMemo(memo)
@@ -220,14 +220,6 @@ data class KChildWorkflowInvocationInput<R>(
     val arguments: Array<Any?>,
     val options: KChildWorkflowOptions,
     val header: Header
-)
-
-/**
- * Output from child workflow start.
- */
-data class KChildWorkflowInvocationOutput<R>(
-    val result: Deferred<R>,
-    val workflowExecution: Deferred<WorkflowExecution>
 )
 
 /**
@@ -309,13 +301,17 @@ private class LoggingWorkflowInterceptor(
 
     override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
         log.info("Workflow started with ${input.arguments.size} arguments")
+        val startTime = KWorkflow.currentTimeMillis()
+
         return try {
-            next.execute(input)
+            val result = next.execute(input)
+            val duration = KWorkflow.currentTimeMillis() - startTime
+            log.info("Workflow completed in ${duration}ms")
+            result
         } catch (e: Exception) {
-            log.error("Workflow failed", e)
+            val duration = KWorkflow.currentTimeMillis() - startTime
+            log.error("Workflow failed after ${duration}ms", e)
             throw e
-        } finally {
-            log.info("Workflow completed")
         }
     }
 
@@ -327,6 +323,18 @@ private class LoggingWorkflowInterceptor(
     override fun handleQuery(input: KQueryInput): KQueryOutput {
         log.debug("Query received: ${input.queryName}")
         return next.handleQuery(input)
+    }
+
+    override suspend fun executeUpdate(input: KUpdateInput): KUpdateOutput {
+        log.info("Update received: ${input.updateName}")
+        return try {
+            val result = next.executeUpdate(input)
+            log.info("Update ${input.updateName} completed")
+            result
+        } catch (e: Exception) {
+            log.error("Update ${input.updateName} failed", e)
+            throw e
+        }
     }
 }
 
@@ -342,186 +350,14 @@ private class LoggingActivityInterceptor(
         val startTime = System.currentTimeMillis()
 
         return try {
-            next.execute(input)
-        } finally {
+            val result = next.execute(input)
             val duration = System.currentTimeMillis() - startTime
             log.info("Activity ${info.activityType} completed in ${duration}ms")
-        }
-    }
-}
-```
-
-## Example: Metrics Interceptor
-
-```kotlin
-class MetricsInterceptor(
-    private val meterProvider: MeterProvider
-) : KWorkerInterceptorBase() {
-
-    private val meter = meterProvider.get("temporal.sdk")
-    private val workflowCounter = meter.counterBuilder("workflow.executions").build()
-    private val activityCounter = meter.counterBuilder("activity.executions").build()
-    private val activityDuration = meter.histogramBuilder("activity.duration").build()
-
-    override fun interceptWorkflow(
-        next: KWorkflowInboundCallsInterceptor
-    ): KWorkflowInboundCallsInterceptor {
-        return object : KWorkflowInboundCallsInterceptorBase(next) {
-            override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
-                val workflowType = KWorkflow.getInfo().workflowType
-                workflowCounter.add(1, Attributes.of(
-                    AttributeKey.stringKey("workflow.type"), workflowType
-                ))
-                return next.execute(input)
-            }
-        }
-    }
-
-    override fun interceptActivity(
-        next: KActivityInboundCallsInterceptor
-    ): KActivityInboundCallsInterceptor {
-        return object : KActivityInboundCallsInterceptorBase(next) {
-            override suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput {
-                val info = KActivity.getInfo()
-                val startTime = System.nanoTime()
-
-                return try {
-                    val result = next.execute(input)
-                    activityCounter.add(1, Attributes.of(
-                        AttributeKey.stringKey("activity.type"), info.activityType,
-                        AttributeKey.stringKey("status"), "success"
-                    ))
-                    result
-                } catch (e: Exception) {
-                    activityCounter.add(1, Attributes.of(
-                        AttributeKey.stringKey("activity.type"), info.activityType,
-                        AttributeKey.stringKey("status"), "failure"
-                    ))
-                    throw e
-                } finally {
-                    val durationMs = (System.nanoTime() - startTime) / 1_000_000.0
-                    activityDuration.record(durationMs, Attributes.of(
-                        AttributeKey.stringKey("activity.type"), info.activityType
-                    ))
-                }
-            }
-        }
-    }
-}
-```
-
-## Example: Tracing with OpenTelemetry
-
-```kotlin
-class TracingInterceptor(
-    private val tracer: Tracer
-) : KWorkerInterceptorBase() {
-
-    override fun interceptWorkflow(
-        next: KWorkflowInboundCallsInterceptor
-    ): KWorkflowInboundCallsInterceptor {
-        return TracingWorkflowInboundInterceptor(next, tracer)
-    }
-}
-
-private class TracingWorkflowInboundInterceptor(
-    next: KWorkflowInboundCallsInterceptor,
-    private val tracer: Tracer
-) : KWorkflowInboundCallsInterceptorBase(next) {
-
-    private lateinit var outboundInterceptor: TracingWorkflowOutboundInterceptor
-
-    override suspend fun init(outboundCalls: KWorkflowOutboundCallsInterceptor) {
-        // Wrap the outbound interceptor to trace outgoing calls
-        outboundInterceptor = TracingWorkflowOutboundInterceptor(outboundCalls, tracer)
-        next.init(outboundInterceptor)
-    }
-
-    override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
-        // Extract trace context from header
-        val parentContext = extractContext(input.header)
-
-        val span = tracer.spanBuilder("workflow.execute")
-            .setParent(parentContext)
-            .setAttribute("workflow.type", KWorkflow.getInfo().workflowType)
-            .startSpan()
-
-        return try {
-            withContext(span.asContextElement()) {
-                next.execute(input)
-            }
+            result
         } catch (e: Exception) {
-            span.recordException(e)
-            span.setStatus(StatusCode.ERROR)
+            val duration = System.currentTimeMillis() - startTime
+            log.error("Activity ${info.activityType} failed after ${duration}ms", e)
             throw e
-        } finally {
-            span.end()
-        }
-    }
-}
-
-private class TracingWorkflowOutboundInterceptor(
-    next: KWorkflowOutboundCallsInterceptor,
-    private val tracer: Tracer
-) : KWorkflowOutboundCallsInterceptorBase(next) {
-
-    override fun <R> executeActivity(input: KActivityInvocationInput<R>): Deferred<R> {
-        val span = tracer.spanBuilder("activity.schedule")
-            .setAttribute("activity.name", input.activityName)
-            .startSpan()
-
-        // Inject trace context into header
-        val headerWithTrace = injectContext(input.header, span.context)
-        val inputWithTrace = input.copy(header = headerWithTrace)
-
-        span.end()
-        return next.executeActivity(inputWithTrace)
-    }
-
-    override fun <R> executeChildWorkflow(
-        input: KChildWorkflowInvocationInput<R>
-    ): KChildWorkflowInvocationOutput<R> {
-        val span = tracer.spanBuilder("child_workflow.start")
-            .setAttribute("workflow.type", input.workflowType)
-            .setAttribute("workflow.id", input.workflowId)
-            .startSpan()
-
-        val headerWithTrace = injectContext(input.header, span.context)
-        val inputWithTrace = input.copy(header = headerWithTrace)
-
-        span.end()
-        return next.executeChildWorkflow(inputWithTrace)
-    }
-}
-```
-
-## Example: Authentication Interceptor
-
-```kotlin
-class AuthInterceptor(
-    private val authService: AuthService
-) : KWorkerInterceptorBase() {
-
-    override fun interceptWorkflow(
-        next: KWorkflowInboundCallsInterceptor
-    ): KWorkflowInboundCallsInterceptor {
-        return object : KWorkflowInboundCallsInterceptorBase(next) {
-
-            override suspend fun handleSignal(input: KSignalInput) {
-                val authToken = input.header["authorization"]?.firstOrNull()
-                if (authToken != null && !authService.isAuthorized(authToken, "signal:${input.signalName}")) {
-                    throw IllegalAccessException("Unauthorized signal: ${input.signalName}")
-                }
-                next.handleSignal(input)
-            }
-
-            override suspend fun executeUpdate(input: KUpdateInput): KUpdateOutput {
-                val authToken = input.header["authorization"]?.firstOrNull()
-                if (authToken != null && !authService.isAuthorized(authToken, "update:${input.updateName}")) {
-                    throw IllegalAccessException("Unauthorized update: ${input.updateName}")
-                }
-                return next.executeUpdate(input)
-            }
         }
     }
 }
