@@ -117,3 +117,7 @@ val result = client.executeWorkflow(
 ```
 
 See the [Complete Example](./workflows/README.md#complete-example) for a full order processing workflow demonstrating all features.
+
+---
+
+**[Start Review →](./kotlin-idioms.md)**
