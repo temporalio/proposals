@@ -43,8 +43,8 @@ factory.start()
 ## Related
 
 - [Interceptors](../configuration/interceptors.md) - Cross-cutting concerns
-- [Workflows](../workflows/) - Defining workflows to register
-- [Activities](../activities/) - Defining activities to register
+- [Workflows](../workflows/README.md) - Defining workflows to register
+- [Activities](../activities/README.md) - Defining activities to register
 
 ---
 

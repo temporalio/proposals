@@ -169,8 +169,8 @@ fun main() = runBlocking {
 ## Related
 
 - [Interceptors](../configuration/interceptors.md) - Adding cross-cutting concerns
-- [Workflows](../workflows/) - Defining workflows to register
-- [Activities](../activities/) - Defining activities to register
+- [Workflows](../workflows/README.md) - Defining workflows to register
+- [Activities](../activities/README.md) - Defining activities to register
 
 ---
 

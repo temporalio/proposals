@@ -195,4 +195,4 @@ class KWorkflowClient {
 
 ---
 
-**Next:** [Worker](../worker/)
+**Next:** [Worker](../worker/README.md)

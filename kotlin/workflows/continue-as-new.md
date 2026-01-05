@@ -148,4 +148,4 @@ object KWorkflow {
 
 ---
 
-**Next:** [Activities](../activities/)
+**Next:** [Activities](../activities/README.md)

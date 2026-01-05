@@ -144,4 +144,4 @@ interface KActivityInfo {
 
 ---
 
-**Next:** [Client](../client/)
+**Next:** [Client](../client/README.md)

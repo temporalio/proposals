@@ -2,7 +2,7 @@
 
 This document describes the public API and developer experience for the Temporal Kotlin SDK.
 
-For implementation details, see [implementation/](./implementation/).
+For implementation details, see [implementation/](./implementation/README.md).
 
 ## Overview
 
@@ -45,11 +45,11 @@ This approach provides:
 ### Core Concepts
 
 - **[Kotlin Idioms](./kotlin-idioms.md)** - Duration, null safety, property syntax for queries
-- **[Configuration](./configuration/)** - KOptions classes, data conversion, interceptors
+- **[Configuration](./configuration/README.md)** - KOptions classes, data conversion, interceptors
 
 ### Building Blocks
 
-- **[Workflows](./workflows/)** - Defining and implementing workflows
+- **[Workflows](./workflows/README.md)** - Defining and implementing workflows
   - [Definition](./workflows/definition.md) - Interfaces, suspend methods, Java interop
   - [Signals, Queries & Updates](./workflows/signals-queries.md) - Communication patterns
   - [Child Workflows](./workflows/child-workflows.md) - Orchestrating child workflows
@@ -57,19 +57,19 @@ This approach provides:
   - [Cancellation](./workflows/cancellation.md) - Handling cancellation, cleanup
   - [Continue-As-New](./workflows/continue-as-new.md) - Long-running workflow patterns
 
-- **[Activities](./activities/)** - Defining and implementing activities
+- **[Activities](./activities/README.md)** - Defining and implementing activities
   - [Definition](./activities/definition.md) - Interfaces, typed/string-based execution
   - [Implementation](./activities/implementation.md) - Suspend activities, heartbeating
   - [Local Activities](./activities/local-activities.md) - Short-lived local activities
 
 ### Infrastructure
 
-- **[Client](./client/)** - Interacting with workflows
+- **[Client](./client/README.md)** - Interacting with workflows
   - [Workflow Client](./client/workflow-client.md) - KWorkflowClient, starting workflows
   - [Workflow Handles](./client/workflow-handle.md) - Signals, queries, results
   - [Advanced Operations](./client/advanced.md) - SignalWithStart, UpdateWithStart
 
-- **[Worker](./worker/)** - Running workflows and activities
+- **[Worker](./worker/README.md)** - Running workflows and activities
   - [Setup](./worker/setup.md) - KWorkerFactory, KWorker, registration
 
 ### Reference
@@ -79,7 +79,7 @@ This approach provides:
 
 ### Implementation
 
-- **[Implementation Details](./implementation/)** - Internal design documents
+- **[Implementation Details](./implementation/README.md)** - Internal design documents
 
 ## Quick Start
 

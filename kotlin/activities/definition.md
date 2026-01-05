@@ -166,7 +166,7 @@ object KWorkflow {
 ## Related
 
 - [Local Activities](./local-activities.md) - Short-lived local activities
-- [Workflows](../workflows/) - Calling activities from workflows
+- [Workflows](../workflows/README.md) - Calling activities from workflows
 
 ---
 

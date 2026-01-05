@@ -194,4 +194,4 @@ Data classes provide:
 
 ---
 
-**Next:** [Configuration](./configuration/)
+**Next:** [Configuration](./configuration/README.md)

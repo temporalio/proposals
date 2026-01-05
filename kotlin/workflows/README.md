@@ -277,8 +277,8 @@ class OrderWorkflowImpl : OrderWorkflow {
 
 ## Related
 
-- [Activities](../activities/) - What workflows orchestrate
-- [Client](../client/) - Starting and interacting with workflows
+- [Activities](../activities/README.md) - What workflows orchestrate
+- [Client](../client/README.md) - Starting and interacting with workflows
 
 ---
 
