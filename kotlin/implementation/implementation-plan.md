@@ -77,7 +77,7 @@
 
 ### 2.6 Kotlin Activity API ✅
 - ✅ `KActivity` object (entry point for activity APIs)
-- ✅ `KActivity.getInfo()`, `heartbeat()`, `suspendHeartbeat()` methods
+- ✅ `KActivity.getInfo()`, `heartbeat()` methods
 - ✅ `KActivity.logger()` for idiomatic logging
 - ✅ `KActivityInfo` with null safety
 - ✅ Suspend activity support via `SuspendActivityWrapper`

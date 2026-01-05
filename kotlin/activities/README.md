@@ -60,7 +60,6 @@ val result = KWorkflow.executeActivity<String>(
 | Execute by name | `KWorkflow.executeActivity<R>("name", options, args)` |
 | Local activity | `KWorkflow.executeLocalActivity(Interface::method, options, args)` |
 | Heartbeat | `KActivity.getContext().heartbeat(details)` |
-| Suspend heartbeat | `KActivity.getContext().suspendHeartbeat(details)` |
 
 ## Next Steps
 

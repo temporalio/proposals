@@ -118,8 +118,7 @@ class LongRunningActivitiesImpl : LongRunningActivities {
         val lines = File(filePath).readLines()
 
         lines.forEachIndexed { index, line ->
-            // Use suspendHeartbeat in suspend activities
-            context.suspendHeartbeat(index)
+            context.heartbeat(index)
 
             // Process line...
             processLine(line)
@@ -142,7 +141,7 @@ override suspend fun resumableProcess(data: List<Item>): ProcessResult {
     val startIndex: Int = context.getHeartbeatDetails() ?: 0
 
     for (i in startIndex until data.size) {
-        context.suspendHeartbeat(i)
+        context.heartbeat(i)
         processItem(data[i])
     }
 

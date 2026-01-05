@@ -61,8 +61,7 @@ val parentId: String? = info.parentWorkflowId
 // KActivity.getContext() returns KActivityContext (matches Java's Activity.getExecutionContext())
 val context: KActivityContext = KActivity.getContext()
 val activityInfo: KActivityInfo = context.info
-context.heartbeat("progress")                  // Blocking version for regular activities
-context.suspendHeartbeat("progress")           // Suspend version for suspend activities
+context.heartbeat("progress")                  // Record heartbeat progress
 val logger = context.logger()                  // Get activity logger
 ```
 

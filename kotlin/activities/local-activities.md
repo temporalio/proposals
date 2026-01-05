@@ -87,11 +87,7 @@ val info = context.info
 println("Activity ${info.activityType}, attempt ${info.attempt}")
 
 // Heartbeat for long-running activities
-// Use heartbeat() in regular activities
 context.heartbeat(progressDetails)
-
-// Use suspendHeartbeat() in suspend activities for non-blocking operation
-context.suspendHeartbeat(progressDetails)
 
 // Get heartbeat details from previous attempt (for retry scenarios)
 val previousProgress: Int? = context.getHeartbeatDetails()
@@ -114,7 +110,6 @@ val taskToken = context.taskToken
 interface KActivityContext {
     val info: KActivityInfo
     fun heartbeat(details: Any? = null)
-    suspend fun suspendHeartbeat(details: Any? = null)
     fun <T> getHeartbeatDetails(detailsClass: Class<T>): T?
     val taskToken: ByteArray
     fun doNotCompleteOnReturn()
