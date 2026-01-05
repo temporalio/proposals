@@ -157,11 +157,11 @@ interface KChildWorkflowHandle<T, R> {
     /** The child workflow's workflow ID */
     val workflowId: String
 
-    /** The child workflow's first execution run ID */
-    val firstExecutionRunId: String
-
-    /** The child workflow's current run ID */
-    val runId: String
+    /**
+     * Get the child workflow's execution info.
+     * Suspends until the child workflow starts and execution info is available.
+     */
+    suspend fun getExecution(): WorkflowExecution
 
     /**
      * Wait for the child workflow to complete and return its result.
