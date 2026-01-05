@@ -136,7 +136,6 @@ interface KActivityInfo {
     val activityType: String
     val workflowId: String
     val attempt: Int
-    fun getHeartbeatDetails(): Payloads?
     // ... other properties
 }
 ```

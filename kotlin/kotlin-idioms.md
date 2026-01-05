@@ -54,16 +54,6 @@ interface KWorkflowInfo {
     // ... other properties
 }
 
-// KActivityInfo - nullable instead of Optional
-interface KActivityInfo {
-    val activityId: String
-    val activityType: String
-    val workflowId: String
-    val attempt: Int
-    fun getHeartbeatDetails(): Payloads?   // Optional in Java
-    // ... other properties
-}
-
 // Access via KWorkflow / KActivity objects
 val info: KWorkflowInfo = KWorkflow.getInfo()
 val parentId: String? = info.parentWorkflowId
