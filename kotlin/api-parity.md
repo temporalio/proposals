@@ -24,6 +24,32 @@ The following Java SDK APIs are **not needed** in the Kotlin SDK due to language
 | `Workflow.setDefaultLocalActivityOptions(...)` | Pass `KLocalActivityOptions` per call |
 | `Workflow.applyLocalActivityOptions(...)` | Pass options per call |
 
+## Activity API Design Decisions
+
+### Single heartbeat() API
+
+The Kotlin SDK provides a single `heartbeat()` method on `KActivityContext` for both sync and suspend activities:
+
+```kotlin
+context.heartbeat(progressDetails)
+```
+
+**Rationale:** Heartbeat is a short, non-blocking operation that records progress locally. The actual network call happens asynchronously in the background. A separate `suspendHeartbeat()` API is unnecessary.
+
+### Both Sync and Suspend Activities Supported
+
+The Kotlin SDK supports both regular and suspend activity methods:
+
+```kotlin
+@ActivityInterface
+interface OrderActivities {
+    fun validate(order: Order): Boolean        // Sync - runs on thread pool
+    suspend fun fetchExternal(id: String): Data // Suspend - runs on coroutine
+}
+```
+
+**Rationale:** This matches other Kotlin frameworks (Spring, Micronaut, gRPC-Kotlin) that detect method signatures and handle them appropriately. It reduces migration friction from Java SDK and gives developers choice.
+
 ## Cancellation Support
 
 Kotlin coroutine cancellation is fully integrated with Temporal workflow cancellation:
