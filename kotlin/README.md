@@ -78,6 +78,20 @@ This approach provides:
 ## Quick Start
 
 ```kotlin
+// Define activity interface
+@ActivityInterface
+interface GreetingActivities {
+    @ActivityMethod
+    suspend fun composeGreeting(greeting: String, name: String): String
+}
+
+// Implement activity
+class GreetingActivitiesImpl : GreetingActivities {
+    override suspend fun composeGreeting(greeting: String, name: String): String {
+        return "$greeting, $name!"
+    }
+}
+
 // Define workflow interface
 @WorkflowInterface
 interface GreetingWorkflow {
@@ -100,6 +114,7 @@ class GreetingWorkflowImpl : GreetingWorkflow {
 val factory = KWorkerFactory(client)
 val worker = factory.newWorker("greetings")
 worker.registerWorkflowImplementationTypes(GreetingWorkflowImpl::class)
+worker.registerActivitiesImplementations(GreetingActivitiesImpl())
 factory.start()
 
 // Execute workflow
