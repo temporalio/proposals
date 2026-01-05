@@ -94,8 +94,8 @@ interface GreetingWorkflow {
 // Implement workflow
 class GreetingWorkflowImpl : GreetingWorkflow {
     override suspend fun getGreeting(name: String): String {
-        return KWorkflow.executeActivity<String>(
-            "composeGreeting",
+        return KWorkflow.executeActivity(
+            GreetingActivities::composeGreeting,
             KActivityOptions(startToCloseTimeout = 10.seconds),
             "Hello", name
         )
