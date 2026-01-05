@@ -24,15 +24,15 @@ override suspend fun parallelWorkflow(items: List<Item>): List<Result> = corouti
     // Process all items in parallel using standard Kotlin patterns
     items.map { item ->
         async {
-            KWorkflow.executeActivity<Result>("process", options, item)
+            KWorkflow.executeActivity(ProcessingActivities::process, options, item)
         }
     }.awaitAll()  // Standard kotlinx.coroutines.awaitAll
 }
 
 // Another example: parallel activities with different results
 override suspend fun getGreetings(name: String): String = coroutineScope {
-    val hello = async { KWorkflow.executeActivity<String>("greet", options, "Hello", name) }
-    val goodbye = async { KWorkflow.executeActivity<String>("greet", options, "Goodbye", name) }
+    val hello = async { KWorkflow.executeActivity(GreetingActivities::greet, options, "Hello", name) }
+    val goodbye = async { KWorkflow.executeActivity(GreetingActivities::greet, options, "Goodbye", name) }
 
     // Standard awaitAll works with any Deferred
     val (helloResult, goodbyeResult) = awaitAll(hello, goodbye)
