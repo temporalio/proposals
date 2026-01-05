@@ -1,13 +1,22 @@
 # Kotlin Idioms
 
-The SDK leverages Kotlin-specific language features for an idiomatic experience. The design principle is to use **standard Kotlin patterns** wherever possible instead of custom APIs.
+The Kotlin SDK uses **standard Kotlin patterns** wherever possible instead of custom APIs.
+
+| Java SDK | Kotlin SDK |
+|----------|------------|
+| `void method()` | `suspend fun method()` |
+| `Async.function(() -> ...)` | `async { ... }` |
+| `Promise.allOf(...).get()` | `awaitAll(d1, d2)` |
+| `Workflow.sleep(duration)` | `delay(duration)` |
+| `Workflow.newDetachedCancellationScope()` | `withContext(NonCancellable)` |
+| `Duration.ofSeconds(30)` | `30.seconds` |
+| `Optional<T>` | `T?` |
 
 ## Suspend Functions
 
 Workflows and activities use `suspend fun` for natural coroutine integration:
 
 ```kotlin
-// Workflow interface - suspend methods
 @WorkflowInterface
 interface OrderWorkflow {
     @WorkflowMethod
@@ -19,11 +28,10 @@ interface OrderWorkflow {
     @UpdateMethod
     suspend fun addItem(item: OrderItem): Boolean
 
-    @QueryMethod  // Queries are NOT suspend - they must be synchronous
+    @QueryMethod  // Queries are NOT suspend - must be synchronous
     val status: OrderStatus
 }
 
-// Activity interface - suspend methods
 @ActivityInterface
 interface OrderActivities {
     @ActivityMethod
@@ -43,15 +51,11 @@ Use standard `kotlinx.coroutines` patterns for parallel execution:
 ```kotlin
 override suspend fun processOrder(order: Order): OrderResult = coroutineScope {
     // Parallel execution using standard async
-    val validationDeferred = async {
-        KWorkflow.executeActivity(OrderActivities::validateOrder, options, order)
-    }
-    val inventoryDeferred = async {
-        KWorkflow.executeActivity(OrderActivities::checkInventory, options, order)
-    }
+    val validation = async { KWorkflow.executeActivity(OrderActivities::validateOrder, options, order) }
+    val inventory = async { KWorkflow.executeActivity(OrderActivities::checkInventory, options, order) }
 
     // Wait for all - standard awaitAll
-    val (isValid, hasInventory) = awaitAll(validationDeferred, inventoryDeferred)
+    val (isValid, hasInventory) = awaitAll(validation, inventory)
 
     if (!isValid || !hasInventory) {
         return@coroutineScope OrderResult(success = false)
@@ -65,13 +69,12 @@ override suspend fun processOrder(order: Order): OrderResult = coroutineScope {
 }
 ```
 
-| Kotlin Pattern | Temporal Equivalent |
-|----------------|---------------------|
-| `coroutineScope { async { } }` | Parallel execution |
-| `awaitAll(d1, d2)` | Wait for multiple operations |
+| Kotlin Pattern | Purpose |
+|----------------|---------|
+| `coroutineScope { }` | Structured concurrency - if one fails, all cancel |
+| `async { }` | Start parallel operation, returns `Deferred<T>` |
+| `awaitAll(d1, d2)` | Wait for multiple deferreds |
 | `delay(duration)` | Temporal timer (deterministic) |
-| `Deferred<T>` | `Promise<T>.toDeferred()` |
-| `CompletableDeferred<T>` | `Workflow.newPromise()` |
 
 ## Cancellation
 
@@ -94,7 +97,7 @@ override suspend fun processOrder(order: Order): OrderResult {
 
 | Kotlin Pattern | Java SDK Equivalent |
 |----------------|---------------------|
-| `try { } catch (e: CancellationException)` | `CancellationScope` callback |
+| `catch (e: CancellationException)` | `CancellationScope` failure callback |
 | `withContext(NonCancellable) { }` | `Workflow.newDetachedCancellationScope()` |
 | `coroutineScope { }` | `Workflow.newCancellationScope()` |
 | `isActive` / `ensureActive()` | `CancellationScope.isCancelRequested()` |
@@ -106,14 +109,14 @@ Use `withTimeout` for deadline-based cancellation:
 ```kotlin
 override suspend fun processWithDeadline(order: Order): OrderResult {
     return withTimeout(1.hours) {
-        // Everything here is cancelled if it takes > 1 hour
+        // Everything here cancels if it takes > 1 hour
         KWorkflow.executeActivity(OrderActivities::validateOrder, options, order)
         KWorkflow.executeActivity(OrderActivities::chargePayment, options, order)
         OrderResult(success = true)
     }
 }
 
-// Or use withTimeoutOrNull to get null instead of exception
+// Or get null instead of exception
 val result = withTimeoutOrNull(30.minutes) {
     KWorkflow.executeActivity(OrderActivities::slowOperation, options, data)
 }
@@ -128,76 +131,60 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.hours
 
-// Activity options with Duration
 val options = KActivityOptions(
     startToCloseTimeout = 30.seconds,
     scheduleToCloseTimeout = 5.minutes,
     heartbeatTimeout = 10.seconds
 )
 
-// Timers - standard kotlinx.coroutines delay (intercepted for determinism)
 delay(1.hours)
-
-// Timeouts
 withTimeout(30.minutes) { ... }
 ```
 
 ## Null Safety
 
-Nullable types replace `Optional<T>` throughout the API. The following Java SDK types have Kotlin equivalents with null-safe APIs:
-
-| Java SDK | Kotlin SDK |
-|----------|------------|
-| `io.temporal.workflow.Workflow` | `KWorkflow` object |
-| `io.temporal.workflow.WorkflowInfo` | `KWorkflowInfo` |
-| `io.temporal.workflow.Promise<T>` | Standard `Deferred<T>` via `Promise<T>.toDeferred()` |
-| `io.temporal.activity.Activity` | `KActivity` object |
-| `io.temporal.activity.ActivityExecutionContext` | `KActivityContext` |
-| `io.temporal.activity.ActivityInfo` | `KActivityInfo` |
-| `io.temporal.client.WorkflowStub` | `KWorkflowHandle<T>` / `KTypedWorkflowHandle<T, R>` |
+Nullable types replace `Optional<T>`:
 
 ```kotlin
-// KWorkflowInfo - nullable instead of Optional
-interface KWorkflowInfo {
-    val workflowId: String
-    val runId: String
-    val parentWorkflowId: String?          // Optional in Java
-    val parentRunId: String?               // Optional in Java
-    fun getMemo(key: String): String?      // Optional in Java
-    fun getSearchAttribute(key: String): Any?
-    // ... other properties
-}
-
-// Access via KWorkflow object
-val info: KWorkflowInfo = KWorkflow.getInfo()
+// KWorkflowInfo uses nullable instead of Optional
+val info = KWorkflow.getInfo()
 val parentId: String? = info.parentWorkflowId  // null if no parent
 
-// Activity heartbeat details - nullable instead of Optional
+// Activity heartbeat details
 val progress: Int? = KActivity.getContext().getHeartbeatDetails()
-val startIndex = progress ?: 0  // Kotlin's elvis operator
+val startIndex = progress ?: 0  // Elvis operator for default
 ```
 
 This eliminates `.orElse(null)`, `.isPresent`, and other Optional ceremony.
 
-## Property Syntax for Queries
+## Data Classes
 
-Queries can be defined as Kotlin properties in the workflow interface:
+Use Kotlin data classes with `@Serializable` for workflow inputs/outputs:
 
 ```kotlin
-@WorkflowInterface
-interface OrderWorkflow {
-    @QueryMethod
-    val status: OrderStatus  // Property syntax
+@Serializable
+data class Order(
+    val id: String,
+    val customerId: String,
+    val items: List<OrderItem>,
+    val priority: Priority = Priority.NORMAL
+)
 
-    @QueryMethod
-    fun getItemCount(): Int  // Method syntax
-}
+@Serializable
+data class OrderResult(
+    val success: Boolean,
+    val trackingNumber: String? = null,
+    val errorMessage: String? = null
+)
 
-// Client usage via typed handle (using KWorkflowClient)
-val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
-val status = handle.query(OrderWorkflow::status)
-val count = handle.query(OrderWorkflow::getItemCount)
+@Serializable
+enum class Priority { LOW, NORMAL, HIGH }
 ```
+
+Data classes provide:
+- Automatic `equals()`, `hashCode()`, `toString()`
+- `copy()` for creating modified instances
+- Destructuring: `val (id, customerId) = order`
 
 ## Related
 
