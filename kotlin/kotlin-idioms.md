@@ -1,6 +1,123 @@
 # Kotlin Idioms
 
-The SDK leverages Kotlin-specific language features for an idiomatic experience.
+The SDK leverages Kotlin-specific language features for an idiomatic experience. The design principle is to use **standard Kotlin patterns** wherever possible instead of custom APIs.
+
+## Suspend Functions
+
+Workflows and activities use `suspend fun` for natural coroutine integration:
+
+```kotlin
+// Workflow interface - suspend methods
+@WorkflowInterface
+interface OrderWorkflow {
+    @WorkflowMethod
+    suspend fun processOrder(order: Order): OrderResult
+
+    @SignalMethod
+    suspend fun updatePriority(priority: Priority)
+
+    @UpdateMethod
+    suspend fun addItem(item: OrderItem): Boolean
+
+    @QueryMethod  // Queries are NOT suspend - they must be synchronous
+    val status: OrderStatus
+}
+
+// Activity interface - suspend methods
+@ActivityInterface
+interface OrderActivities {
+    @ActivityMethod
+    suspend fun validateOrder(order: Order): Boolean
+
+    @ActivityMethod
+    suspend fun chargePayment(order: Order): PaymentResult
+}
+```
+
+> **Note:** Query methods are never `suspend` because queries must return immediately without blocking.
+
+## Coroutines and Concurrency
+
+Use standard `kotlinx.coroutines` patterns for parallel execution:
+
+```kotlin
+override suspend fun processOrder(order: Order): OrderResult = coroutineScope {
+    // Parallel execution using standard async
+    val validationDeferred = async {
+        KWorkflow.executeActivity(OrderActivities::validateOrder, options, order)
+    }
+    val inventoryDeferred = async {
+        KWorkflow.executeActivity(OrderActivities::checkInventory, options, order)
+    }
+
+    // Wait for all - standard awaitAll
+    val (isValid, hasInventory) = awaitAll(validationDeferred, inventoryDeferred)
+
+    if (!isValid || !hasInventory) {
+        return@coroutineScope OrderResult(success = false)
+    }
+
+    // Sequential execution
+    val charged = KWorkflow.executeActivity(OrderActivities::chargePayment, options, order)
+    val shipped = KWorkflow.executeActivity(OrderActivities::shipOrder, options, order)
+
+    OrderResult(success = true, trackingNumber = shipped)
+}
+```
+
+| Kotlin Pattern | Temporal Equivalent |
+|----------------|---------------------|
+| `coroutineScope { async { } }` | Parallel execution |
+| `awaitAll(d1, d2)` | Wait for multiple operations |
+| `delay(duration)` | Temporal timer (deterministic) |
+| `Deferred<T>` | `Promise<T>.toDeferred()` |
+| `CompletableDeferred<T>` | `Workflow.newPromise()` |
+
+## Cancellation
+
+Use standard Kotlin cancellation patterns:
+
+```kotlin
+override suspend fun processOrder(order: Order): OrderResult {
+    return try {
+        doProcessOrder(order)
+    } catch (e: CancellationException) {
+        // Workflow was cancelled - run cleanup in non-cancellable context
+        withContext(NonCancellable) {
+            KWorkflow.executeActivity(OrderActivities::releaseInventory, options, order)
+            KWorkflow.executeActivity(OrderActivities::refundPayment, options, order)
+        }
+        throw e  // Re-throw to propagate cancellation
+    }
+}
+```
+
+| Kotlin Pattern | Java SDK Equivalent |
+|----------------|---------------------|
+| `try { } catch (e: CancellationException)` | `CancellationScope` callback |
+| `withContext(NonCancellable) { }` | `Workflow.newDetachedCancellationScope()` |
+| `coroutineScope { }` | `Workflow.newCancellationScope()` |
+| `isActive` / `ensureActive()` | `CancellationScope.isCancelRequested()` |
+
+## Timeouts
+
+Use `withTimeout` for deadline-based cancellation:
+
+```kotlin
+override suspend fun processWithDeadline(order: Order): OrderResult {
+    return withTimeout(1.hours) {
+        // Everything here is cancelled if it takes > 1 hour
+        KWorkflow.executeActivity(OrderActivities::validateOrder, options, order)
+        KWorkflow.executeActivity(OrderActivities::chargePayment, options, order)
+        OrderResult(success = true)
+    }
+}
+
+// Or use withTimeoutOrNull to get null instead of exception
+val result = withTimeoutOrNull(30.minutes) {
+    KWorkflow.executeActivity(OrderActivities::slowOperation, options, data)
+}
+```
 
 ## Kotlin Duration
 
@@ -11,22 +128,19 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.hours
 
-// Activity with timeouts using KOptions
-val result = KWorkflow.executeActivity<String>(
-    "ProcessOrder",
-    KActivityOptions(
-        startToCloseTimeout = 30.seconds,
-        scheduleToCloseTimeout = 5.minutes,
-        heartbeatTimeout = 10.seconds
-    ),
-    orderData
+// Activity options with Duration
+val options = KActivityOptions(
+    startToCloseTimeout = 30.seconds,
+    scheduleToCloseTimeout = 5.minutes,
+    heartbeatTimeout = 10.seconds
 )
 
 // Timers - standard kotlinx.coroutines delay (intercepted for determinism)
 delay(1.hours)
-```
 
-> **Note:** The `Delay` interface intercepts standard `delay()` calls and routes them through Temporal's deterministic timer.
+// Timeouts
+withTimeout(30.minutes) { ... }
+```
 
 ## Null Safety
 
