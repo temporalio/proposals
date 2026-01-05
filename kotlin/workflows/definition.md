@@ -1,10 +1,6 @@
 # Workflow Definition
 
-There are two approaches for workflow definition, depending on whether you need Java interoperability.
-
-## Option A: Pure Kotlin (Recommended)
-
-For pure Kotlin codebases, define interfaces with `suspend` methods:
+Define workflow interfaces with `suspend` methods for full Kotlin coroutine support:
 
 ```kotlin
 @WorkflowInterface
@@ -34,63 +30,46 @@ val result = client.executeWorkflow(
 )
 ```
 
-## Option B: Java Interoperability (Parallel Interface Pattern)
+## Java Interoperability
 
-When you need to share workflow interfaces with Java code, use the parallel interface pattern:
+Java clients can invoke Kotlin suspend workflows using **untyped workflow stubs**. The workflow type name defaults to the interface name.
 
-```kotlin
-// Interface for client calls - non-suspend for Java compatibility
-@WorkflowInterface
-interface OrderWorkflow {
-    @WorkflowMethod
-    fun processOrder(order: Order): OrderResult
+```java
+// Java client calling a Kotlin suspend workflow
+WorkflowStub stub = client.newUntypedWorkflowStub(
+    "GreetingWorkflow",  // Workflow type = interface name
+    WorkflowOptions.newBuilder()
+        .setTaskQueue("greetings")
+        .setWorkflowId("greeting-123")
+        .build()
+);
 
-    @SignalMethod
-    fun cancelOrder(reason: String)
-
-    @QueryMethod
-    val status: OrderStatus
-}
-
-// Parallel suspend interface for Kotlin implementation
-@KWorkflowImpl(workflowInterface = OrderWorkflow::class)
-interface OrderWorkflowSuspend {
-    suspend fun processOrder(order: Order): OrderResult
-    suspend fun cancelOrder(reason: String)
-    val status: OrderStatus  // Queries are never suspend
-}
-
-// Kotlin implementation uses the suspend interface
-class OrderWorkflowImpl : OrderWorkflowSuspend {
-    override suspend fun processOrder(order: Order): OrderResult {
-        // Full coroutine support - delay(), async, etc.
-        delay(1.hours)
-        return OrderResult(success = true)
-    }
-
-    override suspend fun cancelOrder(reason: String) { /* ... */ }
-    override val status: OrderStatus get() = OrderStatus.PENDING
-}
-
-// Client call using KWorkflowClient - same pattern, suspends for result
-val result = client.executeWorkflow(
-    OrderWorkflow::processOrder,
-    KWorkflowOptions(
-        workflowId = "order-123",
-        taskQueue = "orders"
-    ),
-    order
-)
+stub.start("Temporal");
+String result = stub.getResult(String.class);
 ```
 
-## When to Use Which
+Alternatively, Java clients can define their own Java interface with the **same name** as the Kotlin interface to use typed stubs:
 
-| Scenario | Approach |
-|----------|----------|
-| Pure Kotlin codebase | Option A - suspend interfaces |
-| Calling Java-defined workflows | Option A works (from coroutine context) |
-| Kotlin workflows with Java-defined interface | Option B - parallel interface |
-| Shared interface library with Java | Option B - parallel interface |
+```java
+// Java interface matching the Kotlin workflow type
+@WorkflowInterface
+public interface GreetingWorkflow {
+    @WorkflowMethod
+    String getGreeting(String name);
+}
+
+// Java client using typed stub
+GreetingWorkflow workflow = client.newWorkflowStub(
+    GreetingWorkflow.class,
+    WorkflowOptions.newBuilder()
+        .setTaskQueue("greetings")
+        .setWorkflowId("greeting-123")
+        .build()
+);
+String result = workflow.getGreeting("Temporal");
+```
+
+> **Note:** Java cannot directly use Kotlin suspend interfaces because suspend functions compile to methods with an extra `Continuation` parameter. The untyped stub approach is recommended for Java clients.
 
 ## Key Characteristics
 
