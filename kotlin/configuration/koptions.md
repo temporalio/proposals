@@ -218,8 +218,6 @@ The Kotlin SDK provides two approaches for configuring options:
 | IDE | Limited autocomplete | Full parameter hints |
 | Usage | Java SDK only | Kotlin SDK |
 
-> **Implementation Note:** KOptions classes internally convert to Java SDK options. The conversion happens once when the activity/workflow is scheduled, so there's no runtime overhead during workflow execution.
-
 ## Related
 
 - [Data Conversion](./data-conversion.md) - Serialization configuration
