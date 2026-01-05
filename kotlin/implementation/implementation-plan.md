@@ -46,7 +46,6 @@
 ### 2.2 Typed Child Workflow Execution ✅
 - ✅ Typed `executeChildWorkflow()` with method references
 - ✅ `startChildWorkflow()` returning `KChildWorkflowHandle<T, R>`
-- ✅ `getChildWorkflowHandle()` for existing child workflows
 - ✅ `KChildWorkflowHandle<T, R>` interface (signal, cancel, result)
 - ✅ Optional `KChildWorkflowOptions` (uses defaults when omitted)
 

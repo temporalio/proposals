@@ -75,16 +75,6 @@ override suspend fun parentWorkflowWithHandle(): String {
     return handle.result()
 }
 
-// Get handle to existing child workflow by ID
-override suspend fun interactWithExistingChild(): String {
-    val handle = KWorkflow.getChildWorkflowHandle(ChildWorkflow::doWork, "child-workflow-id")
-
-    // Signal the child workflow
-    handle.signal(ChildWorkflow::updatePriority, Priority.HIGH)
-
-    return handle.result()
-}
-
 // Parallel child workflows with handles for interaction
 override suspend fun parallelChildrenWithHandles(): List<String> = coroutineScope {
     val handles = listOf("child-1", "child-2", "child-3").map { id ->
@@ -150,20 +140,6 @@ object KWorkflow {
     ): KChildWorkflowHandle<T, R>
 
     // ... up to 6 arguments
-
-    /**
-     * Get a handle to an existing child workflow by ID.
-     * Types are inferred from the method reference.
-     */
-    fun <T, A1, R> getChildWorkflowHandle(
-        workflow: KFunction2<T, A1, R>,
-        workflowId: String
-    ): KChildWorkflowHandle<T, R>
-
-    fun <T, R> getChildWorkflowHandle(
-        workflow: KFunction1<T, R>,
-        workflowId: String
-    ): KChildWorkflowHandle<T, R>
 }
 ```
 
