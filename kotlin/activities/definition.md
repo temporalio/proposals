@@ -161,8 +161,6 @@ object KWorkflow {
 }
 ```
 
-> **Implementation Note:** `KFunction` provides `.name` for the method name and `.parameters[0].type` for the declaring interface. This metadata is used to make Temporal activity calls by name.
-
 ## Related
 
 - [Local Activities](./local-activities.md) - Short-lived local activities
