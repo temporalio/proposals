@@ -2,8 +2,6 @@
 
 This document describes the public API and developer experience for the Temporal Kotlin SDK.
 
-For implementation details, see [implementation/](./implementation/README.md).
-
 ## Overview
 
 The Kotlin SDK provides an idiomatic Kotlin experience for building Temporal workflows using coroutines and suspend functions.
@@ -76,10 +74,6 @@ This approach provides:
 
 - **[Migration Guide](./migration.md)** - Migrating from Java SDK
 - **[API Parity](./api-parity.md)** - Java SDK comparison, gaps, not-needed APIs
-
-### Implementation
-
-- **[Implementation Details](./implementation/README.md)** - Internal design documents
 
 ## Quick Start
 
