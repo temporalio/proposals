@@ -80,8 +80,11 @@ handle.cancel()
 | Signal with start | `client.signalWithStart(...)` |
 | Update with start | `client.executeUpdateWithStart(...)` |
 
-## Next Steps
+## Related
 
-- Start with [Workflow Client](./workflow-client.md) for client creation and basic operations
-- Learn about [Workflow Handles](./workflow-handle.md) for interacting with running workflows
-- See [Advanced Operations](./advanced.md) for atomic operations
+- [Workflow Handles](./workflow-handle.md) - Interacting with running workflows
+- [Advanced Operations](./advanced.md) - Atomic operations
+
+---
+
+**Next:** [Workflow Client](./workflow-client.md)

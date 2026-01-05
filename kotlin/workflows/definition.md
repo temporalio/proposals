@@ -96,8 +96,11 @@ val classLog = KWorkflow.logger(MyWorkflowImpl::class.java)
 
 > **Note:** Versioning (`KWorkflow.getVersion`), side effects (`KWorkflow.sideEffect`), and search attributes (`KWorkflow.upsertSearchAttributes`) use the same patterns as the Java SDK.
 
-## Next Steps
+## Related
 
-- [Signals, Queries & Updates](./signals-queries.md) - Communication patterns
 - [Child Workflows](./child-workflows.md) - Orchestrating child workflows
 - [Timers & Parallel Execution](./timers-parallel.md) - Delays and async patterns
+
+---
+
+**Next:** [Signals, Queries & Updates](./signals-queries.md)

@@ -115,7 +115,11 @@ override suspend fun raceOperations(): String = coroutineScope {
 }
 ```
 
-## Next Steps
+## Related
 
-- [Cancellation](./cancellation.md) - How cancellation works with parallel execution
 - [Child Workflows](./child-workflows.md) - Parallel child workflow patterns
+- [Workflow Definition](./definition.md) - Basic workflow patterns
+
+---
+
+**Next:** [Cancellation](./cancellation.md)

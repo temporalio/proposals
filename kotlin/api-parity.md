@@ -124,7 +124,8 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 | `currentAttemptScheduledTimestamp` | Missing - current attempt schedule time |
 | `retryOptions` | Missing - activity retry options |
 
-## Next Steps
+## Related
 
 - [Migration Guide](./migration.md) - Practical migration steps
 - [Kotlin Idioms](./kotlin-idioms.md) - Kotlin-specific patterns
+- [README](./README.md) - Back to documentation home

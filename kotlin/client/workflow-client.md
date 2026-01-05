@@ -138,7 +138,11 @@ data class KWorkflowOptions(
 )
 ```
 
-## Next Steps
+## Related
 
-- [Workflow Handles](./workflow-handle.md) - Interacting with workflows
 - [Advanced Operations](./advanced.md) - SignalWithStart, UpdateWithStart
+- [KOptions](../configuration/koptions.md) - KWorkflowOptions reference
+
+---
+
+**Next:** [Workflow Handles](./workflow-handle.md)

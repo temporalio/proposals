@@ -85,8 +85,12 @@ val status = handle.query(OrderWorkflow::status)
 val count = handle.query(OrderWorkflow::getItemCount)
 ```
 
-## Next Steps
+## Related
 
 - [KOptions Classes](./configuration/koptions.md) - Kotlin-native configuration
 - [Workflow Definition](./workflows/definition.md) - Using these idioms in workflows
 - [Activity Definition](./activities/definition.md) - Using these idioms in activities
+
+---
+
+**Next:** [Configuration](./configuration/)

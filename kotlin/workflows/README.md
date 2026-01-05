@@ -275,8 +275,11 @@ class OrderWorkflowImpl : OrderWorkflow {
 }
 ```
 
-## Next Steps
+## Related
 
-- Start with [Workflow Definition](./definition.md) to understand the basic patterns
-- Learn about [Activities](../activities/) that workflows orchestrate
-- See [Client](../client/) for starting and interacting with workflows
+- [Activities](../activities/) - What workflows orchestrate
+- [Client](../client/) - Starting and interacting with workflows
+
+---
+
+**Next:** [Workflow Definition](./definition.md)

@@ -149,7 +149,11 @@ override suspend fun resumableProcess(data: List<Item>): ProcessResult {
 }
 ```
 
-## Next Steps
+## Related
 
-- [Local Activities](./local-activities.md) - Short-lived activities
 - [Activity Definition](./definition.md) - Interface patterns
+- [Worker Setup](../worker/setup.md) - Registering activities
+
+---
+
+**Next:** [Local Activities](./local-activities.md)

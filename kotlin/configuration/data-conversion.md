@@ -118,7 +118,11 @@ val converter = DefaultDataConverter.newDefaultInstance().withPayloadConverterOv
 - **Mixed Java/Kotlin**: Consider Jackson for shared data types
 - **Existing Jackson infrastructure**: Use Jackson for consistency
 
-## Next Steps
+## Related
 
 - [KOptions](./koptions.md) - Configuration options
 - [Interceptors](./interceptors.md) - Cross-cutting concerns
+
+---
+
+**Next:** [Interceptors](./interceptors.md)

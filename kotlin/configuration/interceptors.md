@@ -527,7 +527,11 @@ class AuthInterceptor(
 }
 ```
 
-## Next Steps
+## Related
 
 - [KOptions](./koptions.md) - Configuration options
 - [Worker Setup](../worker/setup.md) - Registering interceptors
+
+---
+
+**Next:** [Workflows](../workflows/)

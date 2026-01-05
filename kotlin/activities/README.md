@@ -61,8 +61,11 @@ val result = KWorkflow.executeActivity<String>(
 | Local activity | `KWorkflow.executeLocalActivity(Interface::method, options, args)` |
 | Heartbeat | `KActivity.getContext().heartbeat(details)` |
 
-## Next Steps
+## Related
 
-- Start with [Activity Definition](./definition.md) for interface patterns
-- Learn about [Implementation](./implementation.md) for suspend activity patterns
-- See [Local Activities](./local-activities.md) for short-lived activities
+- [Implementation](./implementation.md) - Suspend activity patterns
+- [Local Activities](./local-activities.md) - Short-lived activities
+
+---
+
+**Next:** [Activity Definition](./definition.md)

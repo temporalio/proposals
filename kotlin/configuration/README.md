@@ -62,8 +62,12 @@ val converter = DefaultDataConverter.newDefaultInstance().withPayloadConverterOv
 )
 ```
 
-## Next Steps
+## Related
 
 - [KOptions](./koptions.md) - Full options reference
 - [Data Conversion](./data-conversion.md) - Serialization configuration
 - [Interceptors](./interceptors.md) - Cross-cutting concerns
+
+---
+
+**Next:** [KOptions](./koptions.md)

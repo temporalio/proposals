@@ -141,7 +141,11 @@ class OrderWorkflowImpl : OrderWorkflow {
 | `CancellationScope.throwCanceled()` | `ensureActive()` |
 | `scope.run()` with timeout | `withTimeout(duration) { ... }` |
 
-## Next Steps
+## Related
 
-- [Continue-As-New](./continue-as-new.md) - Long-running workflow patterns
 - [Timers & Parallel](./timers-parallel.md) - Timeout patterns
+- [Child Workflows](./child-workflows.md) - Cancellation propagation to children
+
+---
+
+**Next:** [Continue-As-New](./continue-as-new.md)

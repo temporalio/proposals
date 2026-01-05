@@ -40,7 +40,12 @@ factory.start()
 | `KWorker` | Registers Kotlin workflows and suspend activities |
 | `KotlinPlugin` | Plugin for Java main apps (used automatically by KWorkerFactory) |
 
-## Next Steps
+## Related
 
-- See [Worker Setup](./setup.md) for detailed configuration options
-- Learn about [Interceptors](../configuration/interceptors.md) for cross-cutting concerns
+- [Interceptors](../configuration/interceptors.md) - Cross-cutting concerns
+- [Workflows](../workflows/) - Defining workflows to register
+- [Activities](../activities/) - Defining activities to register
+
+---
+
+**Next:** [Worker Setup](./setup.md)

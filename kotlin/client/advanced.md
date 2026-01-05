@@ -188,7 +188,11 @@ class KWorkflowClient {
 }
 ```
 
-## Next Steps
+## Related
 
 - [Workflow Client](./workflow-client.md) - Basic client operations
 - [Workflow Handles](./workflow-handle.md) - Interacting with workflows
+
+---
+
+**Next:** [Worker](../worker/)

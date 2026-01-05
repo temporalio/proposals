@@ -150,7 +150,11 @@ interface WorkflowHandle {
 
 This pattern matches Python SDK's `WorkflowHandle` with the same method names (`signal`, `query`, `result`, `cancel`, `terminate`, `execute_update`, `start_update`).
 
-## Next Steps
+## Related
 
-- [Advanced Operations](./advanced.md) - SignalWithStart, UpdateWithStart
 - [Workflow Client](./workflow-client.md) - Creating clients
+- [Signals, Queries & Updates](../workflows/signals-queries.md) - Handler definitions
+
+---
+
+**Next:** [Advanced Operations](./advanced.md)

@@ -220,7 +220,11 @@ The Kotlin SDK provides two approaches for configuring options:
 
 > **Implementation Note:** KOptions classes internally convert to Java SDK options. The conversion happens once when the activity/workflow is scheduled, so there's no runtime overhead during workflow execution.
 
-## Next Steps
+## Related
 
 - [Data Conversion](./data-conversion.md) - Serialization configuration
 - [Interceptors](./interceptors.md) - Cross-cutting concerns
+
+---
+
+**Next:** [Data Conversion](./data-conversion.md)

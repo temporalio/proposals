@@ -119,7 +119,11 @@ worker.registerWorkflowImplementationTypes(
 factory.start()
 ```
 
-## Next Steps
+## Related
 
-- [API Parity](./api-parity.md) - Full Java SDK comparison
 - [Kotlin Idioms](./kotlin-idioms.md) - Kotlin-specific patterns
+- [Worker Setup](./worker/setup.md) - Mixed Java/Kotlin workers
+
+---
+
+**Next:** [API Parity](./api-parity.md)

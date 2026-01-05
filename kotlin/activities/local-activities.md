@@ -137,7 +137,11 @@ interface KActivityInfo {
 
 > **Note:** `ActivityCompletionClient` for async activity completion uses the same API as the Java SDK.
 
-## Next Steps
+## Related
 
 - [Activity Definition](./definition.md) - Interface patterns
 - [Activity Implementation](./implementation.md) - Full implementation details
+
+---
+
+**Next:** [Client](../client/)

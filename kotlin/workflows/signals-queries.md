@@ -140,7 +140,11 @@ suspend fun addItem(item: OrderItem): Boolean {
 }
 ```
 
-## Next Steps
+## Related
 
-- [Child Workflows](./child-workflows.md) - Orchestrating child workflows
 - [Client API](../client/workflow-handle.md) - More on workflow handles
+- [Workflow Definition](./definition.md) - Basic workflow patterns
+
+---
+
+**Next:** [Child Workflows](./child-workflows.md)

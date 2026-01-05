@@ -141,7 +141,11 @@ object KWorkflow {
 
 > **Important:** `continueAsNew` never returns normally. It terminates the current workflow execution and signals Temporal to start a new execution. The return type `Nothing` indicates this in Kotlin's type system.
 
-## Next Steps
+## Related
 
-- [Workflow Definition](./definition.md) - Back to basics
+- [Workflow Definition](./definition.md) - Basic workflow patterns
 - [Migration Guide](../migration.md) - Java SDK comparison
+
+---
+
+**Next:** [Activities](../activities/)

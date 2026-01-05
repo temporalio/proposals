@@ -220,7 +220,11 @@ val result = KWorkflow.executeChildWorkflow(
 
 > **Note:** For simple parallel execution where you only need the result, use standard `coroutineScope { async { executeChildWorkflow(...) } }`. Use `startChildWorkflow` only when you need to interact with the child workflow while it's running.
 
-## Next Steps
+## Related
 
-- [Timers & Parallel Execution](./timers-parallel.md) - More parallel patterns
 - [Cancellation](./cancellation.md) - How cancellation propagates to child workflows
+- [Workflow Definition](./definition.md) - Basic workflow patterns
+
+---
+
+**Next:** [Timers & Parallel Execution](./timers-parallel.md)
