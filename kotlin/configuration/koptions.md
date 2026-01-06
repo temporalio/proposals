@@ -177,8 +177,7 @@ data class KContinueAsNewOptions(
     val retryOptions: KRetryOptions? = null,
     val workflowTaskTimeout: Duration? = null,
     val memo: Map<String, Any>? = null,
-    val typedSearchAttributes: SearchAttributes? = null,
-    val contextPropagators: List<ContextPropagator>? = null
+    val typedSearchAttributes: SearchAttributes? = null
 )
 ```
 
