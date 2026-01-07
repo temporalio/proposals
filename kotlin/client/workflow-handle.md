@@ -90,7 +90,7 @@ interface KTypedWorkflowHandle<T, R> : KWorkflowHandle<T> {
 // startWorkflow captures result type from method reference
 suspend fun <T, A1, R> startWorkflow(
     workflow: KFunction2<T, A1, R>,  // R is captured here
-    options: WorkflowOptions,
+    options: KWorkflowOptions,
     arg: A1
 ): KTypedWorkflowHandle<T, R>  // R is preserved in return type
 

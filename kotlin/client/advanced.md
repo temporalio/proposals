@@ -36,8 +36,8 @@ Atomically start a workflow and send an update. Behavior depends on `workflowIdC
  * Created via KWorkflowClient.withStartWorkflowOperation().
  */
 class KWithStartWorkflowOperation<T, R> {
-    /** Get the workflow result after the operation completes. */
-    fun getResult(): R
+    /** Suspends until the workflow completes and returns its result. */
+    suspend fun result(): R
 }
 
 /**
@@ -78,8 +78,8 @@ val updateResult: Boolean = client.executeUpdateWithStart(
 )
 println("Item added: $updateResult")
 
-// Step 3: Access workflow result if needed
-val workflowResult: OrderResult = startOp.getResult()
+// Step 3: Access workflow result if needed (suspends until workflow completes)
+val workflowResult: OrderResult = startOp.result()
 ```
 
 ### Start Async (Don't Wait for Completion)
