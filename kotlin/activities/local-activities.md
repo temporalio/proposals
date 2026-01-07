@@ -90,7 +90,7 @@ println("Activity ${info.activityType}, attempt ${info.attempt}")
 context.heartbeat(progressDetails)
 
 // Get heartbeat details from previous attempt (for retry scenarios)
-val previousProgress: Int? = context.getHeartbeatDetails()
+val previousProgress = context.heartbeatDetails<Int>()
 
 // Logging - use activity logger for proper log context
 val log = context.logger()  // Uses activity type as logger name
@@ -110,7 +110,7 @@ val taskToken = context.taskToken
 interface KActivityContext {
     val info: KActivityInfo
     fun heartbeat(details: Any? = null)
-    fun <T> getHeartbeatDetails(detailsClass: Class<T>): T?
+    fun <T> heartbeatDetails(detailsClass: Class<T>): T?
     val taskToken: ByteArray
     fun doNotCompleteOnReturn()
     val isDoNotCompleteOnReturn: Boolean
@@ -120,7 +120,7 @@ interface KActivityContext {
 }
 
 // Reified extension for easier Kotlin usage
-inline fun <reified T> KActivityContext.getHeartbeatDetails(): T?
+inline fun <reified T> KActivityContext.heartbeatDetails(): T?
 ```
 
 ## KActivityInfo Interface

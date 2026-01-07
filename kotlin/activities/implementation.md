@@ -99,7 +99,7 @@ override suspend fun resumableProcess(data: List<Item>): ProcessResult {
     val context = KActivity.context
 
     // Get progress from previous attempt if available
-    val startIndex: Int = context.getHeartbeatDetails() ?: 0
+    val startIndex = context.heartbeatDetails<Int>() ?: 0
 
     for (i in startIndex until data.size) {
         context.heartbeat(i)
