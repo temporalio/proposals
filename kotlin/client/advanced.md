@@ -9,7 +9,7 @@ Both SignalWithStart and UpdateWithStart use `KWithStartWorkflowOperation` for c
  * Represents a workflow start operation for use with signal-with-start or update-with-start.
  * Created via KWorkflowClient.withStartWorkflowOperation().
  */
-class KWithStartWorkflowOperation<T, R> {
+interface KWithStartWorkflowOperation<T, R> {
     /** The workflow ID from the options. */
     val workflowId: String
 
