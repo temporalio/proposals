@@ -40,12 +40,12 @@ class KWorkflowClient(
      * Does not wait for the workflow to complete.
      */
     suspend fun <T, R> startWorkflow(
-        workflow: KFunction1<T, R>,
+        workflow: KSuspendFunction1<T, R>,
         options: KWorkflowOptions
     ): KTypedWorkflowHandle<T, R>
 
     suspend fun <T, A1, R> startWorkflow(
-        workflow: KFunction2<T, A1, R>,
+        workflow: KSuspendFunction2<T, A1, R>,
         options: KWorkflowOptions,
         arg: A1
     ): KTypedWorkflowHandle<T, R>
@@ -57,12 +57,12 @@ class KWorkflowClient(
      * Suspends until the workflow completes.
      */
     suspend fun <T, R> executeWorkflow(
-        workflow: KFunction1<T, R>,
+        workflow: KSuspendFunction1<T, R>,
         options: KWorkflowOptions
     ): R
 
     suspend fun <T, A1, R> executeWorkflow(
-        workflow: KFunction2<T, A1, R>,
+        workflow: KSuspendFunction2<T, A1, R>,
         options: KWorkflowOptions,
         arg: A1
     ): R

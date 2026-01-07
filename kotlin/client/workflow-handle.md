@@ -46,22 +46,22 @@ interface KWorkflowHandle<T> {
     // Result - requires explicit type since we don't know it
     suspend fun <R> result(): R
 
-    // Signals - type-safe method references
-    suspend fun signal(method: KFunction1<T, *>)
-    suspend fun <A1> signal(method: KFunction2<T, A1, *>, arg: A1)
-    suspend fun <A1, A2> signal(method: KFunction3<T, A1, A2, *>, arg1: A1, arg2: A2)
+    // Signals - type-safe method references (suspend functions)
+    suspend fun signal(method: KSuspendFunction1<T, *>)
+    suspend fun <A1> signal(method: KSuspendFunction2<T, A1, *>, arg: A1)
+    suspend fun <A1, A2> signal(method: KSuspendFunction3<T, A1, A2, *>, arg1: A1, arg2: A2)
 
-    // Queries - type-safe method references
+    // Queries - type-safe method references (NOT suspend)
     fun <R> query(method: KFunction1<T, R>): R
     fun <R, A1> query(method: KFunction2<T, A1, R>, arg: A1): R
 
-    // Updates - execute and wait for result
-    suspend fun <R> executeUpdate(method: KFunction1<T, R>): R
-    suspend fun <R, A1> executeUpdate(method: KFunction2<T, A1, R>, arg: A1): R
+    // Updates - execute and wait for result (suspend functions)
+    suspend fun <R> executeUpdate(method: KSuspendFunction1<T, R>): R
+    suspend fun <R, A1> executeUpdate(method: KSuspendFunction2<T, A1, R>, arg: A1): R
 
-    // Updates - start and get handle for async result
-    suspend fun <R> startUpdate(method: KFunction1<T, R>): KUpdateHandle<R>
-    suspend fun <R, A1> startUpdate(method: KFunction2<T, A1, R>, arg: A1): KUpdateHandle<R>
+    // Updates - start and get handle for async result (suspend functions)
+    suspend fun <R> startUpdate(method: KSuspendFunction1<T, R>): KUpdateHandle<R>
+    suspend fun <R, A1> startUpdate(method: KSuspendFunction2<T, A1, R>, arg: A1): KUpdateHandle<R>
 
     // Get handle for existing update by ID
     fun <R> getKUpdateHandle(updateId: String): KUpdateHandle<R>
@@ -89,14 +89,14 @@ interface KTypedWorkflowHandle<T, R> : KWorkflowHandle<T> {
 ```kotlin
 // startWorkflow captures result type from method reference
 suspend fun <T, A1, R> startWorkflow(
-    workflow: KFunction2<T, A1, R>,  // R is captured here
+    workflow: KSuspendFunction2<T, A1, R>,  // R is captured here
     options: KWorkflowOptions,
     arg: A1
 ): KTypedWorkflowHandle<T, R>  // R is preserved in return type
 
 // Usage - result type is inferred
 val handle = client.startWorkflow(
-    OrderWorkflow::processOrder,  // KFunction2<OrderWorkflow, Order, OrderResult>
+    OrderWorkflow::processOrder,  // KSuspendFunction2<OrderWorkflow, Order, OrderResult>
     options,
     order
 )
