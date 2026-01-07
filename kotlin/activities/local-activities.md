@@ -7,8 +7,8 @@ Local activities use the same stub-less pattern as regular activities.
 ```kotlin
 @ActivityInterface
 interface ValidationActivities {
-    fun validate(input: String): Boolean
-    fun sanitize(input: String): String
+    suspend fun validate(input: String): Boolean
+    fun sanitize(input: String): String  // Non-suspend also supported
 }
 
 val isValid = KWorkflow.executeLocalActivity(
