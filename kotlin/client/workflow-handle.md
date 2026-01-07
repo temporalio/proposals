@@ -21,66 +21,84 @@ val result = handle.result<OrderResult>()
 // Updates - execute and wait for result
 val updateResult = handle.executeUpdate(OrderWorkflow::addItem, newItem)
 
-// Or start update async and get handle
-val updateHandle = handle.startUpdate(OrderWorkflow::addItem, newItem)
-val asyncResult = updateHandle.result()
-
 // Cancel or terminate
 handle.cancel()
 handle.terminate("No longer needed")
 
 // Workflow metadata
-val info = handle.describe()
+val description = handle.describe()
 println("Workflow ID: ${handle.workflowId}, Run ID: ${handle.runId}")
+println("Status: ${description.status}")
 ```
+
+## Architectural Note: Classes vs Interfaces
+
+All handle types (`KWorkflowHandle`, `KTypedWorkflowHandle`, `KUpdateHandle`, `WorkflowHandle`, `KChildWorkflowHandle`) are **classes** rather than interfaces. This design choice enables:
+
+1. **Reified type parameters** - `inline fun <reified T>` methods directly on handle types
+2. **Better IDE discoverability** - Methods appear directly in autocomplete
+3. **No extension function workarounds** - No need for separate extension functions for reified generics
+4. **Full testing support** - mockk and other frameworks can mock classes
 
 ## KWorkflowHandle API
 
 ```kotlin
 // Base handle - returned by getWorkflowHandle<T>(id)
 // Result type is unknown, must specify when calling result<R>()
-interface KWorkflowHandle<T> {
-    val workflowId: String
-    val runId: String?
-
+open class KWorkflowHandle<T>(
+    val workflowId: String,
+    val runId: String?,
+    val execution: WorkflowExecution,
+    // ... internal state
+) {
     // Result - requires explicit type since we don't know it
-    suspend fun <R> result(): R
+    suspend fun <R> result(resultClass: Class<R>): R
+    inline suspend fun <reified R> result(): R  // Reified version
 
-    // Signals - type-safe method references (suspend functions)
-    suspend fun signal(method: KSuspendFunction1<T, *>)
-    suspend fun <A1> signal(method: KSuspendFunction2<T, A1, *>, arg: A1)
-    suspend fun <A1, A2> signal(method: KSuspendFunction3<T, A1, A2, *>, arg1: A1, arg2: A2)
+    // Signals - type-safe method references
+    // Note: Signal handlers can be either suspend or non-suspend functions
+    suspend fun signal(method: KFunction1<T, Unit>)
+    suspend fun <A1> signal(method: KFunction2<T, A1, Unit>, arg: A1)
+    suspend fun <A1, A2> signal(method: KFunction3<T, A1, A2, Unit>, arg1: A1, arg2: A2)
 
-    // Queries - type-safe method references (NOT suspend)
-    fun <R> query(method: KFunction1<T, R>): R
-    fun <R, A1> query(method: KFunction2<T, A1, R>, arg: A1): R
+    // Queries - type-safe method references (suspend for network I/O)
+    suspend fun <R> query(method: KFunction1<T, R>): R
+    suspend fun <R, A1> query(method: KFunction2<T, A1, R>, arg: A1): R
 
     // Updates - execute and wait for result (suspend functions)
     suspend fun <R> executeUpdate(method: KSuspendFunction1<T, R>): R
     suspend fun <R, A1> executeUpdate(method: KSuspendFunction2<T, A1, R>, arg: A1): R
 
-    // Updates - start and get handle for async result (suspend functions)
-    suspend fun <R> startUpdate(method: KSuspendFunction1<T, R>): KUpdateHandle<R>
-    suspend fun <R, A1> startUpdate(method: KSuspendFunction2<T, A1, R>, arg: A1): KUpdateHandle<R>
-
     // Get handle for existing update by ID
-    fun <R> getKUpdateHandle(updateId: String): KUpdateHandle<R>
+    fun <R> getUpdateHandle(updateId: String, resultClass: Class<R>): KUpdateHandle<R>
+    inline fun <reified R> getUpdateHandle(updateId: String): KUpdateHandle<R>  // Reified version
 
     // Lifecycle
     suspend fun cancel()
     suspend fun terminate(reason: String? = null)
-    fun describe(): WorkflowExecutionInfo
+    suspend fun describe(): KWorkflowExecutionDescription
+
+    // Java SDK interop
+    fun toStub(): WorkflowStub
 }
 ```
+
+**Note on query methods:** Although queries are synchronous within the workflow, client-side query calls involve network I/O to the Temporal service, which is why they are `suspend` functions following idiomatic Kotlin patterns.
 
 ## KTypedWorkflowHandle
 
 Extended handle returned by `startWorkflow()` - result type R is captured from the workflow method reference:
 
 ```kotlin
-interface KTypedWorkflowHandle<T, R> : KWorkflowHandle<T> {
+class KTypedWorkflowHandle<T, R>(
+    workflowId: String,
+    runId: String?,
+    execution: WorkflowExecution,
+    // ... internal state
+) : KWorkflowHandle<T>(...) {
     // Result type is known from method reference - no type parameter needed
     suspend fun result(): R
+    suspend fun result(timeout: java.time.Duration): R
 }
 ```
 
@@ -110,10 +128,62 @@ val result = existingHandle.result<OrderResult>()  // Must specify type
 ## KUpdateHandle
 
 ```kotlin
-interface KUpdateHandle<R> {
-    val updateId: String
+class KUpdateHandle<R>(
+    val updateId: String,
+    val execution: WorkflowExecution,
+    // ... internal state
+) {
     suspend fun result(): R
+    suspend fun result(timeout: java.time.Duration): R
 }
+```
+
+## KWorkflowExecutionDescription
+
+Kotlin wrapper for workflow execution description with idiomatic API:
+
+```kotlin
+class KWorkflowExecutionDescription(
+    private val delegate: WorkflowExecutionDescription
+) {
+    // Properties from WorkflowExecutionMetadata
+    val execution: WorkflowExecution
+    val workflowType: String
+    val taskQueue: String
+    val startTime: Instant
+    val executionTime: Instant
+    val closeTime: Instant?
+    val status: WorkflowExecutionStatus
+    val historyLength: Long
+    val parentNamespace: String?
+    val parentExecution: WorkflowExecution?
+    val rootExecution: WorkflowExecution?
+    val firstRunId: String?
+    val executionDuration: Duration?
+    val typedSearchAttributes: SearchAttributes
+
+    // Reified memo access
+    inline fun <reified T> memo(key: String): T?
+    inline fun <reified T> memo(key: String, genericType: Type): T?
+
+    // Experimental properties
+    @Experimental val staticSummary: String?
+    @Experimental val staticDetails: String?
+
+    // Raw response for advanced use cases
+    val rawDescription: DescribeWorkflowExecutionResponse
+
+    // Java interop
+    fun toWorkflowExecutionDescription(): WorkflowExecutionDescription
+}
+```
+
+**Usage:**
+```kotlin
+val description = handle.describe()
+println("Type: ${description.workflowType}")
+println("Status: ${description.status}")
+val config: MyConfig? = description.memo("config")
 ```
 
 ## Untyped Handles
@@ -134,21 +204,33 @@ untypedHandle.cancel()
 ```
 
 ```kotlin
-interface WorkflowHandle {
-    val workflowId: String
-    val runId: String?
+class WorkflowHandle(
+    val workflowId: String,
+    val runId: String?,
+    val execution: WorkflowExecution,
+    // ... internal state
+) {
+    suspend fun <R> result(resultClass: Class<R>): R
+    inline suspend fun <reified R> result(): R  // Reified version
 
-    suspend fun <R> result(): R
     suspend fun signal(signalName: String, vararg args: Any?)
-    fun <R> query(queryName: String, vararg args: Any?): R
-    suspend fun executeUpdate(updateName: String, vararg args: Any?): Any?
+
+    suspend fun <R> query(queryName: String, resultClass: Class<R>, vararg args: Any?): R
+    inline suspend fun <reified R> query(queryName: String, vararg args: Any?): R  // Reified version
+
+    suspend fun <R> executeUpdate(updateName: String, resultClass: Class<R>, vararg args: Any?): R
+    inline suspend fun <reified R> executeUpdate(updateName: String, vararg args: Any?): R  // Reified version
+
     suspend fun cancel()
     suspend fun terminate(reason: String? = null)
-    fun describe(): WorkflowExecutionInfo
+    suspend fun describe(): KWorkflowExecutionDescription
+
+    // Java SDK interop
+    fun toStub(): WorkflowStub
 }
 ```
 
-This pattern matches Python SDK's `WorkflowHandle` with the same method names (`signal`, `query`, `result`, `cancel`, `terminate`, `execute_update`, `start_update`).
+This pattern matches Python SDK's `WorkflowHandle` with the same method names (`signal`, `query`, `result`, `cancel`, `terminate`, `execute_update`).
 
 ## Related
 

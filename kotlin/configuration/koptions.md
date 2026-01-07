@@ -2,12 +2,16 @@
 
 For a fully idiomatic Kotlin experience, the SDK provides dedicated `KOptions` data classes that accept `kotlin.time.Duration` directly, use named parameters with default values, and follow immutable data class patterns.
 
+> **Note on Experimental Features:** Properties marked with `@Experimental` mirror experimental features in the Java SDK. These are subject to change or removal without notice. Use with caution in production code.
+
 ## KActivityOptions
 
 ```kotlin
 /**
  * Kotlin-native activity options with Duration support.
  * All timeout properties accept kotlin.time.Duration directly.
+ *
+ * IMPORTANT: At least one of startToCloseTimeout or scheduleToCloseTimeout must be specified.
  */
 data class KActivityOptions(
     val startToCloseTimeout: Duration? = null,
@@ -17,8 +21,17 @@ data class KActivityOptions(
     val taskQueue: String? = null,
     val retryOptions: KRetryOptions? = null,
     val cancellationType: ActivityCancellationType? = null,  // Java default: TRY_CANCEL
-    val disableEagerExecution: Boolean = false
-)
+    val disableEagerExecution: Boolean = false,
+    // Experimental
+    @Experimental val summary: String? = null,
+    @Experimental val priority: Priority? = null
+) {
+    init {
+        require(startToCloseTimeout != null || scheduleToCloseTimeout != null) {
+            "At least one of startToCloseTimeout or scheduleToCloseTimeout must be specified"
+        }
+    }
+}
 ```
 
 **Usage:**
@@ -49,7 +62,9 @@ data class KLocalActivityOptions(
     val startToCloseTimeout: Duration? = null,
     val scheduleToCloseTimeout: Duration? = null,
     val localRetryThreshold: Duration? = null,
-    val retryOptions: KRetryOptions? = null
+    val retryOptions: KRetryOptions? = null,
+    // Experimental
+    @Experimental val summary: String? = null
 )
 ```
 
@@ -102,9 +117,10 @@ data class KChildWorkflowOptions(
     val memo: Map<String, Any>? = null,
     val typedSearchAttributes: SearchAttributes? = null,
     val cancellationType: ChildWorkflowCancellationType? = null,
-    val staticSummary: String? = null,
-    val staticDetails: String? = null,
-    val priority: Priority? = null
+    // Experimental
+    @Experimental val staticSummary: String? = null,
+    @Experimental val staticDetails: String? = null,
+    @Experimental val priority: Priority? = null
 )
 ```
 
@@ -143,9 +159,16 @@ data class KWorkflowOptions(
     val typedSearchAttributes: SearchAttributes? = null,
     val disableEagerExecution: Boolean = true,
     val startDelay: Duration? = null,
-    val staticSummary: String? = null,
-    val staticDetails: String? = null,
-    val priority: Priority? = null
+    val contextPropagators: List<ContextPropagator>? = null,
+    // Experimental
+    @Experimental val staticSummary: String? = null,
+    @Experimental val staticDetails: String? = null,
+    @Experimental val priority: Priority? = null,
+    @Experimental val requestId: String? = null,
+    @Experimental val completionCallbacks: List<Callback>? = null,
+    @Experimental val links: List<Link>? = null,
+    @Experimental val onConflictOptions: KOnConflictOptions? = null,
+    @Experimental val versioningOverride: VersioningOverride? = null
 )
 ```
 
@@ -164,6 +187,48 @@ val result = client.executeWorkflow(
 )
 ```
 
+## KOnConflictOptions
+
+```kotlin
+/**
+ * Options for handling workflow ID conflicts when using USE_EXISTING conflict policy.
+ * These options control what gets attached to an existing workflow when a start request
+ * conflicts with it.
+ *
+ * @Experimental This API is experimental and may change.
+ */
+@Experimental
+data class KOnConflictOptions(
+    val attachRequestId: Boolean = false,
+    val attachCompletionCallbacks: Boolean = false,
+    val attachLinks: Boolean = false
+) {
+    init {
+        if (attachCompletionCallbacks) {
+            require(attachRequestId) {
+                "attachRequestId must be true if attachCompletionCallbacks is true"
+            }
+        }
+    }
+
+    fun toJavaOptions(): OnConflictOptions
+}
+```
+
+**Usage:**
+
+```kotlin
+val options = KWorkflowOptions(
+    workflowId = "my-workflow",
+    taskQueue = "my-queue",
+    workflowIdConflictPolicy = WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
+    onConflictOptions = KOnConflictOptions(
+        attachRequestId = true,
+        attachCompletionCallbacks = true
+    )
+)
+```
+
 ## KContinueAsNewOptions
 
 ```kotlin
@@ -177,7 +242,8 @@ data class KContinueAsNewOptions(
     val retryOptions: KRetryOptions? = null,
     val workflowTaskTimeout: Duration? = null,
     val memo: Map<String, Any>? = null,
-    val typedSearchAttributes: SearchAttributes? = null
+    val typedSearchAttributes: SearchAttributes? = null,
+    val contextPropagators: List<ContextPropagator>? = null
 )
 ```
 

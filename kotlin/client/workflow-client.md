@@ -113,30 +113,7 @@ val result = handle.result()  // Type inferred as String from method reference
 
 ## KWorkflowOptions
 
-```kotlin
-/**
- * Kotlin-native workflow options for client execution.
- * workflowId and taskQueue are optional - if not provided, will use defaults or generate UUID.
- */
-data class KWorkflowOptions(
-    val workflowId: String? = null,
-    val workflowIdReusePolicy: WorkflowIdReusePolicy? = null,
-    val workflowIdConflictPolicy: WorkflowIdConflictPolicy? = null,
-    val workflowRunTimeout: Duration? = null,
-    val workflowExecutionTimeout: Duration? = null,
-    val workflowTaskTimeout: Duration? = null,
-    val taskQueue: String? = null,
-    val retryOptions: KRetryOptions? = null,
-    val cronSchedule: String? = null,
-    val memo: Map<String, Any>? = null,
-    val typedSearchAttributes: SearchAttributes? = null,
-    val disableEagerExecution: Boolean = true,
-    val startDelay: Duration? = null,
-    val staticSummary: String? = null,
-    val staticDetails: String? = null,
-    val priority: Priority? = null
-)
-```
+See [KOptions](../configuration/koptions.md#kworkflowoptions) for the full `KWorkflowOptions` reference.
 
 ## Related
 

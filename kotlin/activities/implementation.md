@@ -160,12 +160,30 @@ inline fun <reified T> KActivityContext.heartbeatDetails(): T?
 
 ```kotlin
 interface KActivityInfo {
+    // Core identifiers
     val activityId: String
     val activityType: String
     val workflowId: String
+    val runId: String
+    val namespace: String
+
+    // Execution context
+    val taskQueue: String
     val attempt: Int
-    val isLocal: Boolean  // True for local activities
-    // ... other properties
+    val isLocal: Boolean
+
+    // Timing information
+    val scheduledTime: Instant?
+    val startedTime: Instant?
+    val scheduleToCloseTimeout: Duration?
+    val startToCloseTimeout: Duration?
+    val heartbeatTimeout: Duration?
+
+    // Heartbeat state
+    val heartbeatDetails: Any?
+
+    // Task token for async completion (throws for local activities)
+    val taskToken: ByteArray
 }
 ```
 
