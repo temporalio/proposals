@@ -60,6 +60,19 @@ data class KLocalActivityOptions(
 )
 ```
 
+## KActivity.context in Local Activities
+
+`KActivity.context` is available in local activities with limited functionality:
+
+| Feature | Local Activity Behavior |
+|---------|------------------------|
+| `context.info` | Works (`info.isLocal` returns `true`) |
+| `context.logger()` | Works |
+| `context.heartbeat()` | No-op (ignored) |
+| `context.heartbeatDetails<T>()` | Returns `null` |
+| `context.taskToken` | Throws `UnsupportedOperationException` |
+| `context.doNotCompleteOnReturn()` | Throws `UnsupportedOperationException` |
+
 ## Related
 
 - [Activity Definition](./definition.md) - Interface patterns
