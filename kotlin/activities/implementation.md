@@ -112,26 +112,27 @@ override suspend fun resumableProcess(data: List<Item>): ProcessResult {
 
 ## KActivity API
 
-`KActivity.context` provides access to the activity execution context:
+`KActivity.context` provides access to the activity execution context for both regular and local activities:
 
 ```kotlin
 // In activity implementation
 val context = KActivity.context
 
-// Get activity info
+// Get activity info (works for both regular and local activities)
 val info = context.info
 println("Activity ${info.activityType}, attempt ${info.attempt}")
+println("Is local: ${info.isLocal}")
 
-// Heartbeat for long-running activities
+// Heartbeat for long-running activities (no-op for local activities)
 context.heartbeat(progressDetails)
 
-// Get heartbeat details from previous attempt
+// Get heartbeat details from previous attempt (empty for local activities)
 val previousProgress = context.heartbeatDetails<Int>()
 
-// Logging - use activity logger for proper log context
-val log = context.logger()  // Uses activity type as logger name
+// Logging (works for both)
+val log = context.logger()
 
-// Mark activity for async completion
+// Regular activities only - throws UnsupportedOperationException for local activities
 context.doNotCompleteOnReturn()
 val taskToken = context.taskToken
 ```
@@ -141,10 +142,10 @@ val taskToken = context.taskToken
 ```kotlin
 interface KActivityContext {
     val info: KActivityInfo
-    fun heartbeat(details: Any? = null)
-    fun <T> heartbeatDetails(detailsClass: Class<T>): T?
-    val taskToken: ByteArray
-    fun doNotCompleteOnReturn()
+    fun heartbeat(details: Any? = null)  // No-op for local activities
+    fun <T> heartbeatDetails(detailsClass: Class<T>): T?  // Empty for local activities
+    val taskToken: ByteArray  // Throws for local activities
+    fun doNotCompleteOnReturn()  // Throws for local activities
     val isDoNotCompleteOnReturn: Boolean
     fun logger(): Logger
     fun logger(name: String): Logger
@@ -163,11 +164,12 @@ interface KActivityInfo {
     val activityType: String
     val workflowId: String
     val attempt: Int
+    val isLocal: Boolean  // True for local activities
     // ... other properties
 }
 ```
 
-> **Note:** `ActivityCompletionClient` for async activity completion uses the same API as the Java SDK.
+> **Note:** `ActivityCompletionClient` for async activity completion uses the same API as the Java SDK. Async completion is not supported for local activities.
 
 ## Related
 
