@@ -42,9 +42,7 @@ Interceptors are registered via `KWorkerFactory`:
 ```kotlin
 val factory = KWorkerFactory(client) {
     workerInterceptors = listOf(
-        LoggingInterceptor(),
-        MetricsInterceptor(),
-        TracingInterceptor()
+        LoggingInterceptor()
     )
 }
 
