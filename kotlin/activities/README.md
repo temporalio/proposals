@@ -11,8 +11,8 @@ Activities are the building blocks for interacting with external systems. The Ko
 | Document | Description |
 |----------|-------------|
 | [Definition](./definition.md) | Activity interfaces, typed and string-based execution |
-| [Implementation](./implementation.md) | Implementing activities with suspend functions |
-| [Local Activities](./local-activities.md) | Short-lived local activities, KActivity API |
+| [Implementation](./implementation.md) | Implementing activities, KActivity API, heartbeating |
+| [Local Activities](./local-activities.md) | Short-lived local activities |
 
 ## Quick Reference
 
