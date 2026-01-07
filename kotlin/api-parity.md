@@ -67,16 +67,16 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 
 | Java SDK API | Kotlin SDK |
 |--------------|------------|
-| `Workflow.getTypedSearchAttributes()` | `KWorkflow.getTypedSearchAttributes()` |
+| `Workflow.getTypedSearchAttributes()` | `KWorkflow.typedSearchAttributes` |
 | `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertTypedSearchAttributes()` |
-| `Workflow.getMemo(key, class)` | `KWorkflow.getMemo()` |
+| `Workflow.getMemo(key, class)` | `KWorkflow.memo` |
 | `Workflow.upsertMemo(...)` | `KWorkflow.upsertMemo()` |
 
 ### Workflow State & Context
 
 | Java SDK API | Kotlin SDK |
 |--------------|------------|
-| `Workflow.getLastCompletionResult(class)` | `KWorkflow.getLastCompletionResult<T>()` |
+| `Workflow.getLastCompletionResult(class)` | `KWorkflow.lastCompletionResult<T>()` |
 | `Workflow.getPreviousRunFailure()` | `KWorkflow.previousRunFailure` |
 | `Workflow.isReplaying()` | `KWorkflow.isReplaying` |
 | `Workflow.getCurrentUpdateInfo()` | `KWorkflow.currentUpdateInfo` |
@@ -91,7 +91,7 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 |--------------|------------|
 | `Workflow.sideEffect(...)` | `KWorkflow.sideEffect()` |
 | `Workflow.mutableSideEffect(...)` | `KWorkflow.mutableSideEffect()` |
-| `Workflow.getVersion(...)` | `KWorkflow.getVersion()` |
+| `Workflow.getVersion(...)` | `KWorkflow.version()` |
 | `Workflow.retry(...)` | `KWorkflow.retry()` |
 | `Workflow.randomUUID()` | `KWorkflow.randomUUID()` |
 | `Workflow.newRandom()` | `KWorkflow.newRandom()` |
@@ -116,13 +116,13 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 | `Workflow.startNexusOperation(...)` | Nexus support - deferred to separate project |
 | `Workflow.getInstance()` | Advanced use case - low priority |
 
-## KActivityInfo Gaps
+## KActivityInfo
 
-| Java ActivityInfo Field | Status |
-|------------------------|--------|
-| `workflowType` | Missing - workflow type that called the activity |
-| `currentAttemptScheduledTimestamp` | Missing - current attempt schedule time |
-| `retryOptions` | Missing - activity retry options |
+| Java ActivityInfo | Kotlin SDK |
+|-------------------|------------|
+| `getWorkflowType()` | `KActivityInfo.workflowType` |
+| `getCurrentAttemptScheduledTimestamp()` | `KActivityInfo.currentAttemptScheduledTimestamp` |
+| `getRetryOptions()` | `KActivityInfo.retryOptions` |
 
 ## Related
 
