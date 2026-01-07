@@ -74,13 +74,13 @@ Use regular activities for:
 
 ## KActivity API
 
-`KActivity.getContext()` returns a `KActivityContext`, matching Java SDK's `Activity.getExecutionContext()` pattern:
+`KActivity.context` returns a `KActivityContext`, matching Java SDK's `Activity.getExecutionContext()` pattern:
 
 ```kotlin
 // In activity implementation
 
 // Get activity context (matches Java's Activity.getExecutionContext())
-val context = KActivity.getContext()
+val context = KActivity.context
 
 // Get activity info
 val info = context.info

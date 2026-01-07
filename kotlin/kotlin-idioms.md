@@ -147,11 +147,11 @@ Nullable types replace `Optional<T>`:
 
 ```kotlin
 // KWorkflowInfo uses nullable instead of Optional
-val info = KWorkflow.getInfo()
+val info = KWorkflow.info
 val parentId: String? = info.parentWorkflowId  // null if no parent
 
 // Activity heartbeat details
-val progress: Int? = KActivity.getContext().getHeartbeatDetails()
+val progress: Int? = KActivity.context.getHeartbeatDetails()
 val startIndex = progress ?: 0  // Elvis operator for default
 ```
 

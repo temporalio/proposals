@@ -114,7 +114,7 @@ For long-running activities, use heartbeating to report progress and detect canc
 ```kotlin
 class LongRunningActivitiesImpl : LongRunningActivities {
     override suspend fun processLargeFile(filePath: String): ProcessResult {
-        val context = KActivity.getContext()
+        val context = KActivity.context
         val lines = File(filePath).readLines()
 
         lines.forEachIndexed { index, line ->
@@ -135,7 +135,7 @@ Retrieve heartbeat details from a previous failed attempt:
 
 ```kotlin
 override suspend fun resumableProcess(data: List<Item>): ProcessResult {
-    val context = KActivity.getContext()
+    val context = KActivity.context
 
     // Get progress from previous attempt if available
     val startIndex: Int = context.getHeartbeatDetails() ?: 0

@@ -90,7 +90,7 @@ class BatchProcessorImpl : BatchProcessor {
 override suspend fun execute(state: WorkflowState) {
     while (true) {
         // Check if history is getting too large
-        if (KWorkflow.getInfo().isContinueAsNewSuggested) {
+        if (KWorkflow.info.isContinueAsNewSuggested) {
             KWorkflow.continueAsNew(state)
         }
 

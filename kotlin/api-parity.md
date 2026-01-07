@@ -76,14 +76,14 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 
 | Java SDK API | Kotlin SDK |
 |--------------|------------|
-| `Workflow.getLastCompletionResult(class)` | `KWorkflow.getLastCompletionResult()` |
-| `Workflow.getPreviousRunFailure()` | `KWorkflow.getPreviousRunFailure()` |
-| `Workflow.isReplaying()` | `KWorkflow.isReplaying()` |
-| `Workflow.getCurrentUpdateInfo()` | `KWorkflow.getCurrentUpdateInfo()` |
-| `Workflow.isEveryHandlerFinished()` | `KWorkflow.isEveryHandlerFinished()` |
-| `Workflow.setCurrentDetails(...)` | `KWorkflow.setCurrentDetails()` |
-| `Workflow.getCurrentDetails()` | `KWorkflow.getCurrentDetails()` |
-| `Workflow.getMetricsScope()` | `KWorkflow.getMetricsScope()` |
+| `Workflow.getLastCompletionResult(class)` | `KWorkflow.getLastCompletionResult<T>()` |
+| `Workflow.getPreviousRunFailure()` | `KWorkflow.previousRunFailure` |
+| `Workflow.isReplaying()` | `KWorkflow.isReplaying` |
+| `Workflow.getCurrentUpdateInfo()` | `KWorkflow.currentUpdateInfo` |
+| `Workflow.isEveryHandlerFinished()` | `KWorkflow.isEveryHandlerFinished` |
+| `Workflow.setCurrentDetails(...)` | `KWorkflow.currentDetails = ...` |
+| `Workflow.getCurrentDetails()` | `KWorkflow.currentDetails` |
+| `Workflow.getMetricsScope()` | `KWorkflow.metricsScope` |
 
 ### Side Effects & Utilities
 

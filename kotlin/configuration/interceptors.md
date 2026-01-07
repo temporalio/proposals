@@ -343,7 +343,7 @@ private class LoggingActivityInterceptor(
 ) : KActivityInboundCallsInterceptorBase(next) {
 
     override suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput {
-        val info = KActivity.getInfo()
+        val info = KActivity.info
         val log = KActivity.logger()
 
         log.info("Activity ${info.activityType} started")
