@@ -9,9 +9,7 @@ val service = WorkflowServiceStubs.newLocalServiceStubs()
 val client = KWorkflowClient(service) { ... }
 
 // KWorkerFactory automatically enables Kotlin coroutine support
-val factory = KWorkerFactory(client) {
-    maxWorkflowThreadCount = 800
-}
+val factory = KWorkerFactory(client)
 
 val worker: KWorker = factory.newWorker("task-queue") {
     maxConcurrentActivityExecutionSize = 100
@@ -132,38 +130,6 @@ worker.registerWorkflowImplementationTypes(
 
 // Both run on the same worker - execution model is per-workflow-instance
 factory.start()
-```
-
-## Complete Worker Example
-
-```kotlin
-fun main() = runBlocking {
-    // Initialize services (could use DI framework)
-    val inventoryService = InventoryServiceImpl()
-    val paymentService = PaymentServiceImpl()
-    val shippingService = ShippingServiceImpl()
-    val notificationService = NotificationServiceImpl()
-
-    val service = WorkflowServiceStubs.newLocalServiceStubs()
-
-    // Create KWorkflowClient for Kotlin-specific APIs
-    val client = KWorkflowClient(service)
-
-    // KWorkerFactory automatically enables Kotlin coroutine support
-    val factory = KWorkerFactory(client)
-    val worker: KWorker = factory.newWorker("orders")
-
-    // Plugin handles suspend functions automatically
-    worker.registerWorkflowImplementationTypes(OrderWorkflowImpl::class)
-    worker.registerActivitiesImplementations(
-        OrderActivitiesImpl(inventoryService, paymentService, shippingService, notificationService)
-    )
-
-    factory.start()
-
-    // Keep running until shutdown signal
-    // ...
-}
 ```
 
 ## Related
