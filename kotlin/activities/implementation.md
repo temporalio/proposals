@@ -1,109 +1,70 @@
 # Activity Implementation
 
-There are two approaches for activity implementation, depending on whether you need Java interoperability.
+Activity interfaces can have both suspend and non-suspend methods. The worker handles both automatically.
 
-## Option A: Pure Kotlin (Recommended)
-
-For pure Kotlin codebases, define interfaces with `suspend` methods directly:
+## Defining Activities
 
 ```kotlin
-@ActivityInterface
-interface GreetingActivities {
-    @ActivityMethod
-    suspend fun composeGreeting(greeting: String, name: String): String
-
-    @ActivityMethod
-    suspend fun sendEmail(email: Email): SendResult
-}
-
-class GreetingActivitiesImpl(
-    private val emailService: EmailService
-) : GreetingActivities {
-
-    override suspend fun composeGreeting(greeting: String, name: String): String {
-        // Full coroutine support - use withContext, async I/O, etc.
-        return withContext(Dispatchers.IO) {
-            "$greeting, $name!"
-        }
-    }
-
-    override suspend fun sendEmail(email: Email): SendResult {
-        // Suspend functions for async I/O
-        return emailService.send(email)
-    }
-}
-
-// In workflow - direct method reference, no stub needed
-val greeting = KWorkflow.executeActivity(
-    GreetingActivities::composeGreeting,
-    KActivityOptions(startToCloseTimeout = 30.seconds),
-    "Hello", "World"
-)
-```
-
-## Option B: Java Interoperability (Parallel Interface Pattern)
-
-When you need to share activity interfaces with Java code (e.g., activities implemented in Java, or interfaces defined in a shared Java module), use the parallel interface pattern:
-
-```kotlin
-// Interface for workflow calls - non-suspend for Java compatibility
-// This interface can be defined in Java or Kotlin
 @ActivityInterface
 interface OrderActivities {
+    // Suspend method - uses coroutines
+    @ActivityMethod
+    suspend fun chargePayment(order: Order): PaymentResult
+
+    // Non-suspend method - runs on thread pool
     @ActivityMethod
     fun validateOrder(order: Order): Boolean
-
-    @ActivityMethod
-    fun chargePayment(order: Order): PaymentResult
 }
 
-// Parallel suspend interface for Kotlin implementation
-// Linked to the original interface via annotation
-@KActivityImpl(activities = OrderActivities::class)
-interface OrderActivitiesSuspend {
-    suspend fun validateOrder(order: Order): Boolean
-    suspend fun chargePayment(order: Order): PaymentResult
-}
-
-// Kotlin implementation uses the suspend interface
 class OrderActivitiesImpl(
     private val paymentService: PaymentService
-) : OrderActivitiesSuspend {
-
-    override suspend fun validateOrder(order: Order): Boolean {
-        return order.items.isNotEmpty() && order.total > 0
-    }
+) : OrderActivities {
 
     override suspend fun chargePayment(order: Order): PaymentResult {
-        // Full suspend support for async operations
+        // Full coroutine support - use withContext, async I/O, etc.
         return paymentService.charge(order)
     }
-}
 
-// In workflow - use the non-suspend interface for method references
+    override fun validateOrder(order: Order): Boolean {
+        return order.items.isNotEmpty() && order.total > 0
+    }
+}
+```
+
+## Calling Activities from Workflows
+
+```kotlin
+// Kotlin workflows use method references
 val isValid = KWorkflow.executeActivity(
     OrderActivities::validateOrder,
     KActivityOptions(startToCloseTimeout = 10.seconds),
     order
 )
+
+val payment = KWorkflow.executeActivity(
+    OrderActivities::chargePayment,
+    KActivityOptions(startToCloseTimeout = 30.seconds),
+    order
+)
 ```
 
-## When to Use Which
+## Java Interoperability
 
-| Scenario | Approach |
-|----------|----------|
-| Pure Kotlin codebase | Option A - suspend interfaces |
-| Calling Java-defined activities | Option A works (executeActivity handles it) |
-| Kotlin activities with Java-defined interface | Option B - parallel interface |
-| Shared interface library with Java | Option B - parallel interface |
+Java workflows call Kotlin activities using string-based activity names:
+
+```java
+// Java workflow calling Kotlin activity
+String result = Workflow.newActivityStub(ActivityOptions.newBuilder()
+        .setStartToCloseTimeout(Duration.ofSeconds(30))
+        .build())
+    .execute("chargePayment", PaymentResult.class, order);
+```
+
+This mirrors how Java workflows call Kotlin workflows - using string names for cross-language interop.
 
 ## Registering Activities
 
 ```kotlin
-// Option A: Register suspend implementation directly
-worker.registerActivitiesImplementations(GreetingActivitiesImpl(emailService))
-
-// Option B: Register implementation - binding inferred from @KActivityImpl annotation
 worker.registerActivitiesImplementations(OrderActivitiesImpl(paymentService))
 ```
 
