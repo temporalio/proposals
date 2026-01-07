@@ -1,20 +1,41 @@
 # Advanced Client Operations
 
+Both SignalWithStart and UpdateWithStart use `KWithStartWorkflowOperation` for consistency.
+
+## KWithStartWorkflowOperation
+
+```kotlin
+/**
+ * Represents a workflow start operation for use with signal-with-start or update-with-start.
+ * Created via KWorkflowClient.withStartWorkflowOperation().
+ */
+class KWithStartWorkflowOperation<T, R> {
+    /** The workflow ID from the options. */
+    val workflowId: String
+
+    /** Suspends until the workflow completes and returns its result. */
+    suspend fun result(): R
+}
+```
+
 ## SignalWithStart
 
 Atomically start a workflow and send a signal. If the workflow already exists, only the signal is sent:
 
 ```kotlin
-// Returns KTypedWorkflowHandle<OrderWorkflow, OrderResult> - result type captured from method reference
-val handle = client.signalWithStart(
-    workflow = OrderWorkflow::processOrder,
-    options = KWorkflowOptions(
+val startOp = client.withStartWorkflowOperation(
+    OrderWorkflow::processOrder,
+    KWorkflowOptions(
         workflowId = "order-123",
         taskQueue = "orders"
     ),
-    workflowArg = order,
-    signal = OrderWorkflow::updatePriority,
-    signalArg = Priority.HIGH
+    order
+)
+
+val handle = client.signalWithStart(
+    startOp,
+    OrderWorkflow::updatePriority,
+    Priority.HIGH
 )
 
 // Can use typed handle for queries/signals
@@ -28,26 +49,13 @@ Atomically start a workflow and send an update. Behavior depends on `workflowIdC
 - `USE_EXISTING`: sends update to existing workflow
 - `FAIL`: throws exception if workflow already exists
 
-### Supporting Types
+### KUpdateWithStartOptions
 
 ```kotlin
 /**
- * Represents a workflow start operation for use with update-with-start.
- * Created via KWorkflowClient.withStartWorkflowOperation().
- */
-class KWithStartWorkflowOperation<T, R> {
-    /** Suspends until the workflow completes and returns its result. */
-    suspend fun result(): R
-}
-
-/**
  * Options for update-with-start operations.
- * Bundles the start operation with update-specific options.
  */
-data class KUpdateWithStartOptions<T, R, UR>(
-    /** The workflow start operation (required) */
-    val startWorkflowOperation: KWithStartWorkflowOperation<T, R>,
-
+data class KUpdateWithStartOptions(
     /** Stage to wait for before returning (required for startUpdateWithStart) */
     val waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
 
@@ -59,26 +67,25 @@ data class KUpdateWithStartOptions<T, R, UR>(
 ### Execute and Wait for Completion
 
 ```kotlin
-// Step 1: Create the workflow start operation
 val startOp = client.withStartWorkflowOperation(
     OrderWorkflow::processOrder,
     KWorkflowOptions(
         workflowId = "order-123",
         taskQueue = "orders",
-        workflowIdConflictPolicy = WorkflowIdConflictPolicy.USE_EXISTING  // Required
+        workflowIdConflictPolicy = WorkflowIdConflictPolicy.USE_EXISTING
     ),
     order
 )
 
-// Step 2: Execute update with start (waits for update completion)
+// Execute update with start (waits for update completion)
 val updateResult: Boolean = client.executeUpdateWithStart(
-    OrderWorkflow::addItem,  // Must be suspend function
-    KUpdateWithStartOptions(startWorkflowOperation = startOp),
+    startOp,
+    OrderWorkflow::addItem,
+    KUpdateWithStartOptions(),
     newItem
 )
-println("Item added: $updateResult")
 
-// Step 3: Access workflow result if needed (suspends until workflow completes)
+// Access workflow result if needed
 val workflowResult: OrderResult = startOp.result()
 ```
 
@@ -97,11 +104,9 @@ val startOp = client.withStartWorkflowOperation(
 
 // Start update and return immediately after it's accepted
 val updateHandle: KUpdateHandle<Boolean> = client.startUpdateWithStart(
+    startOp,
     OrderWorkflow::addItem,
-    KUpdateWithStartOptions(
-        startWorkflowOperation = startOp,
-        waitForStage = WorkflowUpdateStage.ACCEPTED
-    ),
+    KUpdateWithStartOptions(waitForStage = WorkflowUpdateStage.ACCEPTED),
     newItem
 )
 
@@ -109,42 +114,12 @@ val updateHandle: KUpdateHandle<Boolean> = client.startUpdateWithStart(
 val result = updateHandle.result()
 ```
 
-### No Arguments
-
-```kotlin
-val startOp = client.withStartWorkflowOperation(
-    GreetingWorkflow::greet,
-    KWorkflowOptions(
-        workflowId = "greeting-789",
-        taskQueue = "greetings",
-        workflowIdConflictPolicy = WorkflowIdConflictPolicy.USE_EXISTING
-    )
-)
-
-val status: String = client.executeUpdateWithStart(
-    GreetingWorkflow::getStatus,  // suspend fun getStatus(): String
-    KUpdateWithStartOptions(startWorkflowOperation = startOp)
-)
-```
-
 ## KWorkflowClient API for Advanced Operations
 
 ```kotlin
 class KWorkflowClient {
     /**
-     * Atomically start a workflow and send a signal.
-     * If the workflow already exists, only the signal is sent.
-     */
-    suspend fun <T, A1, R, SA1> signalWithStart(
-        workflow: KFunction2<T, A1, R>,
-        options: KWorkflowOptions,
-        workflowArg: A1,
-        signal: KFunction2<T, SA1, *>,
-        signalArg: SA1
-    ): KTypedWorkflowHandle<T, R>
-
-    /**
-     * Create a workflow start operation for use with update-with-start.
+     * Create a workflow start operation for use with signal-with-start or update-with-start.
      */
     fun <T, R> withStartWorkflowOperation(
         workflow: KFunction1<T, R>,
@@ -158,33 +133,47 @@ class KWorkflowClient {
     ): KWithStartWorkflowOperation<T, R>
 
     /**
-     * Atomically start a workflow and send an update, returning immediately after
-     * the update reaches the specified wait stage.
+     * Atomically start a workflow and send a signal.
+     * If the workflow already exists, only the signal is sent.
      */
-    suspend fun <T, R, UR> startUpdateWithStart(
-        update: KSuspendFunction1<T, UR>,
-        options: KUpdateWithStartOptions<T, R, UR>
-    ): KUpdateHandle<UR>
-
-    suspend fun <T, R, UA1, UR> startUpdateWithStart(
-        update: KSuspendFunction2<T, UA1, UR>,
-        options: KUpdateWithStartOptions<T, R, UR>,
-        updateArg1: UA1
-    ): KUpdateHandle<UR>
+    suspend fun <T, R, SA1> signalWithStart(
+        startOp: KWithStartWorkflowOperation<T, R>,
+        signal: KFunction2<T, SA1, *>,
+        signalArg: SA1
+    ): KTypedWorkflowHandle<T, R>
 
     /**
      * Atomically start a workflow and execute an update, waiting for completion.
      */
     suspend fun <T, R, UR> executeUpdateWithStart(
+        startOp: KWithStartWorkflowOperation<T, R>,
         update: KSuspendFunction1<T, UR>,
-        options: KUpdateWithStartOptions<T, R, UR>
+        options: KUpdateWithStartOptions = KUpdateWithStartOptions()
     ): UR
 
     suspend fun <T, R, UA1, UR> executeUpdateWithStart(
+        startOp: KWithStartWorkflowOperation<T, R>,
         update: KSuspendFunction2<T, UA1, UR>,
-        options: KUpdateWithStartOptions<T, R, UR>,
-        updateArg1: UA1
+        options: KUpdateWithStartOptions = KUpdateWithStartOptions(),
+        updateArg: UA1
     ): UR
+
+    /**
+     * Atomically start a workflow and send an update, returning immediately after
+     * the update reaches the specified wait stage.
+     */
+    suspend fun <T, R, UR> startUpdateWithStart(
+        startOp: KWithStartWorkflowOperation<T, R>,
+        update: KSuspendFunction1<T, UR>,
+        options: KUpdateWithStartOptions = KUpdateWithStartOptions()
+    ): KUpdateHandle<UR>
+
+    suspend fun <T, R, UA1, UR> startUpdateWithStart(
+        startOp: KWithStartWorkflowOperation<T, R>,
+        update: KSuspendFunction2<T, UA1, UR>,
+        options: KUpdateWithStartOptions = KUpdateWithStartOptions(),
+        updateArg: UA1
+    ): KUpdateHandle<UR>
 }
 ```
 
