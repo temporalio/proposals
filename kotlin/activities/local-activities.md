@@ -60,18 +60,6 @@ data class KLocalActivityOptions(
 )
 ```
 
-## When to Use Local Activities
-
-Local activities are best for:
-- Short-lived operations (< 10 seconds)
-- Operations that don't need to survive worker restarts
-- High-frequency operations where scheduling overhead matters
-
-Use regular activities for:
-- Long-running operations
-- Operations that need heartbeating
-- Operations that must survive worker failures
-
 ## Related
 
 - [Activity Definition](./definition.md) - Interface patterns
