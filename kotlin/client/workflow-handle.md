@@ -21,6 +21,15 @@ val result = handle.result<OrderResult>()
 // Updates - execute and wait for result
 val updateResult = handle.executeUpdate(OrderWorkflow::addItem, newItem)
 
+// Updates - start and get handle (don't wait for completion)
+val updateHandle = handle.startUpdate(
+    OrderWorkflow::addItem,
+    waitForStage = WorkflowUpdateStage.ACCEPTED,
+    arg = newItem
+)
+// ... do other work ...
+val result = updateHandle.result()  // Wait for result when needed
+
 // Cancel or terminate
 handle.cancel()
 handle.terminate("No longer needed")
@@ -68,6 +77,29 @@ open class KWorkflowHandle<T>(
     // Updates - execute and wait for result (suspend functions)
     suspend fun <R> executeUpdate(method: KSuspendFunction1<T, R>): R
     suspend fun <R, A1> executeUpdate(method: KSuspendFunction2<T, A1, R>, arg: A1): R
+    suspend fun <R, A1, A2> executeUpdate(method: KSuspendFunction3<T, A1, A2, R>, arg1: A1, arg2: A2): R
+    // ... up to 6 arguments
+
+    // Updates - start and return handle without waiting for completion
+    suspend fun <R> startUpdate(
+        method: KSuspendFunction1<T, R>,
+        waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+        updateId: String? = null
+    ): KUpdateHandle<R>
+    suspend fun <R, A1> startUpdate(
+        method: KSuspendFunction2<T, A1, R>,
+        waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+        updateId: String? = null,
+        arg: A1
+    ): KUpdateHandle<R>
+    suspend fun <R, A1, A2> startUpdate(
+        method: KSuspendFunction3<T, A1, A2, R>,
+        waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+        updateId: String? = null,
+        arg1: A1,
+        arg2: A2
+    ): KUpdateHandle<R>
+    // ... up to 6 arguments
 
     // Get handle for existing update by ID
     fun <R> getUpdateHandle(updateId: String, resultClass: Class<R>): KUpdateHandle<R>
@@ -199,6 +231,10 @@ untypedHandle.signal("updatePriority", Priority.HIGH)
 val status = untypedHandle.query<OrderStatus>("status")
 val result = untypedHandle.result<OrderResult>()
 
+// Updates by name
+val updateResult = untypedHandle.executeUpdate<Boolean>("addItem", newItem)
+val updateHandle = untypedHandle.startUpdate<Boolean>("addItem", arg = newItem)
+
 // Cancel/terminate work the same
 untypedHandle.cancel()
 ```
@@ -220,6 +256,20 @@ class WorkflowHandle(
 
     suspend fun <R> executeUpdate(updateName: String, resultClass: Class<R>, vararg args: Any?): R
     inline suspend fun <reified R> executeUpdate(updateName: String, vararg args: Any?): R  // Reified version
+
+    suspend fun <R> startUpdate(
+        updateName: String,
+        resultClass: Class<R>,
+        waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+        updateId: String? = null,
+        vararg args: Any?
+    ): KUpdateHandle<R>
+    inline suspend fun <reified R> startUpdate(
+        updateName: String,
+        waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+        updateId: String? = null,
+        vararg args: Any?
+    ): KUpdateHandle<R>  // Reified version
 
     suspend fun cancel()
     suspend fun terminate(reason: String? = null)

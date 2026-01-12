@@ -13,6 +13,7 @@ Kotlin workflows use coroutines and suspend functions for an idiomatic async exp
 | [Definition](./definition.md) | Workflow interfaces, suspend methods, Java interop patterns |
 | [Signals, Queries & Updates](./signals-queries.md) | Communication with running workflows |
 | [Child Workflows](./child-workflows.md) | Orchestrating child workflow execution |
+| [External Workflows](./external-workflows.md) | Signal or cancel workflows in other executions |
 | [Timers & Parallel Execution](./timers-parallel.md) | Delays, async patterns, await conditions |
 | [Cancellation](./cancellation.md) | Handling cancellation, cleanup with NonCancellable |
 | [Continue-As-New](./continue-as-new.md) | Long-running workflow patterns |

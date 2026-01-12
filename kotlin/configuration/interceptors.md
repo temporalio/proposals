@@ -96,10 +96,28 @@ open class KWorkflowInboundCallsInterceptorBase(
 ```kotlin
 data class KWorkflowInput(val header: Header, val arguments: Array<Any?>)
 data class KWorkflowOutput(val result: Any?)
-data class KSignalInput(val signalName: String, val arguments: Array<Any?>, val eventId: Long, val header: Header)
-data class KQueryInput(val queryName: String, val arguments: Array<Any?>, val header: Header)
+
+// Dynamic handlers can use encodedValues to decode raw payloads
+data class KSignalInput(
+    val signalName: String,
+    val arguments: Array<Any?>,
+    val encodedValues: KEncodedValues,
+    val eventId: Long,
+    val header: Header
+)
+data class KQueryInput(
+    val queryName: String,
+    val arguments: Array<Any?>,
+    val encodedValues: KEncodedValues,
+    val header: Header
+)
 data class KQueryOutput(val result: Any?)
-data class KUpdateInput(val updateName: String, val arguments: Array<Any?>, val header: Header)
+data class KUpdateInput(
+    val updateName: String,
+    val arguments: Array<Any?>,
+    val encodedValues: KEncodedValues,
+    val header: Header
+)
 data class KUpdateOutput(val result: Any?)
 ```
 

@@ -56,7 +56,10 @@ data class KLocalActivityOptions(
     val startToCloseTimeout: Duration? = null,
     val scheduleToCloseTimeout: Duration? = null,
     val localRetryThreshold: Duration? = null,
-    val retryOptions: KRetryOptions? = null
+    val retryOptions: KRetryOptions? = null,
+    // Experimental
+    @Experimental val summary: String? = null,
+    @Experimental val priority: Priority? = null
 )
 ```
 

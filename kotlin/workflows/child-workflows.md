@@ -199,10 +199,11 @@ KChildWorkflowOptions(
     cancellationType = ChildWorkflowCancellationType.WAIT_CANCELLATION_COMPLETED  // Optional
 )
 
-// Options are optional - use default KChildWorkflowOptions() when not specified
+// Minimal options - just use defaults
 val result = KWorkflow.executeChildWorkflow(
     ChildWorkflow::processData,
-    inputData  // No options needed for simple cases
+    KChildWorkflowOptions(),
+    inputData
 )
 ```
 
@@ -210,9 +211,10 @@ val result = KWorkflow.executeChildWorkflow(
 
 ## Related
 
+- [External Workflows](./external-workflows.md) - Signal/cancel workflows in other executions
 - [Cancellation](./cancellation.md) - How cancellation propagates to child workflows
 - [Workflow Definition](./definition.md) - Basic workflow patterns
 
 ---
 
-**Next:** [Timers & Parallel Execution](./timers-parallel.md)
+**Next:** [External Workflows](./external-workflows.md)

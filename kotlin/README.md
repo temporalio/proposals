@@ -72,6 +72,7 @@ This approach provides:
 
 ### Reference
 
+- **[Testing](./testing.md)** - Unit testing, mocking activities, time skipping
 - **[Migration Guide](./migration.md)** - Migrating from Java SDK
 - **[API Parity](./api-parity.md)** - Java SDK comparison, gaps, not-needed APIs
 

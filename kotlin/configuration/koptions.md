@@ -64,7 +64,8 @@ data class KLocalActivityOptions(
     val localRetryThreshold: Duration? = null,
     val retryOptions: KRetryOptions? = null,
     // Experimental
-    @Experimental val summary: String? = null
+    @Experimental val summary: String? = null,
+    @Experimental val priority: Priority? = null
 )
 ```
 
@@ -92,9 +93,11 @@ data class KRetryOptions(
     val backoffCoefficient: Double = 2.0,
     val maximumInterval: Duration? = null,
     val maximumAttempts: Int = 0,  // 0 = unlimited
-    val doNotRetry: List<String> = emptyList()
+    val doNotRetry: List<String> = emptyList()  // Exception type names
 )
 ```
+
+> **Note:** `doNotRetry` contains fully-qualified exception class names (e.g., `"java.lang.IllegalArgumentException"`, `"com.example.BusinessException"`). Activities throwing these exceptions will not be retried.
 
 ## KChildWorkflowOptions
 

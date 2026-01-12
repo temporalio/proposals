@@ -108,6 +108,15 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 | N/A (new in Kotlin SDK) | `KWorkflow.registerUpdateHandler()` |
 | N/A (new in Kotlin SDK) | `KWorkflow.registerDynamicUpdateValidator()` |
 
+## APIs Identical to Java SDK
+
+The following areas use the same API and behavior as the Java SDK:
+
+| Area | Notes |
+|------|-------|
+| Error Handling | `ApplicationFailure`, exception types (`ActivityFailure`, `ChildWorkflowFailure`, `TimeoutFailure`, etc.), retry behavior |
+| Workflow Info | `KWorkflow.info` provides property-style access to Java `WorkflowInfo` (same properties: `workflowId`, `runId`, `parentWorkflowId`, `attempt`, `taskQueue`, etc.) |
+
 ## Remaining Gaps
 
 | Java SDK API | Status |
@@ -115,6 +124,30 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 | `Workflow.newNexusServiceStub(...)` | Nexus support - deferred to separate project |
 | `Workflow.startNexusOperation(...)` | Nexus support - deferred to separate project |
 | `Workflow.getInstance()` | Advanced use case - low priority |
+
+## KWorkflowInfo
+
+`KWorkflow.info` returns `KWorkflowInfo`, a property-style wrapper around Java's `WorkflowInfo`:
+
+| Java WorkflowInfo | Kotlin SDK |
+|-------------------|------------|
+| `getWorkflowId()` | `KWorkflowInfo.workflowId` |
+| `getRunId()` | `KWorkflowInfo.runId` |
+| `getWorkflowType()` | `KWorkflowInfo.workflowType` |
+| `getTaskQueue()` | `KWorkflowInfo.taskQueue` |
+| `getNamespace()` | `KWorkflowInfo.namespace` |
+| `getAttempt()` | `KWorkflowInfo.attempt` |
+| `getParentWorkflowId()` | `KWorkflowInfo.parentWorkflowId: String?` |
+| `getParentRunId()` | `KWorkflowInfo.parentRunId: String?` |
+| `getContinuedExecutionRunId()` | `KWorkflowInfo.continuedExecutionRunId: String?` |
+| `getCronSchedule()` | `KWorkflowInfo.cronSchedule: String?` |
+| `getSearchAttributes()` | `KWorkflowInfo.typedSearchAttributes` |
+| `getHistoryLength()` | `KWorkflowInfo.historyLength` |
+| `isContinueAsNewSuggested()` | `KWorkflowInfo.isContinueAsNewSuggested` |
+| `getFirstExecutionRunId()` | `KWorkflowInfo.firstExecutionRunId` |
+| `getOriginalExecutionRunId()` | `KWorkflowInfo.originalExecutionRunId` |
+| `getCurrentBuildId()` | `KWorkflowInfo.currentBuildId: String?` |
+| `getPriority()` | `@Experimental KWorkflowInfo.priority` |
 
 ## KActivityInfo
 

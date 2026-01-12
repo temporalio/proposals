@@ -49,9 +49,10 @@
 - ✅ `KChildWorkflowHandle<T, R>` interface (signal, cancel, result)
 - ✅ Optional `KChildWorkflowOptions` (uses defaults when omitted)
 
-### 2.3 Update Enhancements
-- Dynamic update handler registration (`registerUpdateHandler`, `registerDynamicUpdateHandler`) - TODO
+### 2.3 Update Enhancements ✅
+- ✅ Dynamic update handler registration (`registerUpdateHandler`, `registerDynamicUpdateHandler`)
 - ✅ Update validator support (`@UpdateValidatorMethod`) - Uses Java SDK annotations
+- ✅ `KEncodedValues` for dynamic handlers to access raw payloads
 
 ### 2.4 Client API ✅
 - ✅ `KWorkflowClient` - Kotlin client with suspend functions and DSL constructor
@@ -89,7 +90,7 @@
 
 ---
 
-## Phase 3: Testing Framework & Interceptors
+## Phase 3: Testing Framework & Interceptors ✅ COMPLETE
 
 ### 3.1 Test Environment ✅ COMPLETE
 - ✅ `KTestActivityEnvironment` - typed executeActivity/executeLocalActivity, suspend activity support, heartbeat/cancellation testing
@@ -107,13 +108,18 @@
 - ✅ Support for both regular and suspend activity mocks
 - ✅ Integration with `KTestWorkflowExtension` for automatic mock registration
 
-### 3.3 Interceptors (Design Complete - see [interceptors.md](../configuration/interceptors.md))
-- `KWorkerInterceptor` interface with `KWorkerInterceptorBase`
-- `KWorkflowInboundCallsInterceptor` with suspend functions and input/output data classes
-- `KWorkflowOutboundCallsInterceptor` with full API (activities, child workflows, timers, side effects, etc.)
-- `KActivityInboundCallsInterceptor` with suspend support
-- Base classes for convenience (`*Base` classes)
-- Example: logging interceptor
+### 3.3 Interceptors ✅ COMPLETE (see [interceptors.md](../configuration/interceptors.md))
+- ✅ `KWorkerInterceptor` interface with `KWorkerInterceptorBase`
+- ✅ `KWorkflowInboundCallsInterceptor` with suspend functions and input/output data classes
+- ✅ `KWorkflowOutboundCallsInterceptor` with full API (activities, child workflows, timers, side effects, etc.)
+- ✅ `KActivityInboundCallsInterceptor` with suspend support
+- ✅ Base classes for convenience (`*Base` classes)
+- ✅ `RootWorkflowOutboundCallsInterceptor` - terminal outbound interceptor implementation
+- ✅ `WorkflowContextElement` - ThreadContextElement for workflow context propagation to interceptors
+- ✅ `KEncodedValues` for dynamic handlers to access raw payloads
+- ✅ Interceptor chain integration in `KotlinReplayWorkflow`
+- ✅ KWorkflow static methods routed through outbound interceptor (newRandom, randomUUID, currentTimeMillis)
+- ✅ Integration test: `TracingInterceptorIntegrationTest`
 
 ---
 
