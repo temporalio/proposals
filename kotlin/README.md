@@ -75,6 +75,7 @@ This approach provides:
 - **[Testing](./testing.md)** - Unit testing, mocking activities, time skipping
 - **[Migration Guide](./migration.md)** - Migrating from Java SDK
 - **[API Parity](./api-parity.md)** - Java SDK comparison, gaps, not-needed APIs
+- **[Open Questions](./open-questions.md)** - API design decisions pending discussion
 
 ## Quick Start
 

@@ -132,7 +132,7 @@ val classLog = KWorkflow.logger(MyWorkflowImpl::class.java)
 
 ### Interfaceless Workflow Definition
 
-**Status:** Decision needed
+**Status:** Decision needed | [Full discussion](../open-questions.md#interfaceless-workflows-and-activities)
 
 Currently, workflows require interface definitions:
 

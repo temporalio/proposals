@@ -172,7 +172,7 @@ object KWorkflow {
 
 ### Interfaceless Activity Definition
 
-**Status:** Decision needed
+**Status:** Decision needed | [Full discussion](../open-questions.md#interfaceless-workflows-and-activities)
 
 Currently, activities require interface definitions:
 
