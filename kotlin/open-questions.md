@@ -411,3 +411,96 @@ class KWorkflowClient {
 ### Related Sections
 
 - [Activity Definition](./activities/definition.md#type-safe-activity-arguments)
+
+---
+
+## Data Classes vs Builder+DSL for Options/Config Classes
+
+**Status:** Decision needed
+
+### Problem Statement
+
+Data classes are convenient for options/config classes due to named parameters and `copy()`:
+
+```kotlin
+data class KActivityOptions(
+    val startToCloseTimeout: Duration? = null,
+    val scheduleToCloseTimeout: Duration? = null,
+    // ...
+)
+
+val options = KActivityOptions(startToCloseTimeout = 10.minutes)
+```
+
+However, the Kotlin team doesn't recommend using data classes as part of library APIs because adding a new field (even an optional one) is always a **binary breaking change**. This happens because:
+
+- Adding a new property requires a new constructor parameter
+- Even with default values, this changes the constructor signature
+- Existing compiled code calling the old constructor breaks at runtime
+- The auto-generated `copy()` method has the same issue
+
+Libraries like Jackson started with constructors with named parameters and later deprecated them in favor of a DSL/builder combo.
+
+### Proposed Alternative: Builder + DSL Pattern
+
+```kotlin
+class KActivityOptions
+private constructor(builder: Builder) {
+    val startToCloseTimeout: Duration?
+    val scheduleToCloseTimeout: Duration?
+    // ...
+
+    init {
+        startToCloseTimeout = builder.startToCloseTimeout
+        scheduleToCloseTimeout = builder.scheduleToCloseTimeout
+        // ...
+    }
+
+    class Builder {
+        var startToCloseTimeout: Duration? = null
+        var scheduleToCloseTimeout: Duration? = null
+        // ...
+
+        fun build(): KActivityOptions {
+            require(startToCloseTimeout != null || scheduleToCloseTimeout != null) {
+                "At least one of startToCloseTimeout or scheduleToCloseTimeout must be specified"
+            }
+            return KActivityOptions(this)
+        }
+    }
+}
+
+inline fun KActivityOptions(init: KActivityOptions.Builder.() -> Unit): KActivityOptions {
+    return KActivityOptions.Builder().apply(init).build()
+}
+```
+
+This gives an ABI-safe equivalent for data class named constructor parameters:
+
+```kotlin
+val options = KActivityOptions {
+    startToCloseTimeout = 10.minutes
+    // ...
+}
+```
+
+### Benefits of Builder+DSL
+
+- Adding new optional properties to the `Builder` class is binary compatible
+- The inline factory function provides the same ergonomic DSL syntax as data class constructors
+- Validation can happen in `build()` before object construction
+- `copy` can be implemented safely if needed (via a `toBuilder()` method)
+
+### Trade-offs
+
+- More boilerplate code to write and maintain
+- Loses data class conveniences (`equals`, `hashCode`, `toString`, `componentN`)
+  - Though these can be manually implemented or generated
+- Slightly more complex internal implementation
+
+### Precedent
+
+This pattern is used by:
+- kotlinx.serialization
+- Ktor
+- Jackson (migrated from named parameters to this pattern)
