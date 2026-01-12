@@ -118,21 +118,72 @@ KWorkflow.executeActivity(
 
 Use typed argument classes (`KArgs`) to provide compile-time type safety:
 
-**Single argument - passed directly:**
+**Activities:**
 ```kotlin
+// 0 arguments - just method reference and options
+KWorkflow.executeActivity(
+    GreetingActivities::getDefaultGreeting,
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+
+// 1 argument - passed directly
 KWorkflow.executeActivity(
     GreetingActivities::greet,
     "World",
     KActivityOptions(startToCloseTimeout = 30.seconds)
 )
-```
 
-**Multiple arguments - use KArgs:**
-```kotlin
+// Multiple arguments - use kargs()
 KWorkflow.executeActivity(
     GreetingActivities::composeGreeting,
     kargs("Hello", "World"),
     KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+```
+
+**Child Workflows:**
+```kotlin
+// 0 arguments
+KWorkflow.executeChildWorkflow(
+    ChildWorkflow::run,
+    KChildWorkflowOptions(workflowId = "child-1")
+)
+
+// 1 argument
+KWorkflow.executeChildWorkflow(
+    ChildWorkflow::process,
+    order,
+    KChildWorkflowOptions(workflowId = "child-1")
+)
+
+// Multiple arguments
+KWorkflow.executeChildWorkflow(
+    ChildWorkflow::processWithConfig,
+    kargs(order, config),
+    KChildWorkflowOptions(workflowId = "child-1")
+)
+```
+
+**Client Workflow Execution:**
+```kotlin
+// 0 arguments
+client.executeWorkflow(
+    MyWorkflow::run,
+    KWorkflowOptions(workflowId = "wf-1", taskQueue = "main")
+)
+
+// 1 argument
+client.executeWorkflow(
+    MyWorkflow::process,
+    input,
+    KWorkflowOptions(workflowId = "wf-1", taskQueue = "main")
+)
+
+// Multiple arguments
+client.executeWorkflow(
+    MyWorkflow::processWithConfig,
+    kargs(input, config),
+    KWorkflowOptions(workflowId = "wf-1", taskQueue = "main")
 )
 ```
 
@@ -153,9 +204,15 @@ fun <A1, A2, A3> kargs(a1: A1, a2: A2, a3: A3) = KArgs3(a1, a2, a3)
 // ... up to 7
 ```
 
-**Execute overloads:**
+**Execute overloads (activities):**
 ```kotlin
 object KWorkflow {
+    // 0 arguments
+    suspend fun <T, R> executeActivity(
+        activity: KFunction1<T, R>,
+        options: KActivityOptions
+    ): R
+
     // 1 argument - direct
     suspend fun <T, A, R> executeActivity(
         activity: KFunction2<T, A, R>,
@@ -170,11 +227,58 @@ object KWorkflow {
         options: KActivityOptions
     ): R
 
-    // 3 arguments
-    suspend fun <T, A1, A2, A3, R> executeActivity(
-        activity: KFunction4<T, A1, A2, A3, R>,
-        args: KArgs3<A1, A2, A3>,
-        options: KActivityOptions
+    // ... up to 7
+}
+```
+
+**Execute overloads (child workflows):**
+```kotlin
+object KWorkflow {
+    // 0 arguments
+    suspend fun <T, R> executeChildWorkflow(
+        workflow: KFunction1<T, R>,
+        options: KChildWorkflowOptions
+    ): R
+
+    // 1 argument
+    suspend fun <T, A, R> executeChildWorkflow(
+        workflow: KFunction2<T, A, R>,
+        arg: A,
+        options: KChildWorkflowOptions
+    ): R
+
+    // 2 arguments
+    suspend fun <T, A1, A2, R> executeChildWorkflow(
+        workflow: KFunction3<T, A1, A2, R>,
+        args: KArgs2<A1, A2>,
+        options: KChildWorkflowOptions
+    ): R
+
+    // ... up to 7
+}
+```
+
+**Execute overloads (client):**
+```kotlin
+class KWorkflowClient {
+    // 0 arguments
+    suspend fun <T, R> executeWorkflow(
+        workflow: KFunction1<T, R>,
+        options: KWorkflowOptions
+    ): R
+
+    // 1 argument
+    suspend fun <T, A, R> executeWorkflow(
+        workflow: KFunction2<T, A, R>,
+        arg: A,
+        options: KWorkflowOptions
+    ): R
+
+    // 2 arguments
+    suspend fun <T, A1, A2, R> executeWorkflow(
+        workflow: KFunction3<T, A1, A2, R>,
+        args: KArgs2<A1, A2>,
+        options: KWorkflowOptions
     ): R
 
     // ... up to 7
@@ -214,8 +318,8 @@ KWorkflow.executeActivity(MyActivities::compose, kargs("Hello", "World", "Extra"
 
 ### Trade-offs
 
-- More verbose for multi-argument activities (`kargs(...)` wrapper)
-- Multiple overloads needed (7 for each arity)
+- More verbose for multi-argument calls (`kargs(...)` wrapper)
+- Multiple overloads needed (8 for each: 0-7 arguments)
 - Different from current vararg approach
 
 ### Related Sections
