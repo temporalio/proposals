@@ -4,34 +4,81 @@
 
 | Java SDK | Kotlin SDK |
 |----------|------------|
-| **Activities** | |
-| `Workflow.newUntypedActivityStub(opts)` | *(not needed - options passed per call)* |
-| `activities.execute("name", Cls, arg)` | `KWorkflow.executeActivity<R>("name", options, arg)` |
-| `stub.method(arg)` (typed activity) | `KWorkflow.executeActivity(Interface::method, options, arg)` |
-| `Async.function(stub::method, arg)` | `coroutineScope { async { KWorkflow.executeActivity(...) } }` |
-| **Workflows** | |
-| `Workflow.newChildWorkflowStub(...)` | `KWorkflow.executeChildWorkflow(Interface::method, options, ...)` |
-| `Async.function(childStub::method, arg)` | `KWorkflow.startChildWorkflow(Interface::method, options, ...)` → `KChildWorkflowHandle<T, R>` |
-| `Workflow.getWorkflowExecution(childStub)` | `childHandle.workflowId` / `childHandle.firstExecutionRunId` |
-| `client.newWorkflowStub(...)` | `client.startWorkflow(Interface::method, ...)` → `KTypedWorkflowHandle<T, R>` |
-| `client.newWorkflowStub(Cls, id)` | `client.getWorkflowHandle<T>(id)` → `KWorkflowHandle<T>` |
+| **Client** | |
+| `WorkflowClient.newInstance(service)` | `KWorkflowClient(service)` |
+| `client.newWorkflowStub(Cls, opts)` | `client.startWorkflow(Interface::method, options, ...)` |
+| `client.newWorkflowStub(Cls, id)` | `client.getWorkflowHandle<T>(id)` |
+| `stub.method(arg)` | `client.executeWorkflow(Interface::method, options, arg)` |
 | `stub.signal(arg)` | `handle.signal(T::method, arg)` |
 | `stub.query()` | `handle.query(T::method)` |
-| `handle.getResult()` | `handle.result()` (type inferred) or `handle.result<R>()` |
-| **Primitives** | |
+| `handle.getResult()` | `handle.result()` or `handle.result<R>()` |
+| **Worker** | |
+| `WorkerFactory.newInstance(client)` | `KWorkerFactory(client)` |
+| `factory.newWorker(taskQueue)` | `factory.newWorker(taskQueue)` → `KWorker` |
+| `worker.registerWorkflowImplementationTypes(Cls)` | `worker.registerWorkflowImplementationTypes(Cls::class)` |
+| `worker.registerActivitiesImplementations(impl)` | `worker.registerActivitiesImplementations(impl)` |
+| **KWorkflow Object** | |
+| `Workflow.getInfo()` | `KWorkflow.info` |
+| `Workflow.getLogger()` | `KWorkflow.logger()` |
 | `Workflow.sleep(duration)` | `delay(duration)` - standard kotlinx.coroutines |
 | `Workflow.await(() -> cond)` | `KWorkflow.awaitCondition { cond }` |
-| `Promise<T>` | Standard `Deferred<T>` via `Promise<T>.toDeferred()` |
+| `Workflow.sideEffect(cls, func)` | `KWorkflow.sideEffect { func }` |
+| `Workflow.getVersion(id, min, max)` | `KWorkflow.version(id, min, max)` |
+| `Workflow.continueAsNew(args)` | `KWorkflow.continueAsNew(args)` |
+| `Workflow.randomUUID()` | `KWorkflow.randomUUID()` |
+| `Workflow.newRandom()` | `KWorkflow.newRandom()` |
+| `Workflow.currentTimeMillis()` | `KWorkflow.currentTimeMillis()` |
+| `Workflow.getTypedSearchAttributes()` | `KWorkflow.typedSearchAttributes` |
+| `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertTypedSearchAttributes(...)` |
+| `Workflow.getMemo(key, cls)` | `KWorkflow.memo<T>(key)` |
+| `Workflow.upsertMemo(map)` | `KWorkflow.upsertMemo(map)` |
+| `Workflow.getMetricsScope()` | `KWorkflow.metricsScope` |
+| `Workflow.isReplaying()` | `KWorkflow.isReplaying` |
+| `Workflow.getCurrentUpdateInfo()` | `KWorkflow.currentUpdateInfo` |
+| **Activities (from workflow)** | |
+| `Workflow.newActivityStub(Cls, opts)` | *(not needed - options passed per call)* |
+| `stub.method(arg)` | `KWorkflow.executeActivity(Interface::method, options, arg)` |
+| `Workflow.newLocalActivityStub(Cls, opts)` | *(not needed - options passed per call)* |
+| `localStub.method(arg)` | `KWorkflow.executeLocalActivity(Interface::method, options, arg)` |
+| `Async.function(stub::method, arg)` | `coroutineScope { async { KWorkflow.executeActivity(...) } }` |
+| **Child Workflows** | |
+| `Workflow.newChildWorkflowStub(Cls, opts)` | *(not needed - options passed per call)* |
+| `childStub.method(arg)` | `KWorkflow.executeChildWorkflow(Interface::method, options, arg)` |
+| `Async.function(childStub::method, arg)` | `KWorkflow.startChildWorkflow(...)` → `KChildWorkflowHandle` |
+| `Workflow.getWorkflowExecution(childStub)` | `childHandle.workflowId` / `childHandle.runId()` |
+| **External Workflows** | |
+| `Workflow.newExternalWorkflowStub(Cls, id)` | `KWorkflow.getExternalWorkflowHandle<T>(id)` |
+| `externalStub.signal(arg)` | `externalHandle.signal(T::method, arg)` |
+| `Workflow.newUntypedExternalWorkflowStub(id)` | `KWorkflow.getExternalWorkflowHandle(id)` |
+| **Cancellation** | |
+| `Workflow.newCancellationScope(...)` | `coroutineScope { ... }` |
+| `Workflow.newDetachedCancellationScope(...)` | `withContext(NonCancellable) { ... }` |
+| `scope.cancel()` | `job.cancel()` |
+| `CancellationScope.isCancelRequested()` | `!isActive` |
+| **KActivity Object** | |
+| `Activity.getExecutionContext()` | `KActivity.context` |
+| `context.getInfo()` | `KActivity.context.info` or `KActivity.info` |
+| `context.heartbeat(details)` | `KActivity.context.heartbeat(details)` |
+| `context.getHeartbeatDetails(cls)` | `KActivity.context.heartbeatDetails<T>()` |
+| `Activity.getLogger()` | `KActivity.logger()` |
+| `context.doNotCompleteOnReturn()` | `KActivity.context.doNotCompleteOnReturn()` |
+| **Testing** | |
+| `TestWorkflowEnvironment.newInstance()` | `KTestWorkflowEnvironment.newInstance()` |
+| `testEnv.newWorker(taskQueue)` | `testEnv.newWorker(taskQueue)` → `KWorker` |
+| `testEnv.getWorkflowClient()` | `testEnv.workflowClient` → `KWorkflowClient` |
+| `testEnv.sleep(duration)` | `testEnv.sleep(duration)` |
+| **Primitives** | |
+| `Promise<T>` | `Deferred<T>` via `async { }` |
+| `Async.function(...)` + `Promise.get()` | `coroutineScope { async { ... } }` + `awaitAll()` |
 | `Optional<T>` | `T?` |
 | `Duration.ofSeconds(30)` | `30.seconds` |
-| **Parallel Execution** | |
-| `Async.function(...)` + `Promise.get()` | `coroutineScope { async { ... } }` + `awaitAll()` |
 | **Options** | |
 | `ActivityOptions.newBuilder()...build()` | `KActivityOptions(...)` |
 | `LocalActivityOptions.newBuilder()...build()` | `KLocalActivityOptions(...)` |
 | `ChildWorkflowOptions.newBuilder()...build()` | `KChildWorkflowOptions(...)` |
 | `WorkflowOptions.newBuilder()...build()` | `KWorkflowOptions(...)` |
 | `RetryOptions.newBuilder()...build()` | `KRetryOptions(...)` |
+| `ContinueAsNewOptions.newBuilder()...build()` | `KContinueAsNewOptions(...)` |
 
 ## Before (Java)
 
