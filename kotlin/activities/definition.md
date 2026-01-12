@@ -216,34 +216,33 @@ val result = KWorkflow.executeActivity(
 
 ---
 
-### Type-Safe Activity Arguments with KArgs
+### Type-Safe Activity Arguments
 
-**Status:** Decision needed | [Full discussion](../open-questions.md#type-safe-activity-arguments-with-kargs)
+**Status:** Decision needed | [Full discussion](../open-questions.md#type-safe-activityworkflow-arguments)
 
-Use typed `KArgs` classes instead of varargs for compile-time type safety:
+Three options for compile-time type-safe activity arguments:
 
+**Option A:** Keep current varargs (no type safety)
+
+**Option B:** Direct overloads (0-7 arguments each)
 ```kotlin
-// Single argument - passed directly
-KWorkflow.executeActivity(
-    GreetingActivities::greet,
-    "World",
-    KActivityOptions(startToCloseTimeout = 30.seconds)
-)
-
-// Multiple arguments - use kargs()
 KWorkflow.executeActivity(
     GreetingActivities::composeGreeting,
-    kargs("Hello", "World"),  // KArgs2<String, String> - compile-time checked
+    "Hello", "World",  // Direct args - type checked
     KActivityOptions(startToCloseTimeout = 30.seconds)
 )
 ```
 
-**Benefits:**
-- Full compile-time type safety
-- Wrong argument types or arity caught at compile time
+**Option C:** KArgs wrapper classes
+```kotlin
+KWorkflow.executeActivity(
+    GreetingActivities::composeGreeting,
+    kargs("Hello", "World"),  // KArgs2<String, String>
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+```
 
-**Trade-offs:**
-- More verbose for multi-argument activities
+See [full discussion](../open-questions.md#type-safe-activityworkflow-arguments) for comparison.
 
 ---
 

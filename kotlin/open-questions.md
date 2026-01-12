@@ -97,7 +97,7 @@ val result = client.executeWorkflow(
 
 ---
 
-## Type-Safe Activity Arguments with KArgs
+## Type-Safe Activity/Workflow Arguments
 
 **Status:** Decision needed
 
@@ -114,9 +114,111 @@ KWorkflow.executeActivity(
 )
 ```
 
-### Proposal
+### Options
 
-Use typed argument classes (`KArgs`) to provide compile-time type safety:
+Three options are being considered:
+
+---
+
+### Option A: Keep Current Varargs (No Change)
+
+Keep the current vararg approach:
+
+```kotlin
+KWorkflow.executeActivity(
+    GreetingActivities::composeGreeting,
+    KActivityOptions(startToCloseTimeout = 30.seconds),
+    "Hello", "World"  // vararg Any?
+)
+```
+
+**Pros:**
+- Simple API, no wrapper classes
+- Familiar pattern
+
+**Cons:**
+- No compile-time type safety
+- Wrong argument types/count only caught at runtime
+
+---
+
+### Option B: Direct Overloads (0-7 Arguments)
+
+Provide separate overloads for each arity with direct arguments:
+
+```kotlin
+// 0 arguments
+KWorkflow.executeActivity(
+    GreetingActivities::getDefault,
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+
+// 1 argument
+KWorkflow.executeActivity(
+    GreetingActivities::greet,
+    "World",
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+
+// 2 arguments
+KWorkflow.executeActivity(
+    GreetingActivities::composeGreeting,
+    "Hello", "World",
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+
+// 3 arguments
+KWorkflow.executeActivity(
+    OrderActivities::process,
+    orderId, customer, items,
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+```
+
+**Overloads:**
+```kotlin
+object KWorkflow {
+    suspend fun <T, R> executeActivity(
+        activity: KFunction1<T, R>,
+        options: KActivityOptions
+    ): R
+
+    suspend fun <T, A, R> executeActivity(
+        activity: KFunction2<T, A, R>,
+        arg: A,
+        options: KActivityOptions
+    ): R
+
+    suspend fun <T, A1, A2, R> executeActivity(
+        activity: KFunction3<T, A1, A2, R>,
+        arg1: A1, arg2: A2,
+        options: KActivityOptions
+    ): R
+
+    suspend fun <T, A1, A2, A3, R> executeActivity(
+        activity: KFunction4<T, A1, A2, A3, R>,
+        arg1: A1, arg2: A2, arg3: A3,
+        options: KActivityOptions
+    ): R
+
+    // ... up to 7 arguments
+}
+```
+
+**Pros:**
+- Full compile-time type safety
+- Clean call syntax, no wrapper classes
+- Natural reading order
+
+**Cons:**
+- Many overloads (8 per method × 3 call types = 24 overloads)
+- Options always last (can't use trailing lambda syntax if options were a builder)
+
+---
+
+### Option C: KArgs Wrapper Classes
+
+Use typed `KArgs` classes for multiple arguments:
 
 **Activities:**
 ```kotlin
@@ -285,43 +387,27 @@ class KWorkflowClient {
 }
 ```
 
-**Compile-time safety examples:**
-```kotlin
-interface MyActivities {
-    suspend fun greet(name: String): String
-    suspend fun compose(greeting: String, name: String): String
-}
-
-// COMPILES - types match
-KWorkflow.executeActivity(MyActivities::greet, "World", options)
-KWorkflow.executeActivity(MyActivities::compose, kargs("Hello", "World"), options)
-
-// COMPILE ERROR - wrong type
-KWorkflow.executeActivity(MyActivities::greet, 123, options)
-// Error: Type mismatch. Required: String, Found: Int
-
-// COMPILE ERROR - wrong arg types in kargs
-KWorkflow.executeActivity(MyActivities::compose, kargs("Hello", 123), options)
-// Error: Type mismatch. Required: KArgs2<String, String>, Found: KArgs2<String, Int>
-
-// COMPILE ERROR - wrong arity
-KWorkflow.executeActivity(MyActivities::compose, kargs("Hello", "World", "Extra"), options)
-// Error: Type mismatch. Required: KArgs2<String, String>, Found: KArgs3<String, String, String>
-```
-
-### Benefits
-
-- Full compile-time type safety for activity arguments
-- Errors caught at compile time, not runtime
-- Natural reading order: "execute activity X with args Y using options Z"
+**Pros:**
+- Full compile-time type safety
+- Fewer overloads than Option B (only 0, 1, and KArgs variants = 3 per method)
 - Works with Kotlin's type inference
 
-### Trade-offs
+**Cons:**
+- Requires `kargs(...)` wrapper for 2+ arguments
+- Additional classes in the API
 
-- More verbose for multi-argument calls (`kargs(...)` wrapper)
-- Multiple overloads needed (8 for each: 0-7 arguments)
-- Different from current vararg approach
+---
+
+### Comparison
+
+| Aspect | Option A (Varargs) | Option B (Direct) | Option C (KArgs) |
+|--------|-------------------|-------------------|------------------|
+| Type safety | Runtime only | Compile-time | Compile-time |
+| Call syntax (2+ args) | `"a", "b"` | `"a", "b"` | `kargs("a", "b")` |
+| Overloads per method | 1 | 8 | 3 |
+| Total overloads | 3 | 24 | 9 |
+| Additional classes | None | None | KArgs2-7 |
 
 ### Related Sections
 
-- [Activity Definition](./activities/definition.md#type-safe-activity-arguments-with-kargs)
+- [Activity Definition](./activities/definition.md#type-safe-activity-arguments)
