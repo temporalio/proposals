@@ -168,4 +168,82 @@ object KWorkflow {
 
 ---
 
+## Open Questions (Decision Needed)
+
+### Interfaceless Activity Definition
+
+**Status:** Decision needed | [Full discussion](../open-questions.md#interfaceless-workflows-and-activities)
+
+Currently, activities require interface definitions:
+
+```kotlin
+// Current approach - requires interface
+@ActivityInterface
+interface GreetingActivities {
+    suspend fun composeGreeting(greeting: String, name: String): String
+}
+
+class GreetingActivitiesImpl : GreetingActivities {
+    override suspend fun composeGreeting(greeting: String, name: String) = "$greeting, $name!"
+}
+```
+
+**Proposal:** Allow defining activities directly on implementation classes without interfaces, similar to Python SDK:
+
+```kotlin
+// Proposed approach - no interface required
+class GreetingActivities {
+    @ActivityMethod
+    suspend fun composeGreeting(greeting: String, name: String) = "$greeting, $name!"
+}
+
+// In workflow - call using method reference to impl class
+val result = KWorkflow.executeActivity(
+    GreetingActivities::composeGreeting,
+    KActivityOptions(startToCloseTimeout = 30.seconds),
+    "Hello", "World"
+)
+```
+
+**Benefits:**
+- Reduces boilerplate (no separate interface file)
+- More similar to Python SDK experience
+- Kotlin-only feature, no Java SDK changes required
+
+**Trade-offs:**
+- Different from Java SDK convention
+- Activity name derived from method name (convention-based, respects `@ActivityMethod(name = "...")`)
+
+---
+
+### Type-Safe Activity Arguments
+
+**Status:** Decision needed | [Full discussion](../open-questions.md#type-safe-activityworkflow-arguments)
+
+Three options for compile-time type-safe activity arguments:
+
+**Option A:** Keep current varargs (no type safety)
+
+**Option B:** Direct overloads (0-7 arguments each)
+```kotlin
+KWorkflow.executeActivity(
+    GreetingActivities::composeGreeting,
+    "Hello", "World",  // Direct args - type checked
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+```
+
+**Option C:** KArgs wrapper classes
+```kotlin
+KWorkflow.executeActivity(
+    GreetingActivities::composeGreeting,
+    kargs("Hello", "World"),  // KArgs2<String, String>
+    KActivityOptions(startToCloseTimeout = 30.seconds)
+)
+```
+
+See [full discussion](../open-questions.md#type-safe-activityworkflow-arguments) for comparison.
+
+---
+
 **Next:** [Activity Implementation](./implementation.md)

@@ -128,4 +128,61 @@ val classLog = KWorkflow.logger(MyWorkflowImpl::class.java)
 
 ---
 
+## Open Questions (Decision Needed)
+
+### Interfaceless Workflow Definition
+
+**Status:** Decision needed | [Full discussion](../open-questions.md#interfaceless-workflows-and-activities)
+
+Currently, workflows require interface definitions:
+
+```kotlin
+// Current approach - requires interface
+@WorkflowInterface
+interface GreetingWorkflow {
+    @WorkflowMethod
+    suspend fun getGreeting(name: String): String
+}
+
+class GreetingWorkflowImpl : GreetingWorkflow {
+    override suspend fun getGreeting(name: String): String {
+        // implementation
+    }
+}
+```
+
+**Proposal:** Allow defining workflows directly on implementation classes without interfaces, similar to Python SDK:
+
+```kotlin
+// Proposed approach - no interface required
+class GreetingWorkflow {
+    @WorkflowMethod
+    suspend fun getGreeting(name: String): String {
+        return KWorkflow.executeActivity(
+            GreetingActivities::composeGreeting,
+            KActivityOptions(startToCloseTimeout = 10.seconds),
+            "Hello", name
+        )
+    }
+}
+
+// Client call using method reference to impl class
+val result = client.executeWorkflow(
+    GreetingWorkflow::getGreeting,
+    KWorkflowOptions(workflowId = "greeting-123", taskQueue = "greetings"),
+    "World"
+)
+```
+
+**Benefits:**
+- Reduces boilerplate (no separate interface file)
+- More similar to Python SDK experience
+- Kotlin-only feature, no Java SDK changes required
+
+**Trade-offs:**
+- Different from Java SDK convention
+- Workflow type name derived from class name (convention-based, respects `@WorkflowMethod(name = "...")`)
+
+---
+
 **Next:** [Signals, Queries & Updates](./signals-queries.md)
