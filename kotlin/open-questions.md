@@ -562,6 +562,40 @@ val options = KActivityOptions {
 - Validation can happen in `build()` before object construction
 - `copy` can be implemented safely if needed (via a `toBuilder()` method)
 
+### Enhanced Nested DSL Ergonomics
+
+With the Builder+DSL pattern, extension methods can provide cleaner syntax for nested options:
+
+```kotlin
+// Without extension method - requires assignment
+val options = KActivityOptions {
+    startToCloseTimeout = 10.minutes
+    retryOptions = KRetryOptions {
+        initialInterval = 10.seconds
+        backoffCoefficient = 1.5
+    }
+}
+
+// With extension method - no assignment needed
+val options = KActivityOptions {
+    startToCloseTimeout = 10.minutes
+    retryOptions {
+        initialInterval = 10.seconds
+        backoffCoefficient = 1.5
+    }
+}
+```
+
+The extension method:
+
+```kotlin
+inline fun KActivityOptions.Builder.retryOptions(init: KRetryOptions.Builder.() -> Unit) {
+    this.retryOptions = KRetryOptions(init)
+}
+```
+
+This provides slightly better ergonomics for nested configuration while maintaining full type safety.
+
 ### Trade-offs
 
 - More boilerplate code to write and maintain
