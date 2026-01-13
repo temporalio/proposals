@@ -173,9 +173,6 @@ interface KActivityInfo {
     val startToCloseTimeout: Duration?
     val heartbeatTimeout: Duration?
 
-    // Heartbeat state
-    val heartbeatDetails: Any?
-
     // Task token for async completion (throws for local activities)
     val taskToken: ByteArray
 }
