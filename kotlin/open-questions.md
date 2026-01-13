@@ -2,6 +2,77 @@
 
 This document tracks API design questions that need discussion and decisions before implementation.
 
+---
+
+## Default Parameter Values Not Allowed
+
+**Status:** Decided
+
+### Decision
+
+**Default parameter values are not allowed** in workflow methods, activity methods, signal handlers, update handlers, and query handlers. This restriction is enforced at worker registration time via reflection (`KParameter.isOptional`).
+
+```kotlin
+// ✗ NOT ALLOWED - will fail at registration
+@ActivityMethod
+suspend fun processOrder(orderId: String, priority: Int = 0)  // Error!
+
+// ✓ CORRECT - use a parameter object with optional fields
+data class ProcessOrderParams(
+    val orderId: String,
+    val priority: Int? = null
+)
+
+@ActivityMethod
+suspend fun processOrder(params: ProcessOrderParams)
+```
+
+### Rationale
+
+1. **Replay Safety** - If default values change between deployments, replayed workflows behave differently, violating determinism
+2. **Serialization Ambiguity** - Unclear whether the caller serializes defaults or the worker applies them
+3. **Cross-Language Compatibility** - Other languages calling the activity/workflow don't know about Kotlin defaults
+4. **SDK Consistency** - Python SDK explicitly disallows default parameters; Go/Java don't have them
+
+### Validation
+
+The SDK validates at registration time using Kotlin reflection:
+
+```kotlin
+fun validateNoDefaultParameters(function: KFunction<*>) {
+    val paramsWithDefaults = function.parameters
+        .filter { it.kind == KParameter.Kind.VALUE }
+        .filter { it.isOptional }
+
+    if (paramsWithDefaults.isNotEmpty()) {
+        throw IllegalArgumentException(
+            "Default parameter values are not allowed. " +
+            "Use a parameter object with optional fields instead."
+        )
+    }
+}
+```
+
+### Recommended Pattern
+
+Use a single parameter object with nullable/optional fields:
+
+```kotlin
+data class OrderParams(
+    val orderId: String,
+    val priority: Int? = null,  // Optional via nullability
+    val retryCount: Int? = null
+)
+
+@WorkflowMethod
+suspend fun processOrder(params: OrderParams): OrderResult
+```
+
+This pattern:
+- Allows adding new optional fields without breaking existing callers
+- Makes all parameters explicit in serialization
+- Works consistently across all Temporal SDKs
+
 ## Interfaceless Workflows and Activities
 
 **Status:** Decision needed

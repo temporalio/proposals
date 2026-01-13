@@ -73,6 +73,27 @@ KWorkflow.executeActivity(
 )
 ```
 
+## Parameter Restrictions
+
+**Default parameter values are not allowed** in activity methods. This is validated at worker registration time.
+
+```kotlin
+// ✗ NOT ALLOWED - will fail at registration
+@ActivityMethod
+suspend fun processOrder(orderId: String, priority: Int = 0)  // Error!
+
+// ✓ CORRECT - use a parameter object with optional fields
+data class ProcessOrderParams(
+    val orderId: String,
+    val priority: Int? = null
+)
+
+@ActivityMethod
+suspend fun processOrder(params: ProcessOrderParams)
+```
+
+**Rationale:** Default values create replay safety issues (changing defaults breaks determinism), serialization ambiguity, and cross-language compatibility problems. See [full discussion](../open-questions.md#default-parameter-values-not-allowed).
+
 ## Type Safety
 
 The API uses `KFunction` reflection to extract method metadata and provides compile-time type checking:

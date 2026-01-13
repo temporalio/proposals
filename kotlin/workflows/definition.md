@@ -96,6 +96,27 @@ String result = workflow.getGreeting("Temporal");
 
 > **Note:** Java cannot directly use Kotlin suspend interfaces because suspend functions compile to methods with an extra `Continuation` parameter. The untyped stub approach is recommended for Java clients.
 
+## Parameter Restrictions
+
+**Default parameter values are not allowed** in workflow methods. This is validated at worker registration time.
+
+```kotlin
+// ✗ NOT ALLOWED - will fail at registration
+@WorkflowMethod
+suspend fun processOrder(orderId: String, priority: Int = 0)  // Error!
+
+// ✓ CORRECT - use a parameter object with optional fields
+data class ProcessOrderParams(
+    val orderId: String,
+    val priority: Int? = null
+)
+
+@WorkflowMethod
+suspend fun processOrder(params: ProcessOrderParams): OrderResult
+```
+
+**Rationale:** Default values create replay safety issues (changing defaults breaks determinism), serialization ambiguity, and cross-language compatibility problems. See [full discussion](../open-questions.md#default-parameter-values-not-allowed).
+
 ## Key Characteristics
 
 * Use `coroutineScope`, `async`, `launch` for concurrent execution
