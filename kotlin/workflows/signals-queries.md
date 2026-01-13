@@ -2,6 +2,8 @@
 
 Signals and updates follow the same suspend/non-suspend pattern as workflow methods. Queries are always synchronous (never suspend) and can be defined as properties.
 
+> **Note:** Default parameter values are not allowed in signal, query, or update handlers. Use parameter objects with optional fields instead. See [Parameter Restrictions](../open-questions.md#default-parameter-values-not-allowed).
+
 ## Defining Handlers
 
 ```kotlin
