@@ -19,12 +19,12 @@ The Kotlin SDK provides `KWorkflowClient` with suspend functions and type-safe w
 ### Creating a Client
 
 ```kotlin
-val service = WorkflowServiceStubs.newLocalServiceStubs()
-
-val client = KWorkflowClient(service) {
-    setNamespace("default")
-    setDataConverter(myConverter)
-}
+val client = KWorkflowClient.connect(
+    KWorkflowClientOptions(
+        target = "localhost:7233",
+        namespace = "default"
+    )
+)
 ```
 
 ### Starting Workflows
@@ -55,7 +55,7 @@ val result = handle.result()
 ### Interacting with Workflows
 
 ```kotlin
-val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
+val handle = client.workflowHandle<OrderWorkflow>("order-123")
 
 // Signal
 handle.signal(OrderWorkflow::updatePriority, Priority.HIGH)
@@ -76,7 +76,7 @@ handle.cancel()
 |---------|-----|
 | Execute workflow | `client.executeWorkflow(Interface::method, options, args)` |
 | Start workflow | `client.startWorkflow(Interface::method, options, args)` |
-| Get handle by ID | `client.getWorkflowHandle<T>(workflowId)` |
+| Get handle by ID | `client.workflowHandle<T>(workflowId)` |
 | Signal with start | `client.signalWithStart(...)` |
 | Update with start | `client.executeUpdateWithStart(...)` |
 

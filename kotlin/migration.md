@@ -5,9 +5,9 @@
 | Java SDK | Kotlin SDK |
 |----------|------------|
 | **Client** | |
-| `WorkflowClient.newInstance(service)` | `KWorkflowClient(service)` |
+| `WorkflowClient.newInstance(service)` | `KWorkflowClient.connect(options)` |
 | `client.newWorkflowStub(Cls, opts)` | `client.startWorkflow(Interface::method, options, ...)` |
-| `client.newWorkflowStub(Cls, id)` | `client.getWorkflowHandle<T>(id)` |
+| `client.newWorkflowStub(Cls, id)` | `client.workflowHandle<T>(id)` |
 | `stub.method(arg)` | `client.executeWorkflow(Interface::method, options, arg)` |
 | `stub.signal(arg)` | `handle.signal(T::method, arg)` |
 | `stub.query()` | `handle.query(T::method)` |
@@ -20,7 +20,7 @@
 | **KWorkflow Object** | |
 | `Workflow.getInfo()` | `KWorkflow.info` |
 | `Workflow.getLogger()` | `KWorkflow.logger()` |
-| `Workflow.sleep(duration)` | `delay(duration)` - standard kotlinx.coroutines |
+| `Workflow.sleep(duration)` | `delay(duration)` or `KWorkflow.delay(duration, options)` |
 | `Workflow.await(() -> cond)` | `KWorkflow.awaitCondition { cond }` |
 | `Workflow.sideEffect(cls, func)` | `KWorkflow.sideEffect { func }` |
 | `Workflow.getVersion(id, min, max)` | `KWorkflow.version(id, min, max)` |
@@ -28,8 +28,8 @@
 | `Workflow.randomUUID()` | `KWorkflow.randomUUID()` |
 | `Workflow.newRandom()` | `KWorkflow.newRandom()` |
 | `Workflow.currentTimeMillis()` | `KWorkflow.currentTimeMillis()` |
-| `Workflow.getTypedSearchAttributes()` | `KWorkflow.typedSearchAttributes` |
-| `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertTypedSearchAttributes(...)` |
+| `Workflow.getTypedSearchAttributes()` | `KWorkflow.searchAttributes` |
+| `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertSearchAttributes(...)` |
 | `Workflow.getMemo(key, cls)` | `KWorkflow.memo<T>(key)` |
 | `Workflow.upsertMemo(map)` | `KWorkflow.upsertMemo(map)` |
 | `Workflow.getMetricsScope()` | `KWorkflow.metricsScope` |

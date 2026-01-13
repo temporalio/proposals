@@ -22,14 +22,18 @@ In rare cases where workflow code doesn't have suspension points (e.g., tight lo
 
 ## Parallel Execution and Cancellation
 
-`coroutineScope` provides structured concurrency—if one child fails or the scope is cancelled, all children are automatically cancelled:
+`coroutineScope` provides structured concurrency—if one child fails or the scope is cancelled, all children are automatically cancelled.
+
+**Note:** This is standard Kotlin `coroutineScope` exception propagation behavior, not Temporal-specific:
+- When one child fails with an exception, `coroutineScope` cancels all other children
+- This is automatic Kotlin structured concurrency behavior
 
 ```kotlin
 override suspend fun parallelWorkflow(): String = coroutineScope {
     val a = async { KWorkflow.executeActivity(...) }
     val b = async { KWorkflow.executeActivity(...) }
 
-    // If either activity fails, the other is cancelled
+    // If either activity fails, the other is cancelled (standard Kotlin behavior)
     // If workflow is cancelled, both activities are cancelled
     "${a.await()} - ${b.await()}"
 }

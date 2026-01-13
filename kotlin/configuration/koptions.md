@@ -119,7 +119,7 @@ data class KChildWorkflowOptions(
     val cronSchedule: String? = null,
     val parentClosePolicy: ParentClosePolicy? = null,
     val memo: Map<String, Any>? = null,
-    val typedSearchAttributes: SearchAttributes? = null,
+    val searchAttributes: SearchAttributes? = null,
     val cancellationType: ChildWorkflowCancellationType? = null,
     // Experimental
     @Experimental val staticSummary: String? = null,
@@ -160,7 +160,7 @@ data class KWorkflowOptions(
     val retryOptions: KRetryOptions? = null,
     val cronSchedule: String? = null,
     val memo: Map<String, Any>? = null,
-    val typedSearchAttributes: SearchAttributes? = null,
+    val searchAttributes: SearchAttributes? = null,
     val disableEagerExecution: Boolean = true,
     val startDelay: Duration? = null,
     val contextPropagators: List<ContextPropagator>? = null,
@@ -246,7 +246,7 @@ data class KContinueAsNewOptions(
     val retryOptions: KRetryOptions? = null,
     val workflowTaskTimeout: Duration? = null,
     val memo: Map<String, Any>? = null,
-    val typedSearchAttributes: SearchAttributes? = null,
+    val searchAttributes: SearchAttributes? = null,
     val contextPropagators: List<ContextPropagator>? = null
 )
 ```

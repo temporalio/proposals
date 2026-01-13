@@ -112,12 +112,17 @@ class GreetingWorkflowImpl : GreetingWorkflow {
     }
 }
 
-// Start worker
+// Start worker (recommended: use run() which blocks and propagates fatal errors)
 val factory = KWorkerFactory(client)
 val worker = factory.newWorker("greetings")
 worker.registerWorkflowImplementationTypes(GreetingWorkflowImpl::class)
 worker.registerActivitiesImplementations(GreetingActivitiesImpl())
-factory.start()
+factory.run()  // Blocks until shutdown, propagates fatal errors
+
+// Alternative for advanced use cases:
+// factory.start()  // Returns immediately
+// ... do other work ...
+// factory.shutdown()
 
 // Execute workflow
 val result = client.executeWorkflow(

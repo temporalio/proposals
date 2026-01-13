@@ -156,7 +156,7 @@ fun registerDynamicUpdateValidator(validator: (updateName: String, args: KEncode
 ### Sending Signals
 
 ```kotlin
-val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
+val handle = client.workflowHandle<OrderWorkflow>("order-123")
 
 // Type-safe signal using method reference
 handle.signal(OrderWorkflow::cancelOrder, "Customer request")
@@ -165,7 +165,7 @@ handle.signal(OrderWorkflow::cancelOrder, "Customer request")
 ### Querying Workflows
 
 ```kotlin
-val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
+val handle = client.workflowHandle<OrderWorkflow>("order-123")
 
 // Query using property reference
 val status = handle.query(OrderWorkflow::status)
@@ -177,7 +177,7 @@ val count = handle.query(OrderWorkflow::getItemCount)
 ### Executing Updates
 
 ```kotlin
-val handle = client.getWorkflowHandle<OrderWorkflow>("order-123")
+val handle = client.workflowHandle<OrderWorkflow>("order-123")
 
 // Execute update and wait for result
 val added = handle.executeUpdate(OrderWorkflow::addItem, newItem)

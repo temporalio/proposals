@@ -8,8 +8,8 @@ The following Java SDK APIs are **not needed** in the Kotlin SDK due to language
 
 | Java SDK API | Reason Not Needed |
 |--------------|-------------------|
-| `Workflow.sleep(Duration)` | Use `kotlinx.coroutines.delay()` - intercepted by dispatcher |
-| `Workflow.newTimer(Duration)` | Use `async { delay(duration) }` for racing timers |
+| `Workflow.sleep(Duration)` | Use `kotlinx.coroutines.delay()` or `KWorkflow.delay()` with options |
+| `Workflow.newTimer(Duration)` | Use `async { delay(duration) }` or `async { KWorkflow.delay(duration, options) }` for racing timers |
 | `Workflow.wrap(Exception)` | Kotlin has no checked exceptions - not needed |
 | `Activity.wrap(Throwable)` | Kotlin has no checked exceptions - not needed |
 | `Workflow.newCancellationScope(...)` | Use Kotlin's `coroutineScope { }` with structured concurrency |
@@ -67,8 +67,8 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 
 | Java SDK API | Kotlin SDK |
 |--------------|------------|
-| `Workflow.getTypedSearchAttributes()` | `KWorkflow.typedSearchAttributes` |
-| `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertTypedSearchAttributes()` |
+| `Workflow.getTypedSearchAttributes()` | `KWorkflow.searchAttributes` |
+| `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertSearchAttributes()` |
 | `Workflow.getMemo(key, class)` | `KWorkflow.memo` |
 | `Workflow.upsertMemo(...)` | `KWorkflow.upsertMemo()` |
 
@@ -84,6 +84,14 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 | `Workflow.setCurrentDetails(...)` | `KWorkflow.currentDetails = ...` |
 | `Workflow.getCurrentDetails()` | `KWorkflow.currentDetails` |
 | `Workflow.getMetricsScope()` | `KWorkflow.metricsScope` |
+
+### Timers
+
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.sleep(...)` | `kotlinx.coroutines.delay()` - standard Kotlin, or `KWorkflow.delay()` |
+| N/A | `KWorkflow.delay(duration)` - simple delay |
+| N/A | `KWorkflow.delay(duration, options)` - with `KTimerOptions` for summary |
 
 ### Side Effects & Utilities
 
@@ -141,7 +149,7 @@ The following areas use the same API and behavior as the Java SDK:
 | `getParentRunId()` | `KWorkflowInfo.parentRunId: String?` |
 | `getContinuedExecutionRunId()` | `KWorkflowInfo.continuedExecutionRunId: String?` |
 | `getCronSchedule()` | `KWorkflowInfo.cronSchedule: String?` |
-| `getSearchAttributes()` | `KWorkflowInfo.typedSearchAttributes` |
+| `getSearchAttributes()` | `KWorkflowInfo.searchAttributes` |
 | `getHistoryLength()` | `KWorkflowInfo.historyLength` |
 | `isContinueAsNewSuggested()` | `KWorkflowInfo.isContinueAsNewSuggested` |
 | `getFirstExecutionRunId()` | `KWorkflowInfo.firstExecutionRunId` |

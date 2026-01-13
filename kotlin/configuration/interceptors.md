@@ -1,6 +1,11 @@
 # Interceptors
 
-Interceptors allow you to intercept workflow and activity executions to add cross-cutting concerns like logging, metrics, tracing, and custom error handling. The Kotlin SDK provides suspend-function-aware interceptors that integrate naturally with coroutines.
+Interceptors allow you to intercept workflow, activity, and client operations to add cross-cutting concerns like logging, metrics, tracing, and custom error handling. The Kotlin SDK provides:
+
+- **KWorkerInterceptor** - Intercepts workflow and activity executions on the worker side
+- **KWorkflowClientInterceptor** - Intercepts client-side operations (start, signal, query, update)
+
+All interceptors are suspend-function-aware and integrate naturally with coroutines.
 
 ## KWorkerInterceptor
 
@@ -377,6 +382,128 @@ private class LoggingActivityInterceptor(
         }
     }
 }
+```
+
+## KWorkflowClientInterceptor
+
+Client interceptors intercept client-side operations such as starting workflows, sending signals, executing queries, and updates.
+
+```kotlin
+/**
+ * Intercepts client-side workflow operations.
+ *
+ * Prefer extending [KWorkflowClientInterceptorBase] and overriding only the methods you need.
+ */
+interface KWorkflowClientInterceptor {
+    /** Called when starting a workflow */
+    suspend fun <R> startWorkflow(input: KStartWorkflowInput<R>, next: suspend (KStartWorkflowInput<R>) -> KWorkflowHandleWithResult<*, R>): KWorkflowHandleWithResult<*, R>
+
+    /** Called when signaling a workflow */
+    suspend fun signalWorkflow(input: KSignalWorkflowInput, next: suspend (KSignalWorkflowInput) -> Unit)
+
+    /** Called when querying a workflow */
+    suspend fun <R> queryWorkflow(input: KQueryWorkflowInput<R>, next: suspend (KQueryWorkflowInput<R>) -> R): R
+
+    /** Called when executing an update on a workflow */
+    suspend fun <R> executeUpdate(input: KExecuteUpdateInput<R>, next: suspend (KExecuteUpdateInput<R>) -> R): R
+
+    /** Called when starting an update on a workflow */
+    suspend fun <R> startUpdate(input: KStartUpdateInput<R>, next: suspend (KStartUpdateInput<R>) -> KUpdateHandle<R>): KUpdateHandle<R>
+
+    /** Called when canceling a workflow */
+    suspend fun cancelWorkflow(input: KCancelWorkflowInput, next: suspend (KCancelWorkflowInput) -> Unit)
+
+    /** Called when terminating a workflow */
+    suspend fun terminateWorkflow(input: KTerminateWorkflowInput, next: suspend (KTerminateWorkflowInput) -> Unit)
+}
+
+/**
+ * Base implementation that passes through all calls.
+ */
+open class KWorkflowClientInterceptorBase : KWorkflowClientInterceptor {
+    override suspend fun <R> startWorkflow(input: KStartWorkflowInput<R>, next: suspend (KStartWorkflowInput<R>) -> KWorkflowHandleWithResult<*, R>) = next(input)
+    override suspend fun signalWorkflow(input: KSignalWorkflowInput, next: suspend (KSignalWorkflowInput) -> Unit) = next(input)
+    override suspend fun <R> queryWorkflow(input: KQueryWorkflowInput<R>, next: suspend (KQueryWorkflowInput<R>) -> R) = next(input)
+    override suspend fun <R> executeUpdate(input: KExecuteUpdateInput<R>, next: suspend (KExecuteUpdateInput<R>) -> R) = next(input)
+    override suspend fun <R> startUpdate(input: KStartUpdateInput<R>, next: suspend (KStartUpdateInput<R>) -> KUpdateHandle<R>) = next(input)
+    override suspend fun cancelWorkflow(input: KCancelWorkflowInput, next: suspend (KCancelWorkflowInput) -> Unit) = next(input)
+    override suspend fun terminateWorkflow(input: KTerminateWorkflowInput, next: suspend (KTerminateWorkflowInput) -> Unit) = next(input)
+}
+```
+
+### Client Interceptor Input Classes
+
+```kotlin
+data class KStartWorkflowInput<R>(
+    val workflowId: String,
+    val workflowType: String,
+    val taskQueue: String,
+    val arguments: Array<Any?>,
+    val options: KWorkflowOptions,
+    val header: Header
+)
+
+data class KSignalWorkflowInput(
+    val workflowId: String,
+    val runId: String?,
+    val signalName: String,
+    val arguments: Array<Any?>,
+    val header: Header
+)
+
+data class KQueryWorkflowInput<R>(
+    val workflowId: String,
+    val runId: String?,
+    val queryName: String,
+    val arguments: Array<Any?>,
+    val resultClass: Class<R>,
+    val header: Header
+)
+
+data class KExecuteUpdateInput<R>(
+    val workflowId: String,
+    val runId: String?,
+    val updateName: String,
+    val arguments: Array<Any?>,
+    val options: KUpdateOptions,
+    val resultClass: Class<R>,
+    val header: Header
+)
+
+data class KStartUpdateInput<R>(
+    val workflowId: String,
+    val runId: String?,
+    val updateName: String,
+    val arguments: Array<Any?>,
+    val options: KStartUpdateOptions,
+    val resultClass: Class<R>,
+    val header: Header
+)
+
+data class KCancelWorkflowInput(
+    val workflowId: String,
+    val runId: String?
+)
+
+data class KTerminateWorkflowInput(
+    val workflowId: String,
+    val runId: String?,
+    val reason: String?
+)
+```
+
+### Registering Client Interceptors
+
+```kotlin
+val client = KWorkflowClient.connect(
+    KWorkflowClientOptions(
+        target = "localhost:7233",
+        namespace = "default",
+        interceptors = listOf(
+            TracingClientInterceptor()
+        )
+    )
+)
 ```
 
 ## Related

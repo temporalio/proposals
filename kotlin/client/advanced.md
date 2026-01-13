@@ -36,10 +36,11 @@ Atomically start a workflow and send an update. Behavior depends on `workflowIdC
 ```kotlin
 /**
  * Options for update-with-start operations.
+ * Note: waitForStage is required for startUpdateWithStart (no default value).
  */
 data class KUpdateWithStartOptions(
-    /** Stage to wait for before returning (required for startUpdateWithStart) */
-    val waitForStage: WorkflowUpdateStage = WorkflowUpdateStage.ACCEPTED,
+    /** Stage to wait for before returning (required - no default) */
+    val waitForStage: WorkflowUpdateStage,
 
     /** Optional update ID for idempotency */
     val updateId: String? = null
@@ -61,11 +62,12 @@ val handle = client.withStartWorkflowOperation(
 )
 
 // Execute update with start (waits for update completion)
+// Args before options
 val updateResult: Boolean = client.executeUpdateWithStart(
     handle,
     OrderWorkflow::addItem,
-    KUpdateWithStartOptions(),
-    newItem
+    newItem,  // arg before options
+    KUpdateWithStartOptions(waitForStage = WorkflowUpdateStage.COMPLETED)
 )
 
 // Handle is now usable
@@ -87,11 +89,12 @@ val handle = client.withStartWorkflowOperation(
 )
 
 // Start update and return immediately after it's accepted
+// waitForStage is required - no default
 val updateHandle: KUpdateHandle<Boolean> = client.startUpdateWithStart(
     handle,
     OrderWorkflow::addItem,
-    KUpdateWithStartOptions(waitForStage = WorkflowUpdateStage.ACCEPTED),
-    newItem
+    newItem,  // arg before options
+    KUpdateWithStartOptions(waitForStage = WorkflowUpdateStage.ACCEPTED)
 )
 
 // Handle is now usable, get workflow result
@@ -112,13 +115,13 @@ class KWorkflowClient {
     fun <T, R> withStartWorkflowOperation(
         workflow: KSuspendFunction1<T, R>,
         options: KWorkflowOptions
-    ): KTypedWorkflowHandle<T, R>
+    ): KWorkflowHandleWithResult<T, R>
 
     fun <T, A1, R> withStartWorkflowOperation(
         workflow: KSuspendFunction2<T, A1, R>,
         options: KWorkflowOptions,
         arg1: A1
-    ): KTypedWorkflowHandle<T, R>
+    ): KWorkflowHandleWithResult<T, R>
 
     /**
      * Atomically start a workflow and send a signal.
@@ -126,7 +129,7 @@ class KWorkflowClient {
      * After this call, the handle becomes usable.
      */
     suspend fun <T, R, SA1> signalWithStart(
-        handle: KTypedWorkflowHandle<T, R>,
+        handle: KWorkflowHandleWithResult<T, R>,
         signal: KSuspendFunction2<T, SA1, *>,
         signalArg: SA1
     )
@@ -136,16 +139,16 @@ class KWorkflowClient {
      * After this call, the handle becomes usable.
      */
     suspend fun <T, R, UR> executeUpdateWithStart(
-        handle: KTypedWorkflowHandle<T, R>,
+        handle: KWorkflowHandleWithResult<T, R>,
         update: KSuspendFunction1<T, UR>,
         options: KUpdateWithStartOptions = KUpdateWithStartOptions()
     ): UR
 
     suspend fun <T, R, UA1, UR> executeUpdateWithStart(
-        handle: KTypedWorkflowHandle<T, R>,
+        handle: KWorkflowHandleWithResult<T, R>,
         update: KSuspendFunction2<T, UA1, UR>,
-        options: KUpdateWithStartOptions = KUpdateWithStartOptions(),
-        updateArg: UA1
+        updateArg: UA1,
+        options: KUpdateWithStartOptions = KUpdateWithStartOptions()
     ): UR
 
     /**
@@ -154,16 +157,16 @@ class KWorkflowClient {
      * After this call, the handle becomes usable.
      */
     suspend fun <T, R, UR> startUpdateWithStart(
-        handle: KTypedWorkflowHandle<T, R>,
+        handle: KWorkflowHandleWithResult<T, R>,
         update: KSuspendFunction1<T, UR>,
-        options: KUpdateWithStartOptions = KUpdateWithStartOptions()
+        options: KUpdateWithStartOptions  // waitForStage required - no default
     ): KUpdateHandle<UR>
 
     suspend fun <T, R, UA1, UR> startUpdateWithStart(
-        handle: KTypedWorkflowHandle<T, R>,
+        handle: KWorkflowHandleWithResult<T, R>,
         update: KSuspendFunction2<T, UA1, UR>,
-        options: KUpdateWithStartOptions = KUpdateWithStartOptions(),
-        updateArg: UA1
+        updateArg: UA1,
+        options: KUpdateWithStartOptions
     ): KUpdateHandle<UR>
 }
 ```

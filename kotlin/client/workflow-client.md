@@ -2,14 +2,19 @@
 
 ## Creating a Client
 
-```kotlin
-val service = WorkflowServiceStubs.newLocalServiceStubs()
+Use `KWorkflowClient.connect()` to create a client:
 
-// Create KWorkflowClient with DSL configuration
-val client = KWorkflowClient(service) {
-    setNamespace("default")
-    setDataConverter(myConverter)
-}
+```kotlin
+// Connect to Temporal (like newer SDKs)
+val client = KWorkflowClient.connect(
+    KWorkflowClientOptions(
+        target = "localhost:7233",
+        namespace = "default"
+    )
+)
+
+// Access raw gRPC services when needed
+val workflowService = client.workflowService
 
 // For blocking calls from non-suspend contexts, use runBlocking
 val result = runBlocking {
@@ -24,14 +29,18 @@ val result = runBlocking {
 ```kotlin
 /**
  * Kotlin workflow client providing suspend functions and type-safe workflow APIs.
- *
- * @param service The WorkflowServiceStubs to connect to
- * @param options DSL builder for WorkflowClientOptions
  */
-class KWorkflowClient(
-    service: WorkflowServiceStubs,
-    options: WorkflowClientOptions.Builder.() -> Unit = {}
-) {
+class KWorkflowClient private constructor(...) {
+    companion object {
+        /**
+         * Connect to Temporal service and create a client.
+         */
+        suspend fun connect(options: KWorkflowClientOptions): KWorkflowClient
+    }
+
+    /** The underlying WorkflowServiceStubs for advanced use cases */
+    val workflowService: WorkflowServiceStubs
+
     /** The underlying WorkflowClient for advanced use cases */
     val workflowClient: WorkflowClient
 
@@ -42,13 +51,13 @@ class KWorkflowClient(
     suspend fun <T, R> startWorkflow(
         workflow: KSuspendFunction1<T, R>,
         options: KWorkflowOptions
-    ): KTypedWorkflowHandle<T, R>
+    ): KWorkflowHandleWithResult<T, R>
 
     suspend fun <T, A1, R> startWorkflow(
         workflow: KSuspendFunction2<T, A1, R>,
         options: KWorkflowOptions,
         arg: A1
-    ): KTypedWorkflowHandle<T, R>
+    ): KWorkflowHandleWithResult<T, R>
 
     // Overloads for 2-6 arguments...
 
@@ -73,15 +82,22 @@ class KWorkflowClient(
      * Get a typed handle for an existing workflow by ID.
      * Use this to signal, query, or get results from a workflow started elsewhere.
      */
-    inline fun <reified T> getWorkflowHandle(workflowId: String): KWorkflowHandle<T>
-    inline fun <reified T> getWorkflowHandle(workflowId: String, runId: String): KWorkflowHandle<T>
+    inline fun <reified T> workflowHandle(workflowId: String): KWorkflowHandle<T>
+    inline fun <reified T> workflowHandle(workflowId: String, runId: String): KWorkflowHandle<T>
+
+    /**
+     * Get a typed handle with known result type for an existing workflow by ID.
+     * Use when you know both the workflow type and result type at compile time.
+     */
+    inline fun <reified T, reified R> workflowHandle(workflowId: String): KWorkflowHandleWithResult<T, R>
+    inline fun <reified T, reified R> workflowHandle(workflowId: String, runId: String): KWorkflowHandleWithResult<T, R>
 
     /**
      * Get an untyped handle for an existing workflow by ID.
      * Use when you don't know the workflow type at compile time.
      */
-    fun getUntypedWorkflowHandle(workflowId: String): WorkflowHandle
-    fun getUntypedWorkflowHandle(workflowId: String, runId: String): WorkflowHandle
+    fun untypedWorkflowHandle(workflowId: String): KWorkflowHandleUntyped
+    fun untypedWorkflowHandle(workflowId: String, runId: String): KWorkflowHandleUntyped
 }
 ```
 
@@ -109,6 +125,14 @@ val handle = client.startWorkflow(
     "Temporal"
 )
 val result = handle.result()  // Type inferred as String from method reference
+
+// Get handle for existing workflow
+val existingHandle = client.workflowHandle<GreetingWorkflow>("greeting-123")
+val result = existingHandle.result<String>()  // Must specify result type
+
+// Or with result type known
+val typedHandle = client.workflowHandle<GreetingWorkflow, String>("greeting-123")
+val result = typedHandle.result()  // Result type already known
 ```
 
 ## KWorkflowOptions
