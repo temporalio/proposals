@@ -28,7 +28,7 @@ The following Java SDK APIs are **not needed** in the Kotlin SDK due to language
 
 ### Single heartbeat() API
 
-The Kotlin SDK provides a single `heartbeat()` method on `KActivityContext` for both sync and suspend activities:
+The Kotlin SDK provides a single `heartbeat()` method on `KActivityExecutionContext` for both sync and suspend activities:
 
 ```kotlin
 context.heartbeat(progressDetails)

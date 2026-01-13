@@ -151,7 +151,7 @@ val info = KWorkflow.info
 val parentId: String? = info.parentWorkflowId  // null if no parent
 
 // Activity heartbeat details
-val progress = KActivity.context.heartbeatDetails<Int>()
+val progress = KActivity.executionContext.heartbeatDetails<Int>()
 val startIndex = progress ?: 0  // Elvis operator for default
 ```
 

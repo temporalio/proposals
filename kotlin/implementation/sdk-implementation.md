@@ -7,7 +7,7 @@ For public API and developer experience, see the [SDK API documentation](../READ
 ## Phases
 
 * **Phase 1 (COMPLETE)** - Coroutine-based workflows, untyped activity/child workflow execution, pluggable WorkflowImplementationFactory, core Kotlin idioms (Duration, null safety, KWorkflowInfo), signals/queries (annotation + dynamic handlers), updates (annotation-based), standard `delay()` and `coroutineScope { async { } }` support
-* **Phase 2** - Typed activity execution, typed child workflow execution, KChildWorkflowHandle, dynamic update handlers, update validators, KActivity/KActivityInfo/KActivityContext wrappers, client & worker API (KWorkflowClient, KWorkerFactory, KWorkflowHandle, startWorkflow, signalWithStart, etc.)
+* **Phase 2** - Typed activity execution, typed child workflow execution, KChildWorkflowHandle, dynamic update handlers, update validators, KActivity/KActivityInfo/KActivityExecutionContext wrappers, client & worker API (KWorkflowClient, KWorkerFactory, KWorkflowHandle, startWorkflow, signalWithStart, etc.)
 * **Phase 3** - Interceptor interfaces, testing framework
 
 > **Note:** Nexus support is a separate project and will be addressed independently.
@@ -96,7 +96,7 @@ The `temporal-kotlin` module already provides Kotlin extensions for the Java SDK
 | `KWorkflowInfo` | Kotlin wrapper for WorkflowInfo with nullable types | ✅ Done |
 | `KActivity` | Entry point for activity APIs (like `Activity` in Java) | Phase 2 |
 | `KActivityInfo` | Kotlin wrapper for ActivityInfo with nullable types | Phase 2 |
-| `KActivityContext` | Kotlin wrapper for ActivityExecutionContext | Phase 2 |
+| `KActivityExecutionContext` | Kotlin wrapper for ActivityExecutionContext | Phase 2 |
 | **Client & Worker API** | | |
 | `KWorkflowClient` | Kotlin client with suspend functions for starting/executing workflows | Phase 2 |
 | `KWorkerFactory` | Kotlin worker factory with KotlinPlugin pre-configured | Phase 2 |

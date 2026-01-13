@@ -56,12 +56,11 @@
 | `scope.cancel()` | `job.cancel()` |
 | `CancellationScope.isCancelRequested()` | `!isActive` |
 | **KActivity Object** | |
-| `Activity.getExecutionContext()` | `KActivity.context` |
-| `context.getInfo()` | `KActivity.context.info` or `KActivity.info` |
-| `context.heartbeat(details)` | `KActivity.context.heartbeat(details)` |
-| `context.getHeartbeatDetails(cls)` | `KActivity.context.heartbeatDetails<T>()` |
-| `Activity.getLogger()` | `KActivity.logger()` |
-| `context.doNotCompleteOnReturn()` | `KActivity.context.doNotCompleteOnReturn()` |
+| `Activity.getExecutionContext()` | `KActivity.executionContext` |
+| `context.getInfo()` | `KActivity.executionContext.info` or `KActivity.info` |
+| `context.heartbeat(details)` | `KActivity.executionContext.heartbeat(details)` |
+| `context.getHeartbeatDetails(cls)` | `KActivity.executionContext.heartbeatDetails<T>()` |
+| `context.doNotCompleteOnReturn()` | `KActivity.executionContext.doNotCompleteOnReturn()` |
 | **Testing** | |
 | `TestWorkflowEnvironment.newInstance()` | `KTestWorkflowEnvironment.newInstance()` |
 | `testEnv.newWorker(taskQueue)` | `testEnv.newWorker(taskQueue)` → `KWorker` |

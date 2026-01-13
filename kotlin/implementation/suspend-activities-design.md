@@ -144,9 +144,9 @@ internal class SuspendActivityInvoker(
         // Launch coroutine - this returns immediately!
         scope.launch {
             // Create activity context element for coroutine
-            val kContext = KActivityContext(context, completionClient, job)
+            val kContext = KActivityExecutionContext(context, completionClient, job)
 
-            withContext(KActivityContextElement(kContext)) {
+            withContext(KActivityExecutionContextElement(kContext)) {
                 try {
                     // Start auto-heartbeat if configured
                     val heartbeatJob = heartbeatInterval?.let { interval ->
@@ -206,14 +206,14 @@ internal class SuspendActivityInvoker(
 }
 ```
 
-### Component 2: KActivityContext (Coroutine-aware)
+### Component 2: KActivityExecutionContext (Coroutine-aware)
 
 Activity context accessible from within coroutines:
 
 ```kotlin
-// io.temporal.kotlin.internal.KActivityContext
+// io.temporal.kotlin.internal.KActivityExecutionContext
 
-internal class KActivityContext(
+internal class KActivityExecutionContext(
     private val javaContext: ActivityExecutionContext,
     private val completionClient: ManualActivityCompletionClient,
     private val parentJob: Job
@@ -246,10 +246,10 @@ internal class KActivityContext(
 }
 
 // Coroutine context element
-internal class KActivityContextElement(
-    val context: KActivityContext
+internal class KActivityExecutionContextElement(
+    val context: KActivityExecutionContext
 ) : AbstractCoroutineContextElement(Key) {
-    companion object Key : CoroutineContext.Key<KActivityContextElement>
+    companion object Key : CoroutineContext.Key<KActivityExecutionContextElement>
 }
 ```
 
@@ -266,7 +266,7 @@ public object KActivity {
      */
     public fun getInfo(): KActivityInfo {
         // Try coroutine context first (suspend activities)
-        val kContext = currentCoroutineContextOrNull()?.get(KActivityContextElement)?.context
+        val kContext = currentCoroutineContextOrNull()?.get(KActivityExecutionContextElement)?.context
         if (kContext != null) {
             return KActivityInfo(kContext.info)
         }
@@ -281,7 +281,7 @@ public object KActivity {
      * @throws CancellationException if the activity has been cancelled
      */
     public suspend fun <T> heartbeat(details: T? = null) {
-        val kContext = coroutineContext[KActivityContextElement]?.context
+        val kContext = coroutineContext[KActivityExecutionContextElement]?.context
             ?: throw IllegalStateException("heartbeat() must be called from within an activity")
         kContext.heartbeat(details)
     }
@@ -290,7 +290,7 @@ public object KActivity {
      * Gets heartbeat details from a previous attempt.
      */
     public inline fun <reified T> getHeartbeatDetails(): T? {
-        val kContext = currentCoroutineContextOrNull()?.get(KActivityContextElement)?.context
+        val kContext = currentCoroutineContextOrNull()?.get(KActivityExecutionContextElement)?.context
         if (kContext != null) {
             return kContext.getHeartbeatDetails<T>()
         }
@@ -303,7 +303,7 @@ public object KActivity {
      * Gets the task token for external completion scenarios.
      */
     public fun getTaskToken(): ByteArray {
-        val kContext = currentCoroutineContextOrNull()?.get(KActivityContextElement)?.context
+        val kContext = currentCoroutineContextOrNull()?.get(KActivityExecutionContextElement)?.context
         if (kContext != null) {
             return kContext.taskToken
         }
@@ -892,8 +892,8 @@ suspend fun myActivity(): Result
 
 ### Phase 1: Core Infrastructure
 1. Create `SuspendActivityInvoker` class
-2. Create `KActivityContext` with coroutine support
-3. Create `KActivityContextElement` for coroutine context
+2. Create `KActivityExecutionContext` with coroutine support
+3. Create `KActivityExecutionContextElement` for coroutine context
 4. Implement basic suspend activity execution
 
 ### Phase 2: Cancellation Handling

@@ -75,7 +75,7 @@ For long-running activities, use heartbeating to report progress and detect canc
 ```kotlin
 class LongRunningActivitiesImpl : LongRunningActivities {
     override suspend fun processLargeFile(filePath: String): ProcessResult {
-        val context = KActivity.context
+        val context = KActivity.executionContext
         val lines = File(filePath).readLines()
 
         lines.forEachIndexed { index, line ->
@@ -96,7 +96,7 @@ Retrieve heartbeat details from a previous failed attempt:
 
 ```kotlin
 override suspend fun resumableProcess(data: List<Item>): ProcessResult {
-    val context = KActivity.context
+    val context = KActivity.executionContext
 
     // Get progress from previous attempt if available
     val startIndex = context.heartbeatDetails<Int>() ?: 0
@@ -112,11 +112,11 @@ override suspend fun resumableProcess(data: List<Item>): ProcessResult {
 
 ## KActivity API
 
-`KActivity.context` provides access to the activity execution context for both regular and local activities:
+`KActivity.executionContext` provides access to the activity execution context for both regular and local activities:
 
 ```kotlin
 // In activity implementation
-val context = KActivity.context
+val context = KActivity.executionContext
 
 // Get activity info (works for both regular and local activities)
 val info = context.info
@@ -129,31 +129,25 @@ context.heartbeat(progressDetails)
 // Get heartbeat details from previous attempt (empty for local activities)
 val previousProgress = context.heartbeatDetails<Int>()
 
-// Logging (works for both)
-val log = context.logger()
-
 // Regular activities only - throws UnsupportedOperationException for local activities
 context.doNotCompleteOnReturn()
 val taskToken = context.taskToken
 ```
 
-## KActivityContext Interface
+## KActivityExecutionContext Interface
 
 ```kotlin
-interface KActivityContext {
+interface KActivityExecutionContext {
     val info: KActivityInfo
     fun heartbeat(details: Any? = null)  // No-op for local activities
     fun <T> heartbeatDetails(detailsClass: Class<T>): T?  // Empty for local activities
     val taskToken: ByteArray  // Throws for local activities
     fun doNotCompleteOnReturn()  // Throws for local activities
     val isDoNotCompleteOnReturn: Boolean
-    fun logger(): Logger
-    fun logger(name: String): Logger
-    fun logger(clazz: Class<*>): Logger
 }
 
 // Reified extension for easier Kotlin usage
-inline fun <reified T> KActivityContext.heartbeatDetails(): T?
+inline fun <reified T> KActivityExecutionContext.heartbeatDetails(): T?
 ```
 
 ## KActivityInfo Interface
