@@ -55,11 +55,12 @@ object KWorkflow {
 data class KLocalActivityOptions(
     val startToCloseTimeout: Duration? = null,
     val scheduleToCloseTimeout: Duration? = null,
+    val scheduleToStartTimeout: Duration? = null,
     val localRetryThreshold: Duration? = null,
     val retryOptions: KRetryOptions? = null,
+    val doNotIncludeArgumentsIntoMarker: Boolean = false,
     // Experimental
-    @Experimental val summary: String? = null,
-    @Experimental val priority: Priority? = null
+    @Experimental val summary: String? = null
 )
 ```
 
