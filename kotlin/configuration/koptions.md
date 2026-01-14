@@ -275,7 +275,7 @@ The Kotlin SDK provides two approaches for configuring options:
 1. **KOptions (Recommended)** - Native Kotlin data classes designed for the Kotlin SDK
 2. **DSL Builders** - Extension functions on Java SDK builders, provided as a stopgap for using Kotlin with the Java SDK
 
-> **Important:** When using the Kotlin SDK (`KWorkflow`, `KWorkflowClient`, etc.), always use KOptions classes. The DSL builders (`ActivityOptions { }`, `WorkflowOptions { }`, etc.) exist only for compatibility when using Kotlin with the Java SDK directly and should not be used with the Kotlin SDK APIs.
+> **Important:** When using the Kotlin SDK (`KWorkflow`, `KClient`, etc.), always use KOptions classes. The DSL builders (`ActivityOptions { }`, `WorkflowOptions { }`, etc.) exist only for compatibility when using Kotlin with the Java SDK directly and should not be used with the Kotlin SDK APIs.
 
 | Aspect | DSL Builder (Java SDK interop) | KOptions (Kotlin SDK) |
 |--------|--------------------------------|------------------------|

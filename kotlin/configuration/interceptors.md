@@ -495,8 +495,8 @@ data class KTerminateWorkflowInput(
 ### Registering Client Interceptors
 
 ```kotlin
-val client = KWorkflowClient.connect(
-    KWorkflowClientOptions(
+val client = KClient.connect(
+    KClientOptions(
         target = "localhost:7233",
         namespace = "default",
         interceptors = listOf(

@@ -63,7 +63,7 @@ This approach provides:
 ### Infrastructure
 
 - **[Client](./client/README.md)** - Interacting with workflows
-  - [Workflow Client](./client/workflow-client.md) - KWorkflowClient, starting workflows
+  - [Workflow Client](./client/workflow-client.md) - KClient, starting workflows
   - [Workflow Handles](./client/workflow-handle.md) - Signals, queries, results
   - [Advanced Operations](./client/advanced.md) - SignalWithStart, UpdateWithStart
 

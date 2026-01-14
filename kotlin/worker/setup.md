@@ -5,8 +5,7 @@
 For pure Kotlin applications, use `KWorker` which automatically enables coroutine support. Following the Python/.NET pattern, workflows and activities are passed at construction time via options:
 
 ```kotlin
-val service = WorkflowServiceStubs.newLocalServiceStubs()
-val client = KWorkflowClient(service) { ... }
+val client = KClient.connect(KClientOptions(target = "localhost:7233"))
 
 // Create worker with workflows and activities specified in options
 val worker = KWorker(
@@ -40,7 +39,7 @@ worker.start()
  * following the Python/.NET SDK pattern.
  */
 class KWorker(
-    client: KWorkflowClient,
+    client: KClient,
     options: KWorkerOptions
 ) {
     /** The underlying Java Worker for interop scenarios */

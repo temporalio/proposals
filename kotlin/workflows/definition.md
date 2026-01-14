@@ -25,7 +25,7 @@ class GreetingWorkflowImpl : GreetingWorkflow {
     }
 }
 
-// Client call using KWorkflowClient - same pattern as activities, no stub needed
+// Client call using KClient - same pattern as activities, no stub needed
 val result = client.executeWorkflow(
     GreetingWorkflow::getGreeting,
     KWorkflowOptions(

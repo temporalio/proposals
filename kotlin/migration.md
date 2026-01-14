@@ -5,7 +5,7 @@
 | Java SDK | Kotlin SDK |
 |----------|------------|
 | **Client** | |
-| `WorkflowClient.newInstance(service)` | `KWorkflowClient.connect(options)` |
+| `WorkflowClient.newInstance(service)` | `KClient.connect(options)` |
 | `client.newWorkflowStub(Cls, opts)` | `client.startWorkflow(Interface::method, options, ...)` |
 | `client.newWorkflowStub(Cls, id)` | `client.workflowHandle<T>(id)` |
 | `stub.method(arg)` | `client.executeWorkflow(Interface::method, options, arg)` |
@@ -64,7 +64,7 @@
 | **Testing** | |
 | `TestWorkflowEnvironment.newInstance()` | `KTestWorkflowEnvironment.newInstance()` |
 | `testEnv.newWorker(taskQueue)` | `testEnv.newWorker(taskQueue)` → `KWorker` |
-| `testEnv.getWorkflowClient()` | `testEnv.workflowClient` → `KWorkflowClient` |
+| `testEnv.getWorkflowClient()` | `testEnv.workflowClient` → `KClient` |
 | `testEnv.sleep(duration)` | `testEnv.sleep(duration)` |
 | **Primitives** | |
 | `Promise<T>` | `Deferred<T>` via `async { }` |

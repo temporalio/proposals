@@ -10,7 +10,7 @@ Use `KTestWorkflowEnvironment` to create an in-memory Temporal environment for f
 class OrderWorkflowTest {
     private lateinit var testEnv: KTestWorkflowEnvironment
     private lateinit var worker: KWorker
-    private lateinit var client: KWorkflowClient
+    private lateinit var client: KClient
 
     @BeforeEach
     fun setup() {
@@ -63,7 +63,7 @@ class KTestWorkflowEnvironment private constructor(
     }
 
     /** The workflow client for starting and interacting with workflows */
-    val workflowClient: KWorkflowClient
+    val workflowClient: KClient
 
     /** Create a new worker for the given task queue */
     fun newWorker(taskQueue: String): KWorker
@@ -288,14 +288,14 @@ For tests that need a real Temporal server:
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OrderWorkflowIntegrationTest {
     private lateinit var service: WorkflowServiceStubs
-    private lateinit var client: KWorkflowClient
+    private lateinit var client: KClient
     private lateinit var factory: KWorkerFactory
 
     @BeforeAll
     fun setup() {
         // Connect to local Temporal server
         service = WorkflowServiceStubs.newLocalServiceStubs()
-        client = KWorkflowClient(service)
+        client = KClient(service)
         factory = KWorkerFactory(client)
 
         val worker = factory.newWorker("integration-test-queue")

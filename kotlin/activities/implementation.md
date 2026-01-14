@@ -75,7 +75,7 @@ worker.registerActivitiesImplementations(OrderActivitiesImpl(paymentService))
 
 ## Heartbeating
 
-For long-running activities, use heartbeating to report progress. **Heartbeat is infallible** - it never throws exceptions. Cancellation is detected separately (see Cancellation section below).
+For long-running activities, use heartbeating to report progress. **Heartbeat throws `CancellationException`** when the activity is cancelled, ensuring activities don't continue running and consuming worker slots.
 
 ```kotlin
 class LongRunningActivitiesImpl : LongRunningActivities {
@@ -84,7 +84,7 @@ class LongRunningActivitiesImpl : LongRunningActivities {
         val lines = File(filePath).readLines()
 
         lines.forEachIndexed { index, line ->
-            // Heartbeat is infallible - never throws
+            // Heartbeat throws CancellationException if activity is cancelled
             context.heartbeat(index)
 
             // Process line...
@@ -96,7 +96,7 @@ class LongRunningActivitiesImpl : LongRunningActivities {
 }
 ```
 
-**Rationale:** Heartbeat is a local operation that records progress. The actual network communication happens asynchronously in the background. Making heartbeat infallible simplifies activity code - cancellation is handled through dedicated cancellation mechanisms.
+**Rationale:** Throwing on cancellation prevents activities from eating worker slots when developers forget to check cancellation. This aligns with Java SDK behavior and ensures consistent cancellation handling.
 
 ## Heartbeat Details Recovery
 
@@ -120,16 +120,16 @@ override suspend fun resumableProcess(data: List<Item>): ProcessResult {
 
 ## Activity Cancellation
 
-Activity cancellation works differently for suspend and non-suspend activities:
+Activity cancellation is delivered via `heartbeat()` - when an activity is cancelled, the next heartbeat call throws `CancellationException`. This works consistently for both suspend and non-suspend activities.
 
-### Suspend Activity Cancellation
-
-Suspend activities use **standard Kotlin coroutine cancellation**. When an activity is cancelled, a `CancellationException` is thrown at suspension points:
+### Cancellation via Heartbeat
 
 ```kotlin
 override suspend fun processItems(items: List<Item>): ProcessResult {
+    val context = KActivity.executionContext
     for (item in items) {
         // CancellationException thrown here if activity is cancelled
+        context.heartbeat()
         processItem(item)
     }
     return ProcessResult(success = true)
@@ -137,8 +137,13 @@ override suspend fun processItems(items: List<Item>): ProcessResult {
 
 // With cleanup on cancellation
 override suspend fun processWithCleanup(items: List<Item>): ProcessResult {
+    val context = KActivity.executionContext
     return try {
-        processItems(items)
+        for (item in items) {
+            context.heartbeat()
+            processItem(item)
+        }
+        ProcessResult(success = true)
     } catch (e: CancellationException) {
         // Cleanup on cancellation
         cleanup()
@@ -147,35 +152,23 @@ override suspend fun processWithCleanup(items: List<Item>): ProcessResult {
 }
 ```
 
-### Non-Suspend Activity Cancellation
+### Non-Suspend Activities
 
-Non-suspend activities use `KActivity.cancellationFuture()` which returns a `CompletableFuture<CancellationDetails>`:
+Non-suspend activities also receive cancellation via heartbeat:
 
 ```kotlin
 override fun processItemsBlocking(items: List<Item>): ProcessResult {
-    val cancellationFuture = KActivity.cancellationFuture()
-
+    val context = KActivity.executionContext
     for (item in items) {
-        // Check if cancelled
-        if (cancellationFuture.isDone) {
-            val details = cancellationFuture.get()
-            cleanup()
-            throw CancellationException("Activity cancelled: ${details.message}")
-        }
+        // CancellationException thrown here if activity is cancelled
+        context.heartbeat()
         processItem(item)
     }
     return ProcessResult(success = true)
 }
 ```
 
-The `CancellationDetails` provides information about why the activity was cancelled:
-
-```kotlin
-data class CancellationDetails(
-    val message: String?,
-    val cause: CancellationType  // WORKFLOW_CANCELLED, ACTIVITY_TIMEOUT, etc.
-)
-```
+> **TODO:** `KActivity.cancellationFuture()` will be added when cancellation can be delivered without requiring heartbeat calls (e.g., server-push cancellation). This will return a `CompletableFuture<CancellationDetails>` for activities that need cancellation notification without heartbeating.
 
 ## KActivity API
 
@@ -191,7 +184,7 @@ println("Activity ${info.activityType}, attempt ${info.attempt}")
 println("Is local: ${info.isLocal}")
 
 // Heartbeat for long-running activities (no-op for local activities)
-// Heartbeat is infallible - never throws
+// Throws CancellationException if activity is cancelled
 context.heartbeat(progressDetails)
 
 // Get heartbeat details from previous attempt (empty for local activities)
@@ -208,12 +201,6 @@ val taskToken = context.taskToken
 object KActivity {
     /** Get the execution context for the current activity */
     val executionContext: KActivityExecutionContext
-
-    /**
-     * Get a future that completes when the activity is cancelled.
-     * For non-suspend activities to detect cancellation.
-     */
-    fun cancellationFuture(): CompletableFuture<CancellationDetails>
 }
 ```
 
@@ -225,7 +212,7 @@ interface KActivityExecutionContext {
 
     /**
      * Send a heartbeat with optional progress details.
-     * Heartbeat is infallible - never throws. Cancellation is detected separately.
+     * Throws CancellationException if the activity has been cancelled.
      * No-op for local activities.
      */
     fun heartbeat(details: Any? = null)

@@ -1,16 +1,16 @@
 # Client API
 
-This section covers the Kotlin client API for interacting with Temporal workflows.
+This section covers the Kotlin client API for interacting with Temporal.
 
 ## Overview
 
-The Kotlin SDK provides `KWorkflowClient` with suspend functions and type-safe workflow APIs for starting and interacting with workflows.
+The Kotlin SDK provides `KClient`, a unified client (like Python's `Client` and .NET's `TemporalClient`) with suspend functions and type-safe APIs for workflows, schedules, and async activity completion.
 
 ## Documents
 
 | Document | Description |
 |----------|-------------|
-| [Workflow Client](./workflow-client.md) | KWorkflowClient, starting workflows |
+| [Client](./workflow-client.md) | KClient, starting workflows, schedules |
 | [Workflow Handles](./workflow-handle.md) | Typed/Untyped handles, signals, queries, results |
 | [Advanced Operations](./advanced.md) | SignalWithStart, UpdateWithStart |
 
@@ -19,8 +19,8 @@ The Kotlin SDK provides `KWorkflowClient` with suspend functions and type-safe w
 ### Creating a Client
 
 ```kotlin
-val client = KWorkflowClient.connect(
-    KWorkflowClientOptions(
+val client = KClient.connect(
+    KClientOptions(
         target = "localhost:7233",
         namespace = "default"
     )

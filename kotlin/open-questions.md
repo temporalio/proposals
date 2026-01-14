@@ -173,7 +173,11 @@ val result = client.executeWorkflow(
 
 ## Type-Safe Activity/Workflow Arguments
 
-**Status:** Decision needed
+**Status:** Decided
+
+### Decision
+
+**Option C: KArgs Wrapper Classes** - Use typed `KArgs` classes for 2+ arguments, with simpler direct forms for 0-1 arguments. This provides full compile-time type safety while keeping common cases simple.
 
 ### Problem Statement
 
