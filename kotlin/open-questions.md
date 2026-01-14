@@ -4,56 +4,62 @@ This document tracks API design questions that need discussion and decisions bef
 
 ---
 
-## Default Parameter Values Not Allowed
+## Default Parameter Values
 
 **Status:** Decided
 
 ### Decision
 
-**Default parameter values are not allowed** in workflow methods, activity methods, signal handlers, update handlers, and query handlers. This restriction is enforced at worker registration time via reflection (`KParameter.isOptional`).
+**Default parameter values are allowed for methods with 0 or 1 arguments** in workflow methods, activity methods, signal handlers, update handlers, and query handlers. This aligns with Python, .NET, and Ruby SDKs which support defaults.
 
 ```kotlin
-// ✗ NOT ALLOWED - will fail at registration
-@ActivityMethod
+// ✓ ALLOWED - 0 arguments with defaults (effectively optional call)
+suspend fun getStatus(includeDetails: Boolean = false): Status
+
+// ✓ ALLOWED - 1 argument with default
+suspend fun processOrder(priority: Int = 0): OrderResult
+
+// ✗ NOT ALLOWED - 2+ arguments, any with defaults
 suspend fun processOrder(orderId: String, priority: Int = 0)  // Error!
 
-// ✓ CORRECT - use a parameter object with optional fields
+// ✓ CORRECT for 2+ arguments - use a parameter object with optional fields
 data class ProcessOrderParams(
     val orderId: String,
     val priority: Int? = null
 )
 
-@ActivityMethod
 suspend fun processOrder(params: ProcessOrderParams)
 ```
 
 ### Rationale
 
-1. **Replay Safety** - If default values change between deployments, replayed workflows behave differently, violating determinism
-2. **Serialization Ambiguity** - Unclear whether the caller serializes defaults or the worker applies them
-3. **Cross-Language Compatibility** - Other languages calling the activity/workflow don't know about Kotlin defaults
-4. **SDK Consistency** - Python SDK explicitly disallows default parameters; Go/Java don't have them
+1. **SDK Alignment** - Python, .NET, and Ruby SDKs allow default parameters; aligning with them provides consistency
+2. **0-1 Argument Simplicity** - For simple methods, defaults are unambiguous and convenient
+3. **2+ Arguments Complexity** - With multiple arguments, defaults create serialization and cross-language issues
+4. **Parameter Object Pattern** - For complex inputs, parameter objects remain the recommended approach
 
 ### Validation
 
 The SDK validates at registration time using Kotlin reflection:
 
 ```kotlin
-fun validateNoDefaultParameters(function: KFunction<*>) {
-    val paramsWithDefaults = function.parameters
+fun validateDefaultParameters(function: KFunction<*>) {
+    val valueParams = function.parameters
         .filter { it.kind == KParameter.Kind.VALUE }
-        .filter { it.isOptional }
 
-    if (paramsWithDefaults.isNotEmpty()) {
+    val paramsWithDefaults = valueParams.filter { it.isOptional }
+
+    // Allow defaults only for 0-1 argument methods
+    if (paramsWithDefaults.isNotEmpty() && valueParams.size > 1) {
         throw IllegalArgumentException(
-            "Default parameter values are not allowed. " +
+            "Default parameter values are only allowed for methods with 0 or 1 arguments. " +
             "Use a parameter object with optional fields instead."
         )
     }
 }
 ```
 
-### Recommended Pattern
+### Recommended Pattern for Complex Inputs
 
 Use a single parameter object with nullable/optional fields:
 
@@ -64,7 +70,6 @@ data class OrderParams(
     val retryCount: Int? = null
 )
 
-@WorkflowMethod
 suspend fun processOrder(params: OrderParams): OrderResult
 ```
 
@@ -114,7 +119,6 @@ Allow defining activities and workflows directly on implementation classes witho
 ```kotlin
 // Proposed approach - no interface required
 class GreetingActivities {
-    @ActivityMethod
     suspend fun composeGreeting(greeting: String, name: String) = "$greeting, $name!"
 }
 
@@ -131,7 +135,6 @@ val result = KWorkflow.executeActivity(
 ```kotlin
 // Proposed approach - no interface required
 class GreetingWorkflow {
-    @WorkflowMethod
     suspend fun getGreeting(name: String): String {
         return KWorkflow.executeActivity(
             GreetingActivities::composeGreeting,

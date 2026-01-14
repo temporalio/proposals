@@ -19,10 +19,16 @@ Activities are the building blocks for interacting with external systems. The Ko
 ### Basic Activity
 
 ```kotlin
-// Define activity interface
+// Define activity interface - @ActivityMethod is optional
 @ActivityInterface
 interface GreetingActivities {
-    @ActivityMethod
+    suspend fun composeGreeting(greeting: String, name: String): String
+}
+
+// Use @ActivityMethod only when customizing the activity name
+@ActivityInterface
+interface CustomNameActivities {
+    @ActivityMethod(name = "compose-greeting")
     suspend fun composeGreeting(greeting: String, name: String): String
 }
 

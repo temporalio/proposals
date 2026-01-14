@@ -1,51 +1,51 @@
 # Worker Setup
 
-## KWorkerFactory (Recommended)
+## KWorker (Recommended)
 
-For pure Kotlin applications, use `KWorkerFactory` which automatically enables coroutine support:
+For pure Kotlin applications, use `KWorker` which automatically enables coroutine support. Following the Python/.NET pattern, workflows and activities are passed at construction time via options:
 
 ```kotlin
 val service = WorkflowServiceStubs.newLocalServiceStubs()
 val client = KWorkflowClient(service) { ... }
 
-// KWorkerFactory automatically enables Kotlin coroutine support
-val factory = KWorkerFactory(client)
-
-val worker: KWorker = factory.newWorker("task-queue") {
-    maxConcurrentActivityExecutionSize = 100
-}
-
-// Register Kotlin coroutine workflows
-worker.registerWorkflowImplementationTypes(
-    GreetingWorkflowImpl::class,
-    OrderWorkflowImpl::class
-)
-
-// Register activities - suspend functions handled automatically
-worker.registerActivitiesImplementations(
-    GreetingActivitiesImpl(),  // Kotlin suspend activities
-    JavaActivitiesImpl()        // Java activities work too
+// Create worker with workflows and activities specified in options
+val worker = KWorker(
+    client,
+    KWorkerOptions(
+        taskQueue = "task-queue",
+        workflows = listOf(
+            GreetingWorkflowImpl::class,
+            OrderWorkflowImpl::class
+        ),
+        activities = listOf(
+            GreetingActivitiesImpl(),  // Kotlin suspend activities
+            JavaActivitiesImpl()        // Java activities work too
+        ),
+        maxConcurrentActivityExecutionSize = 100
+    )
 )
 
 // Start the worker
-factory.start()
+worker.start()
 ```
 
-## KWorkerFactory API
+## KWorker API
 
 ```kotlin
 /**
- * Kotlin worker factory that automatically enables coroutine support.
- * Wraps WorkerFactory with KotlinPlugin pre-configured.
+ * Kotlin worker that provides idiomatic APIs for running
+ * Kotlin workflows and suspend activities.
+ *
+ * Workflows and activities are passed at construction time via KWorkerOptions,
+ * following the Python/.NET SDK pattern.
  */
-class KWorkerFactory(
+class KWorker(
     client: KWorkflowClient,
-    options: WorkerFactoryOptions.Builder.() -> Unit = {}
+    options: KWorkerOptions
 ) {
-    /** The underlying WorkerFactory for advanced use cases */
-    val workerFactory: WorkerFactory
+    /** The underlying Java Worker for interop scenarios */
+    val worker: Worker
 
-    fun newWorker(taskQueue: String, options: WorkerOptions.Builder.() -> Unit = {}): KWorker
     fun start()
     fun shutdown()
     fun shutdownNow()
@@ -53,50 +53,56 @@ class KWorkerFactory(
 }
 ```
 
-## KWorker API
+## KWorkerOptions
 
 ```kotlin
 /**
- * Kotlin worker that provides idiomatic APIs for registering
- * Kotlin workflows and suspend activities.
- *
- * Use KWorker for pure Kotlin implementations. For mixed Java/Kotlin
- * scenarios, access the underlying Worker via the [worker] property.
+ * Options for configuring a KWorker.
+ * Workflows and activities are specified at construction time.
  */
-class KWorker {
-    /** The underlying Java Worker for interop scenarios */
-    val worker: Worker
-
-    /** Register Kotlin workflow implementation types using reified generics */
-    inline fun <reified T : Any> registerWorkflowImplementationTypes()
-
-    /** Register Kotlin workflow implementation types using KClass */
-    fun registerWorkflowImplementationTypes(vararg workflowClasses: KClass<*>)
-
-    /** Register Kotlin workflow implementation types with options */
-    fun registerWorkflowImplementationTypes(
-        options: WorkflowImplementationOptions,
-        vararg workflowClasses: KClass<*>
-    )
-
-    /** Register activity implementations (automatically detects suspend functions) */
-    fun registerActivitiesImplementations(vararg activities: Any)
-
-    /** Register suspend activity implementations explicitly */
-    fun registerSuspendActivities(vararg activities: Any)
-
-    /** Register Nexus service implementations */
-    fun registerNexusServiceImplementations(vararg services: Any)
-}
+data class KWorkerOptions(
+    val taskQueue: String,
+    val workflows: List<KClass<*>> = emptyList(),
+    val activities: List<Any> = emptyList(),
+    val workflowImplementationOptions: WorkflowImplementationOptions? = null,
+    val maxConcurrentActivityExecutionSize: Int? = null,
+    val maxConcurrentWorkflowTaskExecutionSize: Int? = null,
+    val maxConcurrentLocalActivityExecutionSize: Int? = null,
+    // ... other worker options
+)
 ```
 
-**When to use KWorker vs Worker:**
-- Use `KWorker` for pure Kotlin implementations (recommended)
-- Use `Worker` (via `kworker.worker`) when mixing Java and Kotlin workflows/activities on the same worker
+## Multiple Workers
 
-## KotlinPlugin (For Java Main)
+For multiple task queues, create multiple workers:
 
-When your main application is written in Java and you need to register Kotlin workflows, use `KotlinPlugin` explicitly:
+```kotlin
+val orderWorker = KWorker(
+    client,
+    KWorkerOptions(
+        taskQueue = "orders",
+        workflows = listOf(OrderWorkflowImpl::class),
+        activities = listOf(OrderActivitiesImpl())
+    )
+)
+
+val notificationWorker = KWorker(
+    client,
+    KWorkerOptions(
+        taskQueue = "notifications",
+        workflows = listOf(NotificationWorkflowImpl::class),
+        activities = listOf(NotificationActivitiesImpl())
+    )
+)
+
+// Start all workers
+orderWorker.start()
+notificationWorker.start()
+```
+
+## KotlinJavaWorkerPlugin (For Java Main)
+
+When your main application is written in Java and you need to register Kotlin workflows, use `KotlinJavaWorkerPlugin` explicitly:
 
 ```kotlin
 // Java main or mixed Java/Kotlin setup
@@ -104,7 +110,7 @@ val service = WorkflowServiceStubs.newLocalServiceStubs()
 val client = WorkflowClient.newInstance(service)
 
 val factory = WorkerFactory.newInstance(client, WorkerFactoryOptions.newBuilder()
-    .addPlugin(KotlinPlugin())
+    .addPlugin(KotlinJavaWorkerPlugin())
     .build())
 
 val worker = factory.newWorker("task-queue")
@@ -118,18 +124,23 @@ worker.registerWorkflowImplementationTypes(KotlinWorkflowImpl::class.java)
 A single worker supports both Java and Kotlin workflows on the same task queue:
 
 ```kotlin
-// Java workflows (thread-based)
-worker.registerWorkflowImplementationTypes(
-    OrderWorkflowJavaImpl::class.java
-)
-
-// Kotlin workflows (coroutine-based) - same method, plugin handles execution
-worker.registerWorkflowImplementationTypes(
-    GreetingWorkflowImpl::class
+val worker = KWorker(
+    client,
+    KWorkerOptions(
+        taskQueue = "mixed-queue",
+        workflows = listOf(
+            GreetingWorkflowImpl::class,    // Kotlin workflow (coroutine-based)
+            OrderWorkflowJavaImpl::class     // Java workflow (thread-based)
+        ),
+        activities = listOf(
+            KotlinActivitiesImpl(),          // Kotlin suspend activities
+            JavaActivitiesImpl()             // Java blocking activities
+        )
+    )
 )
 
 // Both run on the same worker - execution model is per-workflow-instance
-factory.start()
+worker.start()
 ```
 
 ## Related

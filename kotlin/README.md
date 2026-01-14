@@ -80,10 +80,9 @@ This approach provides:
 ## Quick Start
 
 ```kotlin
-// Define activity interface
+// Define activity interface - @ActivityMethod is optional
 @ActivityInterface
 interface GreetingActivities {
-    @ActivityMethod
     suspend fun composeGreeting(greeting: String, name: String): String
 }
 
@@ -94,10 +93,9 @@ class GreetingActivitiesImpl : GreetingActivities {
     }
 }
 
-// Define workflow interface
+// Define workflow interface - @WorkflowMethod is optional
 @WorkflowInterface
 interface GreetingWorkflow {
-    @WorkflowMethod
     suspend fun getGreeting(name: String): String
 }
 
@@ -112,17 +110,16 @@ class GreetingWorkflowImpl : GreetingWorkflow {
     }
 }
 
-// Start worker (recommended: use run() which blocks and propagates fatal errors)
-val factory = KWorkerFactory(client)
-val worker = factory.newWorker("greetings")
-worker.registerWorkflowImplementationTypes(GreetingWorkflowImpl::class)
-worker.registerActivitiesImplementations(GreetingActivitiesImpl())
-factory.run()  // Blocks until shutdown, propagates fatal errors
-
-// Alternative for advanced use cases:
-// factory.start()  // Returns immediately
-// ... do other work ...
-// factory.shutdown()
+// Start worker - workflows and activities specified in options
+val worker = KWorker(
+    client,
+    KWorkerOptions(
+        taskQueue = "greetings",
+        workflows = listOf(GreetingWorkflowImpl::class),
+        activities = listOf(GreetingActivitiesImpl())
+    )
+)
+worker.start()
 
 // Execute workflow
 val result = client.executeWorkflow(

@@ -17,27 +17,38 @@ The Kotlin SDK uses **standard Kotlin patterns** wherever possible instead of cu
 Workflows and activities use `suspend fun` for natural coroutine integration:
 
 ```kotlin
+// Method annotations are optional - use only when customizing names
 @WorkflowInterface
 interface OrderWorkflow {
-    @WorkflowMethod
     suspend fun processOrder(order: Order): OrderResult
 
-    @SignalMethod
+    suspend fun updatePriority(priority: Priority)  // Signal handler
+
+    suspend fun addItem(item: OrderItem): Boolean    // Update handler
+
+    val status: OrderStatus  // Query handler - queries are NOT suspend (synchronous)
+}
+
+// Use annotations only when customizing names
+@WorkflowInterface
+interface CustomNameWorkflow {
+    @WorkflowMethod(name = "ProcessOrder")
+    suspend fun processOrder(order: Order): OrderResult
+
+    @SignalMethod(name = "update-priority")
     suspend fun updatePriority(priority: Priority)
 
-    @UpdateMethod
+    @UpdateMethod(name = "add-item")
     suspend fun addItem(item: OrderItem): Boolean
 
-    @QueryMethod  // Queries are NOT suspend - must be synchronous
+    @QueryMethod(name = "get-status")
     val status: OrderStatus
 }
 
 @ActivityInterface
 interface OrderActivities {
-    @ActivityMethod
     suspend fun validateOrder(order: Order): Boolean
 
-    @ActivityMethod
     suspend fun chargePayment(order: Order): PaymentResult
 }
 ```

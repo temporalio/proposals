@@ -26,15 +26,47 @@ The following Java SDK APIs are **not needed** in the Kotlin SDK due to language
 
 ## Activity API Design Decisions
 
-### Single heartbeat() API
+### Infallible heartbeat() API
 
-The Kotlin SDK provides a single `heartbeat()` method on `KActivityExecutionContext` for both sync and suspend activities:
+The Kotlin SDK provides a single `heartbeat()` method on `KActivityExecutionContext` that is **infallible** - it never throws exceptions:
 
 ```kotlin
-context.heartbeat(progressDetails)
+context.heartbeat(progressDetails)  // Never throws
 ```
 
-**Rationale:** Heartbeat is a short, non-blocking operation that records progress locally. The actual network call happens asynchronously in the background. A separate `suspendHeartbeat()` API is unnecessary.
+**Rationale:** Heartbeat is a local operation that records progress. The actual network communication happens asynchronously in the background. Making heartbeat infallible simplifies activity code - cancellation is handled through dedicated cancellation mechanisms (see below).
+
+### Activity Cancellation
+
+Cancellation works differently for suspend and non-suspend activities:
+
+**Suspend activities:** Use standard Kotlin coroutine cancellation. `CancellationException` is thrown at suspension points when the activity is cancelled.
+
+```kotlin
+override suspend fun processItems(items: List<Item>): ProcessResult {
+    for (item in items) {
+        processItem(item)  // CancellationException thrown here if cancelled
+    }
+    return ProcessResult(success = true)
+}
+```
+
+**Non-suspend activities:** Use `KActivity.cancellationFuture()` which returns a `CompletableFuture<CancellationDetails>`:
+
+```kotlin
+override fun processItemsBlocking(items: List<Item>): ProcessResult {
+    val cancellationFuture = KActivity.cancellationFuture()
+
+    for (item in items) {
+        if (cancellationFuture.isDone) {
+            val details = cancellationFuture.get()
+            throw CancellationException("Cancelled: ${details.message}")
+        }
+        processItem(item)
+    }
+    return ProcessResult(success = true)
+}
+```
 
 ### Both Sync and Suspend Activities Supported
 
@@ -91,7 +123,23 @@ The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
 |--------------|------------|
 | `Workflow.sleep(...)` | `kotlinx.coroutines.delay()` - standard Kotlin, or `KWorkflow.delay()` |
 | N/A | `KWorkflow.delay(duration)` - simple delay |
-| N/A | `KWorkflow.delay(duration, options)` - with `KTimerOptions` for summary |
+| N/A | `KWorkflow.delay(duration, summary)` - with summary string |
+
+**KWorkflow.delay overloads:**
+
+```kotlin
+object KWorkflow {
+    /** Simple delay - equivalent to kotlinx.coroutines.delay() */
+    suspend fun delay(duration: Duration)
+
+    /** Delay with summary for observability */
+    suspend fun delay(duration: Duration, summary: String)
+}
+
+// Usage examples
+KWorkflow.delay(5.minutes)
+KWorkflow.delay(1.hours, "Waiting for approval timeout")
+```
 
 ### Side Effects & Utilities
 

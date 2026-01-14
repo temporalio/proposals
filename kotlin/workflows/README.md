@@ -25,7 +25,13 @@ Kotlin workflows use coroutines and suspend functions for an idiomatic async exp
 ```kotlin
 @WorkflowInterface
 interface GreetingWorkflow {
-    @WorkflowMethod
+    suspend fun getGreeting(name: String): String
+}
+
+// Use @WorkflowMethod only when customizing the workflow type name
+@WorkflowInterface
+interface CustomNameWorkflow {
+    @WorkflowMethod(name = "CustomGreeting")
     suspend fun getGreeting(name: String): String
 }
 

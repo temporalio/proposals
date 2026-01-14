@@ -38,14 +38,18 @@ The typed activity API uses direct method references - no stub creation needed. 
 // Define activity interface
 @ActivityInterface
 interface GreetingActivities {
-    @ActivityMethod
     suspend fun composeGreeting(greeting: String, name: String): String
 
-    @ActivityMethod
     suspend fun sendEmail(email: Email): SendResult
 
-    @ActivityMethod
     suspend fun log(message: String)
+}
+
+// Use @ActivityMethod only when customizing the activity name
+@ActivityInterface
+interface CustomNameActivities {
+    @ActivityMethod(name = "compose-greeting")
+    suspend fun composeGreeting(greeting: String, name: String): String
 }
 
 // In workflow - direct method reference, no stub needed
@@ -75,24 +79,25 @@ KWorkflow.executeActivity(
 
 ## Parameter Restrictions
 
-**Default parameter values are not allowed** in activity methods. This is validated at worker registration time.
+**Default parameter values are allowed for methods with 0 or 1 arguments.** For methods with 2+ arguments, defaults are not allowed. This is validated at worker registration time.
 
 ```kotlin
-// ✗ NOT ALLOWED - will fail at registration
-@ActivityMethod
+// ✓ ALLOWED - 1 argument with default
+suspend fun processOrder(priority: Int = 0): OrderResult
+
+// ✗ NOT ALLOWED - 2+ arguments with defaults
 suspend fun processOrder(orderId: String, priority: Int = 0)  // Error!
 
-// ✓ CORRECT - use a parameter object with optional fields
+// ✓ CORRECT for 2+ arguments - use a parameter object with optional fields
 data class ProcessOrderParams(
     val orderId: String,
     val priority: Int? = null
 )
 
-@ActivityMethod
 suspend fun processOrder(params: ProcessOrderParams)
 ```
 
-**Rationale:** Default values create replay safety issues (changing defaults breaks determinism), serialization ambiguity, and cross-language compatibility problems. See [full discussion](../open-questions.md#default-parameter-values-not-allowed).
+**Rationale:** This aligns with Python, .NET, and Ruby SDKs which support defaults. For complex inputs with multiple parameters, the parameter object pattern avoids serialization ambiguity and cross-language issues. See [full discussion](../open-questions.md#default-parameter-values).
 
 ## Type Safety
 
@@ -214,7 +219,6 @@ class GreetingActivitiesImpl : GreetingActivities {
 ```kotlin
 // Proposed approach - no interface required
 class GreetingActivities {
-    @ActivityMethod
     suspend fun composeGreeting(greeting: String, name: String) = "$greeting, $name!"
 }
 

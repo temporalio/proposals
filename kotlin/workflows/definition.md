@@ -5,7 +5,13 @@ Define workflow interfaces with `suspend` methods for full Kotlin coroutine supp
 ```kotlin
 @WorkflowInterface
 interface GreetingWorkflow {
-    @WorkflowMethod
+    suspend fun getGreeting(name: String): String
+}
+
+// Use @WorkflowMethod only when customizing the workflow type name
+@WorkflowInterface
+interface CustomNameWorkflow {
+    @WorkflowMethod(name = "CustomGreeting")
     suspend fun getGreeting(name: String): String
 }
 
@@ -79,8 +85,7 @@ Alternatively, Java clients can define their own Java interface with the **same 
 // Java interface matching the Kotlin workflow type
 @WorkflowInterface
 public interface GreetingWorkflow {
-    @WorkflowMethod
-    String getGreeting(String name);
+    String getGreeting(String name);  // @WorkflowMethod optional in Java too
 }
 
 // Java client using typed stub
@@ -98,14 +103,18 @@ String result = workflow.getGreeting("Temporal");
 
 ## Parameter Restrictions
 
-**Default parameter values are not allowed** in workflow methods. This is validated at worker registration time.
+**Default parameter values are allowed for methods with 0 or 1 arguments.** For methods with 2+ arguments, defaults are not allowed. This is validated at worker registration time.
 
 ```kotlin
-// ✗ NOT ALLOWED - will fail at registration
+// ✓ ALLOWED - 1 argument with default
+@WorkflowMethod
+suspend fun processOrder(priority: Int = 0): OrderResult
+
+// ✗ NOT ALLOWED - 2+ arguments with defaults
 @WorkflowMethod
 suspend fun processOrder(orderId: String, priority: Int = 0)  // Error!
 
-// ✓ CORRECT - use a parameter object with optional fields
+// ✓ CORRECT for 2+ arguments - use a parameter object with optional fields
 data class ProcessOrderParams(
     val orderId: String,
     val priority: Int? = null
@@ -115,13 +124,14 @@ data class ProcessOrderParams(
 suspend fun processOrder(params: ProcessOrderParams): OrderResult
 ```
 
-**Rationale:** Default values create replay safety issues (changing defaults breaks determinism), serialization ambiguity, and cross-language compatibility problems. See [full discussion](../open-questions.md#default-parameter-values-not-allowed).
+**Rationale:** This aligns with Python, .NET, and Ruby SDKs which support defaults. For complex inputs with multiple parameters, the parameter object pattern avoids serialization ambiguity and cross-language issues. See [full discussion](../open-questions.md#default-parameter-values).
 
 ## Key Characteristics
 
 * Use `coroutineScope`, `async`, `launch` for concurrent execution
 * Use `delay()` for timers (maps to Temporal timers, not `Thread.sleep`)
-* Reuses `@WorkflowInterface` and `@WorkflowMethod` annotations from Java SDK
+* Reuses `@WorkflowInterface` annotation from Java SDK
+* Method annotations (`@WorkflowMethod`, `@SignalMethod`, etc.) are optional - use only when customizing names
 * Data classes work naturally for parameters and results
 
 ## Logging
@@ -177,7 +187,6 @@ class GreetingWorkflowImpl : GreetingWorkflow {
 ```kotlin
 // Proposed approach - no interface required
 class GreetingWorkflow {
-    @WorkflowMethod
     suspend fun getGreeting(name: String): String {
         return KWorkflow.executeActivity(
             GreetingActivities::composeGreeting,

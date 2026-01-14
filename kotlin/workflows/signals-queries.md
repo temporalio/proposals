@@ -2,31 +2,44 @@
 
 Signals and updates follow the same suspend/non-suspend pattern as workflow methods. Queries are always synchronous (never suspend) and can be defined as properties.
 
-> **Note:** Default parameter values are not allowed in signal, query, or update handlers. Use parameter objects with optional fields instead. See [Parameter Restrictions](../open-questions.md#default-parameter-values-not-allowed).
+> **Note:** Default parameter values are allowed for handlers with 0 or 1 arguments. For handlers with 2+ arguments, use parameter objects with optional fields instead. See [Parameter Restrictions](../open-questions.md#default-parameter-values).
 
 ## Defining Handlers
+
+Method annotations are optional - use only when customizing handler names:
 
 ```kotlin
 @WorkflowInterface
 interface OrderWorkflow {
-    @WorkflowMethod
     suspend fun processOrder(order: Order): OrderResult
 
-    @SignalMethod
-    suspend fun cancelOrder(reason: String)
+    suspend fun cancelOrder(reason: String)  // Signal handler
 
-    @UpdateMethod
-    suspend fun addItem(item: OrderItem): Boolean
+    suspend fun addItem(item: OrderItem): Boolean  // Update handler
 
     @UpdateValidatorMethod(updateMethod = "addItem")
     fun validateAddItem(item: OrderItem)
 
     // Queries - always synchronous, can use property syntax
-    @QueryMethod
     val status: OrderStatus
 
-    @QueryMethod
     fun getItemCount(): Int
+}
+
+// Use annotations only when customizing handler names
+@WorkflowInterface
+interface CustomNameOrderWorkflow {
+    @WorkflowMethod(name = "ProcessOrder")
+    suspend fun processOrder(order: Order): OrderResult
+
+    @SignalMethod(name = "cancel-order")
+    suspend fun cancelOrder(reason: String)
+
+    @UpdateMethod(name = "add-item")
+    suspend fun addItem(item: OrderItem): Boolean
+
+    @QueryMethod(name = "get-status")
+    val status: OrderStatus
 }
 ```
 
@@ -188,6 +201,7 @@ val added = handle.executeUpdate(OrderWorkflow::addItem, newItem)
 Update validators run synchronously before the update handler. They can reject updates by throwing exceptions:
 
 ```kotlin
+// Validator annotation specifies which update method it validates
 @UpdateValidatorMethod(updateMethod = "addItem")
 fun validateAddItem(item: OrderItem) {
     require(item.quantity > 0) { "Quantity must be positive" }
@@ -195,7 +209,7 @@ fun validateAddItem(item: OrderItem) {
     require(_status == OrderStatus.PENDING) { "Cannot add items after processing started" }
 }
 
-@UpdateMethod
+// The update handler - @UpdateMethod is optional unless customizing the name
 suspend fun addItem(item: OrderItem): Boolean {
     // Validator already passed - safe to proceed
     _items.add(item)
