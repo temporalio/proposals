@@ -154,3 +154,49 @@ Unanswered comments from @cretz on PR #104.
 **Status:** [ ] TODO
 
 ---
+
+## Activities - Additional
+
+### 20. Context data type (implementation.md)
+**Comment ID:** 2682791531
+> What is the data type of this context? Arguably for OO languages where the context is a type one can pass around and reference, obtaining the current context is a static method on the type itself, but if it is the Java SDK context, makes sense (static extension methods are not a thing). EDIT: I see later this is a Kotlin context class, I would recommend moving this call to that class, though it can be here too, meh.
+
+**Status:** [ ] TODO
+
+---
+
+### 21. Logger on context (implementation.md)
+**Comment ID:** 2682832357
+> Can I get more detail on why a logger would be on the context. Is there an expected Kotlin logging solution that expects situationally stateful loggers instead of existing MDC/NDC thread/coroutine-local types of approaches?
+
+**Status:** [ ] TODO
+
+---
+
+### 22. Heartbeat details collection (implementation.md)
+**Comment ID:** 2682834623
+> Heartbeat details is a collection, this will either have to accept an index and have a total-count method, or maybe accept some kind of reified tuple type or something. I guess there can be a helper for just the first detail item. Same for the actual `heartbeat` call.
+>
+> Also, will there be a `lastHeartbeatDetails`?
+
+**Status:** [ ] TODO
+
+---
+
+### 23. Priority for local activities (local-activities.md)
+**Comment ID:** 2682941947
+> Priority doesn't make sense here
+
+**Status:** [ ] TODO
+
+---
+
+## Workflows - Additional
+
+### 24. Event loop control (kotlin-idioms.md:58)
+**Comment ID:** 2683150870
+> Do we have full control over the event loop including running the `awaitCondition` stuff when/how we want in that loop, or is this somehow just sugar on top of the Java one (sorry, could dig into the PoC, but being lazy)
+
+**Status:** [ ] TODO
+
+---

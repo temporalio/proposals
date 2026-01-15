@@ -64,17 +64,17 @@ data class KLocalActivityOptions(
 )
 ```
 
-## KActivity.executionContext in Local Activities
+## KActivityContext in Local Activities
 
-`KActivity.executionContext` is available in local activities with limited functionality:
+`KActivityContext.current()` is available in local activities with limited functionality:
 
 | Feature | Local Activity Behavior |
 |---------|------------------------|
-| `context.info` | Works (`info.isLocal` returns `true`) |
-| `context.heartbeat()` | No-op (ignored) |
-| `context.heartbeatDetails<T>()` | Returns `null` |
-| `context.taskToken` | Throws `UnsupportedOperationException` |
-| `context.doNotCompleteOnReturn()` | Throws `UnsupportedOperationException` |
+| `ctx.info` | Works (`info.isLocal` returns `true`) |
+| `ctx.heartbeat()` | No-op (ignored) |
+| `ctx.lastHeartbeatDetails<T>()` | Returns `null` |
+| `ctx.taskToken` | Throws `UnsupportedOperationException` |
+| `ctx.doNotCompleteOnReturn()` | Throws `UnsupportedOperationException` |
 
 ## Related
 

@@ -19,7 +19,7 @@
 | `worker.registerActivitiesImplementations(impl)` | `worker.registerActivitiesImplementations(impl)` |
 | **KWorkflow Object** | |
 | `Workflow.getInfo()` | `KWorkflow.info` |
-| `Workflow.getLogger()` | `KWorkflow.logger()` |
+| `Workflow.getLogger()` | Standard SLF4J logger (MDC populated by SDK) |
 | `Workflow.sleep(duration)` | `delay(duration)` or `KWorkflow.delay(duration, options)` |
 | `Workflow.await(() -> cond)` | `KWorkflow.awaitCondition { cond }` |
 | `Workflow.sideEffect(cls, func)` | `KWorkflow.sideEffect { func }` |
@@ -55,12 +55,12 @@
 | `Workflow.newDetachedCancellationScope(...)` | `withContext(NonCancellable) { ... }` |
 | `scope.cancel()` | `job.cancel()` |
 | `CancellationScope.isCancelRequested()` | `!isActive` |
-| **KActivity Object** | |
-| `Activity.getExecutionContext()` | `KActivity.executionContext` |
-| `context.getInfo()` | `KActivity.executionContext.info` or `KActivity.info` |
-| `context.heartbeat(details)` | `KActivity.executionContext.heartbeat(details)` |
-| `context.getHeartbeatDetails(cls)` | `KActivity.executionContext.heartbeatDetails<T>()` |
-| `context.doNotCompleteOnReturn()` | `KActivity.executionContext.doNotCompleteOnReturn()` |
+| **KActivityContext** | |
+| `Activity.getExecutionContext()` | `KActivityContext.current()` |
+| `context.getInfo()` | `KActivityContext.current().info` |
+| `context.heartbeat(details)` | `KActivityContext.current().heartbeat(details)` |
+| `context.getHeartbeatDetails(cls)` | `KActivityContext.current().lastHeartbeatDetails<T>()` |
+| `context.doNotCompleteOnReturn()` | `KActivityContext.current().doNotCompleteOnReturn()` |
 | **Testing** | |
 | `TestWorkflowEnvironment.newInstance()` | `KTestWorkflowEnvironment.newInstance()` |
 | `testEnv.newWorker(taskQueue)` | `testEnv.newWorker(taskQueue)` → `KWorker` |

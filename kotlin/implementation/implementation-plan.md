@@ -76,14 +76,14 @@
 - ✅ DSL builders for worker options
 
 ### 2.6 Kotlin Activity API ✅
-- ✅ `KActivity` object (entry point for activity APIs)
-- ✅ `KActivity.info`, `context`, `heartbeat()` properties/methods
-- ✅ `KActivity.logger()` for idiomatic logging
+- ✅ `KActivityContext.current()` (entry point for activity APIs)
+- ✅ `ctx.info`, `ctx.heartbeat()`, `ctx.lastHeartbeatDetails<T>()` methods
+- ✅ MDC populated automatically with activity context for standard logging
 - ✅ `KActivityInfo` with null safety
 - ✅ Suspend activity support via `SuspendActivityWrapper`
 
 ### 2.7 Kotlin Workflow API ✅
-- ✅ `KWorkflow.logger()` for idiomatic logging
+- ✅ MDC populated automatically with workflow context for standard logging
 - ✅ `KWorkflow.async {}` for eager parallel execution
 - ✅ `KWorkflow.continueAsNew()` with `KContinueAsNewOptions`
 - ✅ `KWorkflow.retry()` for workflow-level retry with exponential backoff

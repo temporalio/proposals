@@ -298,6 +298,8 @@ data class KActivityExecutionOutput(val result: Any?)
 
 ## Example: Logging Interceptor
 
+Uses standard logging with MDC. The SDK automatically populates MDC with context (workflowId, runId, activityType, etc.).
+
 ```kotlin
 class LoggingInterceptor : KWorkerInterceptorBase() {
 
@@ -318,7 +320,8 @@ private class LoggingWorkflowInterceptor(
     next: KWorkflowInboundCallsInterceptor
 ) : KWorkflowInboundCallsInterceptorBase(next) {
 
-    private val log = KWorkflow.logger()
+    // Standard SLF4J logger - MDC is populated automatically by the SDK
+    private val log = LoggerFactory.getLogger(LoggingWorkflowInterceptor::class.java)
 
     override suspend fun execute(input: KWorkflowInput): KWorkflowOutput {
         log.info("Workflow started with ${input.arguments.size} arguments")
@@ -363,21 +366,23 @@ private class LoggingActivityInterceptor(
     next: KActivityInboundCallsInterceptor
 ) : KActivityInboundCallsInterceptorBase(next) {
 
-    override suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput {
-        val info = KActivity.info
-        val log = KActivity.logger()
+    // Standard SLF4J logger - MDC is populated automatically by the SDK
+    private val log = LoggerFactory.getLogger(LoggingActivityInterceptor::class.java)
 
-        log.info("Activity ${info.activityType} started")
+    override suspend fun execute(input: KActivityExecutionInput): KActivityExecutionOutput {
+        val ctx = KActivityContext.current()
+
+        log.info("Activity ${ctx.info.activityType} started")
         val startTime = System.currentTimeMillis()
 
         return try {
             val result = next.execute(input)
             val duration = System.currentTimeMillis() - startTime
-            log.info("Activity ${info.activityType} completed in ${duration}ms")
+            log.info("Activity ${ctx.info.activityType} completed in ${duration}ms")
             result
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - startTime
-            log.error("Activity ${info.activityType} failed after ${duration}ms", e)
+            log.error("Activity ${ctx.info.activityType} failed after ${duration}ms", e)
             throw e
         }
     }

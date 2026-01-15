@@ -240,3 +240,82 @@ factory.shutdown()
 ```
 
 ---
+
+## 24. Event loop control (kotlin-idioms.md:58)
+
+**Decision:** Kotlin wraps Java SDK, `awaitCondition` built on `Async.await()`
+
+Kotlin SDK does not have its own event loop - it's implemented on top of Java SDK. The `awaitCondition` functionality will be built on top of the new `Async.await()` method being added to Java SDK (PR #2751), which returns a `Promise` for non-blocking condition waiting.
+
+```kotlin
+// Kotlin awaitCondition suspends the coroutine
+KWorkflow.awaitCondition { condition }
+
+// Implemented using Java's Async.await() under the hood
+// Async.await(supplier) -> Promise<T>
+```
+
+---
+
+## 23. Priority for local activities (local-activities.md)
+
+**Decision:** Already addressed - priority removed from KLocalActivityOptions
+
+The `KLocalActivityOptions` class doesn't include `priority` or other non-applicable fields (like task queue). Local activities run in-process, so task queue routing options don't apply.
+
+---
+
+## 22. Heartbeat details collection (implementation.md)
+
+**Decision:** Support single argument only, like Java SDK
+
+Keep it simple - heartbeat accepts a single detail value. If users need multiple values, they wrap them in a data class.
+
+```kotlin
+// Heartbeat with single value
+ctx.heartbeat(progressPercent)
+
+// Or wrap multiple values in a data class
+data class MyProgress(val percent: Int, val checkpoint: String)
+ctx.heartbeat(MyProgress(50, "step-3"))
+
+// Retrieve on retry
+val progress: MyProgress? = ctx.lastHeartbeatDetails<MyProgress>()
+```
+
+Use `lastHeartbeatDetails` naming to clarify it's from the last heartbeat before retry.
+
+---
+
+## 21. Logger on context (implementation.md)
+
+**Decision:** Remove logger from context, use MDC only (Option A)
+
+Use MDC/coroutine context for activity and workflow metadata. Users use standard logging frameworks. Temporal SDK populates MDC automatically with workflowId, activityId, etc.
+
+```kotlin
+// SDK sets up MDC with activity/workflow info automatically
+val logger = LoggerFactory.getLogger(MyActivity::class.java)
+logger.info("Processing...")  // MDC includes activityId, workflowId, taskQueue, etc.
+```
+
+Remove `KActivity.logger()` and `KWorkflow.logger()` from the API. This matches Java SDK approach.
+
+---
+
+## 20. Context data type (implementation.md)
+
+**Decision:** Use `KActivityContext.current()` pattern, remove KActivity class
+
+Move context access to the context class itself, matching .NET pattern. Since Kotlin doesn't have checked exceptions, `Activity.wrap()` is not needed, so `KActivity` class can be removed entirely.
+
+```kotlin
+val ctx = KActivityContext.current()
+ctx.info                      // ActivityInfo
+ctx.heartbeat(details)
+ctx.heartbeatDetails<T>()
+ctx.doNotCompleteOnReturn()
+ctx.cancellationFuture()      // for non-suspend activities
+```
+
+---

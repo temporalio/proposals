@@ -80,7 +80,7 @@ For long-running activities, use heartbeating to report progress. **Heartbeat th
 ```kotlin
 class LongRunningActivitiesImpl : LongRunningActivities {
     override suspend fun processLargeFile(filePath: String): ProcessResult {
-        val context = KActivity.executionContext
+        val context = KActivityContext.current()
         val lines = File(filePath).readLines()
 
         lines.forEachIndexed { index, line ->
@@ -104,13 +104,13 @@ Retrieve heartbeat details from a previous failed attempt:
 
 ```kotlin
 override suspend fun resumableProcess(data: List<Item>): ProcessResult {
-    val context = KActivity.executionContext
+    val ctx = KActivityContext.current()
 
     // Get progress from previous attempt if available
-    val startIndex = context.heartbeatDetails<Int>() ?: 0
+    val startIndex = ctx.lastHeartbeatDetails<Int>() ?: 0
 
     for (i in startIndex until data.size) {
-        context.heartbeat(i)
+        ctx.heartbeat(i)
         processItem(data[i])
     }
 
@@ -126,7 +126,7 @@ Activity cancellation is delivered via `heartbeat()` - when an activity is cance
 
 ```kotlin
 override suspend fun processItems(items: List<Item>): ProcessResult {
-    val context = KActivity.executionContext
+    val context = KActivityContext.current()
     for (item in items) {
         // CancellationException thrown here if activity is cancelled
         context.heartbeat()
@@ -137,7 +137,7 @@ override suspend fun processItems(items: List<Item>): ProcessResult {
 
 // With cleanup on cancellation
 override suspend fun processWithCleanup(items: List<Item>): ProcessResult {
-    val context = KActivity.executionContext
+    val context = KActivityContext.current()
     return try {
         for (item in items) {
             context.heartbeat()
@@ -158,7 +158,7 @@ Non-suspend activities also receive cancellation via heartbeat:
 
 ```kotlin
 override fun processItemsBlocking(items: List<Item>): ProcessResult {
-    val context = KActivity.executionContext
+    val context = KActivityContext.current()
     for (item in items) {
         // CancellationException thrown here if activity is cancelled
         context.heartbeat()
@@ -168,46 +168,42 @@ override fun processItemsBlocking(items: List<Item>): ProcessResult {
 }
 ```
 
-> **TODO:** `KActivity.cancellationFuture()` will be added when cancellation can be delivered without requiring heartbeat calls (e.g., server-push cancellation). This will return a `CompletableFuture<CancellationDetails>` for activities that need cancellation notification without heartbeating.
+> **TODO:** `KActivityContext.current().cancellationFuture()` will be added when cancellation can be delivered without requiring heartbeat calls (e.g., server-push cancellation). This will return a `CompletableFuture<CancellationDetails>` for activities that need cancellation notification without heartbeating.
 
-## KActivity API
+## KActivityContext API
 
-`KActivity.executionContext` provides access to the activity execution context for both regular and local activities:
+`KActivityContext.current()` provides access to the activity execution context for both regular and local activities:
 
 ```kotlin
 // In activity implementation
-val context = KActivity.executionContext
+val ctx = KActivityContext.current()
 
 // Get activity info (works for both regular and local activities)
-val info = context.info
+val info = ctx.info
 println("Activity ${info.activityType}, attempt ${info.attempt}")
 println("Is local: ${info.isLocal}")
 
 // Heartbeat for long-running activities (no-op for local activities)
 // Throws CancellationException if activity is cancelled
-context.heartbeat(progressDetails)
+ctx.heartbeat(progressDetails)
 
-// Get heartbeat details from previous attempt (empty for local activities)
-val previousProgress = context.heartbeatDetails<Int>()
+// Get last heartbeat details from previous attempt (null for local activities)
+val previousProgress = ctx.lastHeartbeatDetails<Int>()
 
 // Regular activities only - throws UnsupportedOperationException for local activities
-context.doNotCompleteOnReturn()
-val taskToken = context.taskToken
+ctx.doNotCompleteOnReturn()
+val taskToken = ctx.taskToken
 ```
 
-### KActivity Static Methods
+## KActivityContext Interface
 
 ```kotlin
-object KActivity {
-    /** Get the execution context for the current activity */
-    val executionContext: KActivityExecutionContext
-}
-```
+interface KActivityContext {
+    /** Get the current activity context. */
+    companion object {
+        fun current(): KActivityContext
+    }
 
-## KActivityExecutionContext Interface
-
-```kotlin
-interface KActivityExecutionContext {
     val info: KActivityInfo
 
     /**
@@ -217,8 +213,8 @@ interface KActivityExecutionContext {
      */
     fun heartbeat(details: Any? = null)
 
-    /** Get heartbeat details from previous attempt. Empty for local activities. */
-    fun <T> heartbeatDetails(detailsClass: Class<T>): T?
+    /** Get last heartbeat details from previous attempt. Null for local activities. */
+    fun <T> lastHeartbeatDetails(detailsClass: Class<T>): T?
 
     /** Task token for async completion. Throws for local activities. */
     val taskToken: ByteArray
@@ -230,7 +226,7 @@ interface KActivityExecutionContext {
 }
 
 // Reified extension for easier Kotlin usage
-inline fun <reified T> KActivityExecutionContext.heartbeatDetails(): T?
+inline fun <reified T> KActivityContext.lastHeartbeatDetails(): T?
 ```
 
 ## KActivityInfo Interface

@@ -134,23 +134,7 @@ suspend fun processOrder(params: ProcessOrderParams): OrderResult
 * Method annotations (`@WorkflowMethod`, `@SignalMethod`, etc.) are optional - use only when customizing names
 * Data classes work naturally for parameters and results
 
-## Logging
-
-Use `KWorkflow.logger()` for workflow-safe logging:
-
-```kotlin
-// Get logger using workflow type as name
-val log = KWorkflow.logger()
-log.info("Processing order")
-
-// Or with custom logger name
-val customLog = KWorkflow.logger("my.custom.logger")
-
-// Or with class
-val classLog = KWorkflow.logger(MyWorkflowImpl::class.java)
-```
-
-> **Note:** Versioning (`KWorkflow.getVersion`), side effects (`KWorkflow.sideEffect`), and search attributes (`KWorkflow.upsertSearchAttributes`) use the same patterns as the Java SDK.
+> **Note:** Versioning (`KWorkflow.version()`), side effects (`KWorkflow.sideEffect`), and search attributes (`KWorkflow.upsertSearchAttributes`) use the same patterns as the Java SDK. Logging uses standard logging frameworks with MDC - the SDK automatically populates MDC with workflow context (workflowId, runId, taskQueue, etc.).
 
 ## Related
 
