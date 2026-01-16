@@ -1,0 +1,220 @@
+# Java SDK API Parity
+
+This document describes the intentional differences between Java and Kotlin SDK APIs, and identifies remaining gaps.
+
+## APIs Not Needed in Kotlin
+
+The following Java SDK APIs are **not needed** in the Kotlin SDK due to language differences:
+
+| Java SDK API | Reason Not Needed |
+|--------------|-------------------|
+| `Workflow.sleep(Duration)` | Use `kotlinx.coroutines.delay()` or `KWorkflow.delay()` with options |
+| `Workflow.newTimer(Duration)` | Use `async { delay(duration) }` or `async { KWorkflow.delay(duration, options) }` for racing timers |
+| `Workflow.wrap(Exception)` | Kotlin has no checked exceptions - not needed |
+| `Activity.wrap(Throwable)` | Kotlin has no checked exceptions - not needed |
+| `Workflow.newCancellationScope(...)` | Use Kotlin's `coroutineScope { }` with structured concurrency |
+| `Workflow.newDetachedCancellationScope(...)` | Use `supervisorScope { }` or launch in parent scope |
+| `Workflow.newWorkflowLock()` | Not needed - cooperative coroutines don't have true concurrency |
+| `Workflow.newWorkflowSemaphore(...)` | Use structured concurrency patterns (e.g., `chunked().map { async }.awaitAll()`) |
+| `Workflow.newQueue(...)` / `newWorkflowQueue(...)` | Use `mutableListOf` + `awaitCondition` - no concurrent access in suspend model |
+| `Workflow.newPromise()` / `newFailedPromise(...)` | Use `CompletableDeferred<T>` from kotlinx.coroutines |
+| `Workflow.setDefaultActivityOptions(...)` | Pass `KActivityOptions` per call, or define shared `val defaultOptions` |
+| `Workflow.setActivityOptions(...)` | Pass options per call |
+| `Workflow.applyActivityOptions(...)` | Pass options per call |
+| `Workflow.setDefaultLocalActivityOptions(...)` | Pass `KLocalActivityOptions` per call |
+| `Workflow.applyLocalActivityOptions(...)` | Pass options per call |
+
+## Activity API Design Decisions
+
+### Infallible heartbeat() API
+
+The Kotlin SDK provides a single `heartbeat()` method on `KActivityExecutionContext` that is **infallible** - it never throws exceptions:
+
+```kotlin
+context.heartbeat(progressDetails)  // Never throws
+```
+
+**Rationale:** Heartbeat is a local operation that records progress. The actual network communication happens asynchronously in the background. Making heartbeat infallible simplifies activity code - cancellation is handled through dedicated cancellation mechanisms (see below).
+
+### Activity Cancellation
+
+Cancellation works differently for suspend and non-suspend activities:
+
+**Suspend activities:** Use standard Kotlin coroutine cancellation. `CancellationException` is thrown at suspension points when the activity is cancelled.
+
+```kotlin
+override suspend fun processItems(items: List<Item>): ProcessResult {
+    for (item in items) {
+        processItem(item)  // CancellationException thrown here if cancelled
+    }
+    return ProcessResult(success = true)
+}
+```
+
+**Non-suspend activities:** Use `KActivity.cancellationFuture()` which returns a `CompletableFuture<CancellationDetails>`:
+
+```kotlin
+override fun processItemsBlocking(items: List<Item>): ProcessResult {
+    val cancellationFuture = KActivity.cancellationFuture()
+
+    for (item in items) {
+        if (cancellationFuture.isDone) {
+            val details = cancellationFuture.get()
+            throw CancellationException("Cancelled: ${details.message}")
+        }
+        processItem(item)
+    }
+    return ProcessResult(success = true)
+}
+```
+
+### Both Sync and Suspend Activities Supported
+
+The Kotlin SDK supports both regular and suspend activity methods:
+
+```kotlin
+@ActivityInterface
+interface OrderActivities {
+    fun validate(order: Order): Boolean        // Sync - runs on thread pool
+    suspend fun fetchExternal(id: String): Data // Suspend - runs on coroutine
+}
+```
+
+**Rationale:** This matches other Kotlin frameworks (Spring, Micronaut, gRPC-Kotlin) that detect method signatures and handle them appropriately. It reduces migration friction from Java SDK and gives developers choice.
+
+## Cancellation Support
+
+Kotlin coroutine cancellation is fully integrated with Temporal workflow cancellation:
+
+- Workflow cancellation triggers `coroutineScope.cancel(CancellationException(...))`
+- Cancellation propagates to all child coroutines (activities, timers, child workflows)
+- Activities use `suspendCancellableCoroutine` with `invokeOnCancellation` to cancel via Temporal
+- Use standard Kotlin patterns: `try/finally`, `use { }`, `invokeOnCompletion`
+
+## Implemented APIs (Java SDK Parity)
+
+The following Java SDK workflow APIs have Kotlin equivalents in `KWorkflow`:
+
+### Search Attributes & Memo
+
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.getTypedSearchAttributes()` | `KWorkflow.searchAttributes` |
+| `Workflow.upsertTypedSearchAttributes(...)` | `KWorkflow.upsertSearchAttributes()` |
+| `Workflow.getMemo(key, class)` | `KWorkflow.memo` |
+| `Workflow.upsertMemo(...)` | `KWorkflow.upsertMemo()` |
+
+### Workflow State & Context
+
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.getLastCompletionResult(class)` | `KWorkflow.lastCompletionResult<T>()` |
+| `Workflow.getPreviousRunFailure()` | `KWorkflow.previousRunFailure` |
+| `Workflow.isReplaying()` | `KWorkflow.isReplaying` |
+| `Workflow.getCurrentUpdateInfo()` | `KWorkflow.currentUpdateInfo` |
+| `Workflow.isEveryHandlerFinished()` | `KWorkflow.isEveryHandlerFinished` |
+| `Workflow.setCurrentDetails(...)` | `KWorkflow.currentDetails = ...` |
+| `Workflow.getCurrentDetails()` | `KWorkflow.currentDetails` |
+| `Workflow.getMetricsScope()` | `KWorkflow.metricsScope` |
+
+### Timers
+
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.sleep(...)` | `kotlinx.coroutines.delay()` - standard Kotlin, or `KWorkflow.delay()` |
+| N/A | `KWorkflow.delay(duration)` - simple delay |
+| N/A | `KWorkflow.delay(duration, summary)` - with summary string |
+
+**KWorkflow.delay overloads:**
+
+```kotlin
+object KWorkflow {
+    /** Simple delay - equivalent to kotlinx.coroutines.delay() */
+    suspend fun delay(duration: Duration)
+
+    /** Delay with summary for observability */
+    suspend fun delay(duration: Duration, summary: String)
+}
+
+// Usage examples
+KWorkflow.delay(5.minutes)
+KWorkflow.delay(1.hours, "Waiting for approval timeout")
+```
+
+### Side Effects & Utilities
+
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.sideEffect(...)` | `KWorkflow.sideEffect()` |
+| `Workflow.mutableSideEffect(...)` | `KWorkflow.mutableSideEffect()` |
+| `Workflow.getVersion(...)` | `KWorkflow.version()` |
+| `Workflow.retry(...)` | `KWorkflow.retry()` |
+| `Workflow.randomUUID()` | `KWorkflow.randomUUID()` |
+| `Workflow.newRandom()` | `KWorkflow.newRandom()` |
+
+### Dynamic Handler Registration
+
+| Java SDK API | Kotlin SDK |
+|--------------|------------|
+| `Workflow.registerListener(DynamicSignalHandler)` | `KWorkflow.registerDynamicSignalHandler()` |
+| `Workflow.registerListener(DynamicQueryHandler)` | `KWorkflow.registerDynamicQueryHandler()` |
+| `Workflow.registerListener(DynamicUpdateHandler)` | `KWorkflow.registerDynamicUpdateHandler()` |
+| N/A (new in Kotlin SDK) | `KWorkflow.registerSignalHandler()` |
+| N/A (new in Kotlin SDK) | `KWorkflow.registerQueryHandler()` |
+| N/A (new in Kotlin SDK) | `KWorkflow.registerUpdateHandler()` |
+| N/A (new in Kotlin SDK) | `KWorkflow.registerDynamicUpdateValidator()` |
+
+## APIs Identical to Java SDK
+
+The following areas use the same API and behavior as the Java SDK:
+
+| Area | Notes |
+|------|-------|
+| Error Handling | `ApplicationFailure`, exception types (`ActivityFailure`, `ChildWorkflowFailure`, `TimeoutFailure`, etc.), retry behavior |
+| Workflow Info | `KWorkflow.info` provides property-style access to Java `WorkflowInfo` (same properties: `workflowId`, `runId`, `parentWorkflowId`, `attempt`, `taskQueue`, etc.) |
+
+## Remaining Gaps
+
+| Java SDK API | Status |
+|--------------|--------|
+| `Workflow.newNexusServiceStub(...)` | Nexus support - deferred to separate project |
+| `Workflow.startNexusOperation(...)` | Nexus support - deferred to separate project |
+| `Workflow.getInstance()` | Advanced use case - low priority |
+
+## KWorkflowInfo
+
+`KWorkflow.info` returns `KWorkflowInfo`, a property-style wrapper around Java's `WorkflowInfo`:
+
+| Java WorkflowInfo | Kotlin SDK |
+|-------------------|------------|
+| `getWorkflowId()` | `KWorkflowInfo.workflowId` |
+| `getRunId()` | `KWorkflowInfo.runId` |
+| `getWorkflowType()` | `KWorkflowInfo.workflowType` |
+| `getTaskQueue()` | `KWorkflowInfo.taskQueue` |
+| `getNamespace()` | `KWorkflowInfo.namespace` |
+| `getAttempt()` | `KWorkflowInfo.attempt` |
+| `getParentWorkflowId()` | `KWorkflowInfo.parentWorkflowId: String?` |
+| `getParentRunId()` | `KWorkflowInfo.parentRunId: String?` |
+| `getContinuedExecutionRunId()` | `KWorkflowInfo.continuedExecutionRunId: String?` |
+| `getCronSchedule()` | `KWorkflowInfo.cronSchedule: String?` |
+| `getSearchAttributes()` | `KWorkflowInfo.searchAttributes` |
+| `getHistoryLength()` | `KWorkflowInfo.historyLength` |
+| `isContinueAsNewSuggested()` | `KWorkflowInfo.isContinueAsNewSuggested` |
+| `getFirstExecutionRunId()` | `KWorkflowInfo.firstExecutionRunId` |
+| `getOriginalExecutionRunId()` | `KWorkflowInfo.originalExecutionRunId` |
+| `getCurrentBuildId()` | `KWorkflowInfo.currentBuildId: String?` |
+| `getPriority()` | `@Experimental KWorkflowInfo.priority` |
+
+## KActivityInfo
+
+| Java ActivityInfo | Kotlin SDK |
+|-------------------|------------|
+| `getWorkflowType()` | `KActivityInfo.workflowType` |
+| `getCurrentAttemptScheduledTimestamp()` | `KActivityInfo.currentAttemptScheduledTimestamp` |
+| `getRetryOptions()` | `KActivityInfo.retryOptions` |
+
+## Related
+
+- [Migration Guide](./migration.md) - Practical migration steps
+- [Kotlin Idioms](./kotlin-idioms.md) - Kotlin-specific patterns
+- [README](./README.md) - Back to documentation home
