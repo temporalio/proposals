@@ -24,8 +24,8 @@ val worker = KWorker(
     )
 )
 
-// Start the worker
-worker.start()
+// Run the worker (blocks until shutdown signal or fatal error)
+worker.run()
 ```
 
 ## KWorker API
@@ -45,9 +45,30 @@ class KWorker(
     /** The underlying Java Worker for interop scenarios */
     val worker: Worker
 
+    /**
+     * Run the worker, blocking until a shutdown signal is received or a fatal error occurs.
+     * This is the recommended way to run a worker.
+     *
+     * Unlike start()/shutdown(), this method propagates fatal worker-runtime errors
+     * rather than silently swallowing them.
+     *
+     * @throws WorkerException if a fatal error occurs during worker execution
+     */
+    suspend fun run()
+
+    /**
+     * Start the worker without blocking. Use shutdown() to stop.
+     * Prefer run() for most use cases as it properly propagates fatal errors.
+     */
     fun start()
+
+    /** Gracefully shut down the worker, allowing in-flight tasks to complete. */
     fun shutdown()
+
+    /** Immediately shut down the worker, cancelling in-flight tasks. */
     fun shutdownNow()
+
+    /** Wait for the worker to terminate after shutdown is called. */
     suspend fun awaitTermination(timeout: Duration)
 }
 ```
@@ -73,7 +94,7 @@ data class KWorkerOptions(
 
 ## Multiple Workers
 
-For multiple task queues, create multiple workers:
+For multiple task queues, create multiple workers and run them concurrently:
 
 ```kotlin
 val orderWorker = KWorker(
@@ -94,9 +115,27 @@ val notificationWorker = KWorker(
     )
 )
 
-// Start all workers
+// Run all workers concurrently - blocks until shutdown or fatal error
+coroutineScope {
+    launch { orderWorker.run() }
+    launch { notificationWorker.run() }
+}
+```
+
+For advanced scenarios where you need manual control:
+
+```kotlin
+// Start workers without blocking
 orderWorker.start()
 notificationWorker.start()
+
+// ... do other work ...
+
+// Graceful shutdown
+orderWorker.shutdown()
+notificationWorker.shutdown()
+orderWorker.awaitTermination(30.seconds)
+notificationWorker.awaitTermination(30.seconds)
 ```
 
 ## KotlinJavaWorkerPlugin (For Java Main)
@@ -139,7 +178,7 @@ val worker = KWorker(
 )
 
 // Both run on the same worker - execution model is per-workflow-instance
-worker.start()
+worker.run()  // Blocks until shutdown or fatal error
 ```
 
 ## Related

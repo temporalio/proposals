@@ -17,28 +17,29 @@ The Kotlin SDK provides `KWorkerFactory` and `KWorker` which automatically enabl
 ### Basic Worker Setup
 
 ```kotlin
-val service = WorkflowServiceStubs.newLocalServiceStubs()
-val client = KWorkflowClient(service)
+val client = KClient.connect(KClientOptions(target = "localhost:7233"))
 
-// KWorkerFactory automatically enables Kotlin coroutine support
-val factory = KWorkerFactory(client)
-val worker = factory.newWorker("task-queue")
+// Create worker with workflows and activities at construction time
+val worker = KWorker(
+    client,
+    KWorkerOptions(
+        taskQueue = "task-queue",
+        workflows = listOf(MyWorkflowImpl::class),
+        activities = listOf(MyActivitiesImpl())
+    )
+)
 
-// Register workflows and activities
-worker.registerWorkflowImplementationTypes(MyWorkflowImpl::class)
-worker.registerActivitiesImplementations(MyActivitiesImpl())
-
-// Start the worker
-factory.start()
+// Run the worker (blocks until shutdown or fatal error)
+worker.run()
 ```
 
 ### Key Components
 
 | Component | Purpose |
 |-----------|---------|
-| `KWorkerFactory` | Creates workers with automatic coroutine support |
-| `KWorker` | Registers Kotlin workflows and suspend activities |
-| `KotlinPlugin` | Plugin for Java main apps (used automatically by KWorkerFactory) |
+| `KWorker` | Creates and runs workers with automatic coroutine support |
+| `KWorkerOptions` | Configuration including workflows and activities |
+| `KotlinJavaWorkerPlugin` | Plugin for Java main apps using Kotlin workflows |
 
 ## Related
 
