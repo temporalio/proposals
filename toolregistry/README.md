@@ -143,7 +143,7 @@ tools = ToolRegistry()
     },
 })
 def handle_flag(inp: dict) -> str:
-    issues.append(inp["description"])
+    results.append(inp["description"])
     return "recorded"
 
 await run_tool_loop(
@@ -191,7 +191,7 @@ registry.define(
       required: ['description'],
     },
   },
-  (inp) => { issues.push(inp['description'] as string); return 'recorded'; }
+  (inp) => { results.push(inp['description'] as string); return 'recorded'; }
 );
 
 await runToolLoop({
@@ -234,7 +234,7 @@ reg.Register(toolregistry.ToolDef{
         "required":   []string{"description"},
     },
 }, func(inp map[string]any) (string, error) {
-    issues = append(issues, inp["description"].(string))
+    results = append(results, inp["description"].(string))
     return "recorded", nil
 })
 
@@ -280,7 +280,7 @@ registry.register(
             "required", List.of("description")))
         .build(),
     input -> {
-        issues.add((String) input.get("description"));
+        results.add((String) input.get("description"));
         return "recorded";
     });
 
@@ -324,7 +324,7 @@ registry.register(
     'required' => ['description']
   }
 ) do |input|
-  issues << input['description']
+  results << input['description']
   'recorded'
 end
 
@@ -373,7 +373,7 @@ registry.Register(
         }),
     inp =>
     {
-        issues.Add((string)inp["description"]);
+        results.Add((string)inp["description"]);
         return Task.FromResult("recorded");
     });
 
