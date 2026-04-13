@@ -23,9 +23,33 @@ Two abstractions cover the common cases:
 
 **`ToolRegistry`** — maps tool names to JSON Schema definitions and handler functions, exports to Anthropic or OpenAI wire format, and dispatches model-selected tool calls.
 
-**`AgenticSession`** — wraps a `ToolRegistry` loop with crash-safe heartbeating. Before every LLM turn it serializes the conversation history and issues list via `heartbeat`; on retry the activity resumes from where it left off.
+**`AgenticSession`** — wraps a `ToolRegistry` loop with crash-safe heartbeating. Before every LLM turn it serializes the full conversation history and issues list to Temporal's heartbeat; on activity retry it resumes from exactly where it left off. Because conversation state is stored locally in the heartbeat rather than through server-side session IDs, the session survives both activity crashes and provider-side session expiry.
 
 Both are opt-in `contrib` modules (not part of the SDK core) and have no mandatory dependencies — LLM client libraries are `require`/`import`-ed at runtime only if a real provider is constructed.
+
+---
+
+## Relationship to framework integrations
+
+Temporal's Python and TypeScript SDKs ship higher-level integrations for specific agent frameworks: `openai_agents`, `google_adk_agents`, and `langgraph` in Python, and `ai-sdk` (Vercel AI SDK) in TypeScript. Those integrations intercept the framework's own model calls and run each one as a separate Temporal activity, using the framework's server-side session IDs to maintain conversation continuity.
+
+ToolRegistry is a different layer:
+
+| | Framework plugins | ToolRegistry |
+|---|---|---|
+| Available for | Python, TypeScript | All 6 SDKs |
+| Requires | Specific agent framework | Anthropic or OpenAI SDK only |
+| LLM call granularity | One activity per model call | One activity per conversation |
+| Session continuity | Server-side (framework/API session IDs) | Local heartbeat state |
+| Survives server-side session expiry | No | Yes |
+
+**Use a framework plugin** when you are already using OpenAI Agents SDK, LangGraph, Google ADK, or Vercel AI SDK in Python or TypeScript and want each model call to be a separately visible, retryable Temporal activity.
+
+**Use ToolRegistry** when:
+- Working in Go, Java, Ruby, or .NET (no framework plugins exist for these SDKs)
+- Calling Anthropic or OpenAI directly without an agent framework
+- Needing conversation history to survive server-side session expiry (e.g., long-running sessions where API-side state may expire between turns)
+- Wanting a single implementation pattern that works identically across all six SDKs
 
 ---
 
@@ -489,6 +513,8 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 - Automatic retry / back-pressure on rate limits
 - Multi-agent orchestration
 - Prompt management / template libraries
+- Conversation history compaction: sessions with very long conversations may eventually exhaust the LLM's context window. No built-in truncation or summarization strategy is provided — callers are responsible for managing history length if needed.
+- Replacement for framework-level plugins: `openai_agents`, `google_adk_agents`, `langgraph`, and `ai-sdk` integrations remain the recommended path for teams already using those frameworks in Python or TypeScript.
 
 ---
 
@@ -498,7 +524,15 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 
 2. ~~**MCP coverage**: `from_mcp_tools` exists in Python and TypeScript. Should it be added to Go, Java, Ruby, .NET?~~ **Resolved**: `fromMcpTools` / `from_mcp_tools` / `FromMCPTools` added to Go, Java, Ruby, and .NET. All six SDKs now have MCP support.
 
-3. **Versioning**: These modules are in `contrib` and thus can evolve independently. Should they carry a `v0` semver disclaimer for the first release?
+3. ~~**Versioning**: These modules are in `contrib` and thus can evolve independently. Should they carry a `v0` semver disclaimer for the first release?~~ **Resolved**: Shipping as `v0` is the right call for all six SDKs. The API is new and cross-SDK alignment may still evolve.
+
+---
+
+## Implementation notes
+
+**Handler error semantics**: All six SDKs catch exceptions thrown by tool handlers and feed the error back to the model rather than propagating it out of the activity. Anthropic providers additionally set `"is_error": true` on the tool result block, which the Anthropic API uses to signal that the tool invocation failed (as distinct from a tool that returned an error string as its result). OpenAI has no equivalent field.
+
+**Python bug fix included**: The initial Python implementation did not wrap `dispatch()` calls in a try/except, so a handler exception would crash the entire activity rather than being returned to the model. This is fixed in the current PR — behavior now matches Go, Java, Ruby, .NET, and TypeScript.
 
 ---
 
