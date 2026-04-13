@@ -38,7 +38,7 @@ The quickstart example: accumulate findings as the LLM calls tools, return them 
 Queries that span many tool calls and may take minutes. `AgenticSession` checkpoints after each turn — a crash mid-research resumes from the last completed turn, not from scratch.
 
 **Human-in-the-loop tool calls**
-A tool handler can send a Temporal signal to a workflow and block until a human approves the action. Because conversation state is local in the heartbeat (not in a provider-side session), the activity can sleep for hours waiting for approval without losing context. This pattern is not possible with framework plugins that rely on provider session IDs — those sessions expire.
+A tool handler can send a Temporal signal to a workflow and block until a human approves the action. Because conversation state is local in the heartbeat (not in a provider-side session), the activity can sleep for hours waiting for approval without losing context. This pattern is not possible with framework plugins that rely on provider session IDs — those sessions expire. The human's decision (approved/rejected + reason) is returned to the LLM as the tool result, so the model can read a rejection and revise its next proposal. A crash while waiting is safe: deterministic workflow IDs let the retry re-attach to the existing approval workflow rather than re-notifying the reviewer. See the Python SDK README for a full working example (code review agent that proposes auto-fixes requiring human sign-off before application).
 
 **MCP server integration**
 `ToolRegistry.fromMcpTools` / `from_mcp_tools` / `FromMCPTools` converts an MCP tool list into a registry. Handlers can proxy calls to any MCP server. Combined with `AgenticSession`, the conversation survives MCP server restarts mid-loop.
