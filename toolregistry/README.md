@@ -575,7 +575,3 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 | Ruby | temporalio/sdk-ruby#417 |
 | .NET | temporalio/sdk-dotnet#641 |
 
-## Related issues
-
-- temporalio/sdk-python#1089
-- temporalio/sdk-typescript#1755
