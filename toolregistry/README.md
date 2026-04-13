@@ -23,9 +23,28 @@ Two abstractions cover the common cases:
 
 **`ToolRegistry`** — maps tool names to JSON Schema definitions and handler functions, exports to Anthropic or OpenAI wire format, and dispatches model-selected tool calls.
 
-**`AgenticSession`** — wraps a `ToolRegistry` loop with crash-safe heartbeating. Before every LLM turn it serializes the full conversation history and issues list to Temporal's heartbeat; on activity retry it resumes from exactly where it left off. Because conversation state is stored locally in the heartbeat rather than through server-side session IDs, the session survives both activity crashes and provider-side session expiry.
+**`AgenticSession`** — wraps a `ToolRegistry` loop with crash-safe heartbeating. Before every LLM turn it serializes the full conversation history and results list to Temporal's heartbeat; on activity retry it resumes from exactly where it left off. Because conversation state is stored locally in the heartbeat rather than through server-side session IDs, the session survives both activity crashes and provider-side session expiry.
 
 Both are opt-in `contrib` modules (not part of the SDK core) and have no mandatory dependencies — LLM client libraries are `require`/`import`-ed at runtime only if a real provider is constructed.
+
+---
+
+## Use cases
+
+**Code analysis and review**
+The quickstart example: accumulate findings as the LLM calls tools, return them when the model signals it is done.
+
+**Long-running research tasks**
+Queries that span many tool calls and may take minutes. `AgenticSession` checkpoints after each turn — a crash mid-research resumes from the last completed turn, not from scratch.
+
+**Human-in-the-loop tool calls**
+A tool handler can send a Temporal signal to a workflow and block until a human approves the action. Because conversation state is local in the heartbeat (not in a provider-side session), the activity can sleep for hours waiting for approval without losing context. This pattern is not possible with framework plugins that rely on provider session IDs — those sessions expire.
+
+**MCP server integration**
+`ToolRegistry.fromMcpTools` / `from_mcp_tools` / `FromMCPTools` converts an MCP tool list into a registry. Handlers can proxy calls to any MCP server. Combined with `AgenticSession`, the conversation survives MCP server restarts mid-loop.
+
+**Provider migration**
+Register tools once; swap the provider between Anthropic and OpenAI without touching handler code.
 
 ---
 
@@ -140,14 +159,14 @@ async with agentic_session() as session:
 
     @tools.handler({...})
     def handle(inp):
-        session.issues.append(inp)
+        session.results.append(inp)
         return "ok"
 
     await session.run_tool_loop(
         registry=tools, provider="anthropic",
         system="...", prompt=prompt,
     )
-return session.issues
+return session.results
 ```
 
 Module: `temporalio/contrib/tool_registry/`
@@ -183,14 +202,14 @@ await runToolLoop({
 });
 
 // Crash-safe session
-const issues = await agenticSession(async (session) => {
+const results = await agenticSession(async (session) => {
   const registry = new ToolRegistry();
   registry.define({...}, (inp) => {
-    session.issues.push(inp);
+    session.results.push(inp);
     return 'ok';
   });
   await session.runToolLoop({ registry, provider: 'anthropic', system: '...', prompt });
-  return session.issues;
+  return session.results;
 });
 ```
 
@@ -223,7 +242,7 @@ cfg := toolregistry.AnthropicConfig{APIKey: os.Getenv("ANTHROPIC_API_KEY")}
 provider := toolregistry.NewAnthropicProvider(cfg, reg,
     "You are a code reviewer. Call flag_issue for each problem you find.")
 
-if _, err := toolregistry.RunToolLoop(ctx, provider, reg, "", prompt); err != nil {
+if _, err := toolregistry.RunToolLoop(ctx, provider, reg, prompt); err != nil {
     return nil, err
 }
 
@@ -231,11 +250,11 @@ if _, err := toolregistry.RunToolLoop(ctx, provider, reg, "", prompt); err != ni
 err := toolregistry.RunWithSession(ctx, func(ctx context.Context, s *toolregistry.AgenticSession) error {
     reg := toolregistry.NewToolRegistry()
     reg.Register(toolregistry.ToolDef{...}, func(inp map[string]any) (string, error) {
-        s.Issues = append(s.Issues, inp)
+        s.Results = append(s.Results, inp)
         return "ok", nil
     })
     provider := toolregistry.NewAnthropicProvider(cfg, reg, "...")
-    return s.RunToolLoop(ctx, provider, reg, "...", prompt)
+    return s.RunToolLoop(ctx, provider, reg, prompt)
 })
 ```
 
@@ -270,16 +289,16 @@ Provider provider = new AnthropicProvider(
     registry,
     "You are a code reviewer. Call flag_issue for each problem you find.");
 
-ToolRegistry.runToolLoop(provider, registry, "", prompt);
+ToolRegistry.runToolLoop(provider, registry, prompt);
 
 // Crash-safe session
 AgenticSession.runWithSession(session -> {
     ToolRegistry registry = new ToolRegistry();
     registry.register(ToolDefinition.builder()...build(), input -> {
-        session.getIssues().add(input);
+        session.getResults().add(input);
         return "ok";
     });
-    session.runToolLoop(provider, registry, "...", prompt);
+    session.runToolLoop(provider, registry, prompt);
 });
 ```
 
@@ -314,17 +333,17 @@ provider = Temporalio::Contrib::ToolRegistry::Providers::AnthropicProvider.new(
   'You are a code reviewer. Call flag_issue for each problem you find.',
   api_key: ENV['ANTHROPIC_API_KEY']
 )
-Temporalio::Contrib::ToolRegistry.run_tool_loop(provider, registry, nil, prompt)
+Temporalio::Contrib::ToolRegistry.run_tool_loop(provider, registry, prompt)
 
 # Crash-safe session
 Temporalio::Contrib::ToolRegistry::AgenticSession.run_with_session do |session|
   registry = Temporalio::Contrib::ToolRegistry::Registry.new
   registry.register(name: 'flag', description: '...',
                     input_schema: { 'type' => 'object' }) do |input|
-    session.issues << input
+    session.add_result(input)
     'ok'
   end
-  session.run_tool_loop(provider, registry, '...', prompt)
+  session.run_tool_loop(provider, registry, prompt)
 end
 ```
 
@@ -363,7 +382,7 @@ var provider = new AnthropicProvider(
     registry,
     "You are a code reviewer. Call flag_issue for each problem you find.");
 
-await ToolRegistry.RunToolLoopAsync(provider, registry, "", prompt);
+await ToolRegistry.RunToolLoopAsync(provider, registry, prompt);
 
 // Crash-safe session
 var result = await AgenticSession.RunWithSessionAsync(async session =>
@@ -371,11 +390,11 @@ var result = await AgenticSession.RunWithSessionAsync(async session =>
     var registry = new ToolRegistry();
     registry.Register(new ToolDefinition(...), inp =>
     {
-        session.Issues.Add(inp);
+        session.Results.Add(inp);
         return Task.FromResult("ok");
     });
-    await session.RunToolLoopAsync(provider, registry, "...", prompt);
-    return session.Issues;
+    await session.RunToolLoopAsync(provider, registry, prompt);
+    return session.Results;
 });
 ```
 
@@ -422,7 +441,7 @@ provider := toolregistry.NewMockProvider([]toolregistry.MockResponse{
     toolregistry.Done("analysis complete"),
 }).WithRegistry(reg)
 
-msgs, err := toolregistry.RunToolLoop(ctx, provider, reg, "sys", "analyze")
+msgs, err := toolregistry.RunToolLoop(ctx, provider, reg, "analyze")
 require.NoError(t, err)
 require.Greater(t, len(msgs), 2)
 ```
@@ -435,7 +454,7 @@ MockProvider provider = new MockProvider(
     MockResponse.done("analysis complete"));
 
 List<Map<String, Object>> msgs =
-    ToolRegistry.runToolLoop(provider, registry, "sys", "analyze");
+    ToolRegistry.runToolLoop(provider, registry, "analyze");
 assertTrue(msgs.size() > 2);
 ```
 
@@ -447,7 +466,7 @@ provider = Testing::MockProvider.new(
   Testing::MockResponse.done('analysis complete')
 ).with_registry(registry)
 
-msgs = ToolRegistry.run_tool_loop(provider, registry, 'sys', 'analyze')
+msgs = ToolRegistry.run_tool_loop(provider, registry, 'analyze')
 assert msgs.length > 2
 ```
 
@@ -459,7 +478,7 @@ var provider = new MockProvider(
     MockResponse.Done("analysis complete")
 ).WithRegistry(registry);
 
-var msgs = await ToolRegistry.RunToolLoopAsync(provider, registry, "sys", "analyze");
+var msgs = await ToolRegistry.RunToolLoopAsync(provider, registry, "analyze");
 Assert.True(msgs.Count > 2);
 ```
 
@@ -515,6 +534,11 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 - Prompt management / template libraries
 - Conversation history compaction: sessions with very long conversations may eventually exhaust the LLM's context window. No built-in truncation or summarization strategy is provided — callers are responsible for managing history length if needed.
 - Replacement for framework-level plugins: `openai_agents`, `google_adk_agents`, `langgraph`, and `ai-sdk` integrations remain the recommended path for teams already using those frameworks in Python or TypeScript.
+
+**Known limitations**
+
+- No built-in conversation compaction. For very long conversations (100+ turns) the heartbeat payload grows unboundedly. Callers must implement their own compaction if needed.
+- Async handler I/O: in Python and TypeScript, handlers are awaited via `adispatch` / `async dispatch`, so they can call async services. In Go, Java, Ruby, and .NET, handlers are synchronous; I/O must be performed with blocking calls.
 
 ---
 
