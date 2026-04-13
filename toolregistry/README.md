@@ -131,6 +131,7 @@ from temporalio.contrib.tool_registry import (
 )
 
 # Simple loop
+results: list[str] = []
 tools = ToolRegistry()
 
 @tools.handler({
@@ -152,6 +153,7 @@ await run_tool_loop(
     prompt=prompt,
     tools=tools,
 )
+return results
 
 # Crash-safe session
 async with agentic_session() as session:
@@ -180,6 +182,7 @@ Test: `tests/contrib/tool_registry/`
 import { ToolRegistry, runToolLoop, agenticSession } from '@temporalio/tool-registry';
 
 // Simple loop
+const results: string[] = [];
 const registry = new ToolRegistry();
 registry.define(
   {
@@ -200,6 +203,7 @@ await runToolLoop({
   prompt,
   tools: registry,
 });
+return results;
 
 // Crash-safe session
 const results = await agenticSession(async (session) => {
@@ -538,13 +542,13 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 **Known limitations**
 
 - No built-in conversation compaction. For very long conversations (100+ turns) the heartbeat payload grows unboundedly. Callers must implement their own compaction if needed.
-- Async handler I/O: in Python and TypeScript, handlers are awaited via `adispatch` / `async dispatch`, so they can call async services. In Go, Java, Ruby, and .NET, handlers are synchronous; I/O must be performed with blocking calls.
+- Async handler I/O: Go, Java, Ruby, and .NET handlers are synchronous; async I/O requires blocking calls. Python and TypeScript support async handlers natively (`adispatch` / `async dispatch`).
 
 ---
 
 ## Open questions
 
-1. **Package naming**: Should this ship as `contrib/toolregistry` (current) or a top-level extension package? The `.NET` version already uses the `Temporalio.Extensions.*` namespace.
+1. ~~**Package naming**: Should this ship as `contrib/toolregistry` (current) or a top-level extension package?~~ **Resolved**: Each SDK follows its existing convention — `contrib/` in Go, Python, Ruby, and Java; a standard scoped package (`@temporalio/tool-registry`) in TypeScript; `Temporalio.Extensions.*` in .NET. No deviation from established patterns is needed.
 
 2. ~~**MCP coverage**: `from_mcp_tools` exists in Python and TypeScript. Should it be added to Go, Java, Ruby, .NET?~~ **Resolved**: `fromMcpTools` / `from_mcp_tools` / `FromMCPTools` added to Go, Java, Ruby, and .NET. All six SDKs now have MCP support.
 
