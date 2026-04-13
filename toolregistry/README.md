@@ -496,7 +496,7 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 
 1. **Package naming**: Should this ship as `contrib/toolregistry` (current) or a top-level extension package? The `.NET` version already uses the `Temporalio.Extensions.*` namespace.
 
-2. **MCP coverage**: `from_mcp_tools` exists in Python and TypeScript. Should it be added to Go, Java, Ruby, .NET?
+2. ~~**MCP coverage**: `from_mcp_tools` exists in Python and TypeScript. Should it be added to Go, Java, Ruby, .NET?~~ **Resolved**: `fromMcpTools` / `from_mcp_tools` / `FromMCPTools` added to Go, Java, Ruby, and .NET. All six SDKs now have MCP support.
 
 3. **Versioning**: These modules are in `contrib` and thus can evolve independently. Should they carry a `v0` semver disclaimer for the first release?
 
