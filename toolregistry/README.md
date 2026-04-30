@@ -6,14 +6,17 @@
 
 ## Problem
 
-LLM-backed activities are increasingly common in Temporal workflows, but every team wires up the tool-calling loop themselves. The result is repeated, fragile boilerplate:
+LLM-backed activities are increasingly common in Temporal workflows, but every team writes the tool-calling loop themselves. The same pieces show up each time:
 
-- Serialize tool definitions to Anthropic/OpenAI schema format
-- Dispatch `tool_use` / `function` blocks back to local handlers
-- Accumulate conversation history and iterate until the model stops
-- Heartbeat the conversation state so an activity retry can resume mid-session rather than restart
+| | Today — hand-rolled inside an activity | With ToolRegistry + AgenticSession |
+|---|---|---|
+| Wire format | You serialize tool defs to Anthropic/OpenAI schema | One definition, both wire formats built in |
+| Tool dispatch | You walk `tool_use` / `function` blocks and call handlers | `ToolRegistry` dispatches by name |
+| Loop | You manage messages, iterate, detect stop | `run_tool_loop(...)` |
+| Crash safety | You hand-write `activity.heartbeat` and the restore path | `agentic_session()` does it |
+| Cross-SDK | Different code in every team and every SDK | Same shape in all 6 SDKs |
 
-There is no shared abstraction — not across teams, and not across SDKs. This proposal defines two complementary primitives and ships them as contributed modules in all six official Temporal SDKs.
+No shared abstraction exists today — not across teams, not across SDKs. This proposal defines two complementary primitives and ships them as contributed modules in all six official Temporal SDKs.
 
 ---
 
@@ -61,6 +64,8 @@ ToolRegistry is a different layer:
 | LLM call granularity | One activity per model call | One activity per conversation |
 | Session continuity | Server-side (framework/API session IDs) | Local heartbeat state |
 | Survives server-side session expiry | No | Yes |
+
+![Framework plugins vs ToolRegistry](diagrams/framework_plugin_vs_toolregistry.svg)
 
 **Use a framework plugin** when you are already using OpenAI Agents SDK, LangGraph, Google ADK, or Vercel AI SDK in Python or TypeScript and want each model call to be a separately visible, retryable Temporal activity.
 
@@ -123,52 +128,61 @@ All SDKs surface cancellation at the checkpoint call, immediately after writing 
 
 ## API reference
 
+Each snippet below shows the **activity** that hosts the tool-calling loop. `agentic_session` / `RunWithSession` does not schedule an activity on its own — it reads and writes the surrounding `activity.heartbeat` state — so a Temporal activity wrapper (`@activity.defn`, `@ActivityMethod`, `[Activity]`, `func XxxActivity(ctx, …)`, etc.) is required for the crash-safe variant. The simple `run_tool_loop` doesn't touch activity APIs and could run anywhere; it's still shown inside an activity because that's how it is invoked in practice (for retry, timeout, and worker lifecycle).
+
+![Session flow — workflow → activity → agentic_session loop](diagrams/session_flow.svg)
+
 ### Python
 
 ```python
+from temporalio import activity
 from temporalio.contrib.tool_registry import (
     ToolRegistry, run_tool_loop, agentic_session, AgenticSession,
 )
 
 # Simple loop
-results: list[str] = []
-tools = ToolRegistry()
-
-@tools.handler({
-    "name": "flag_issue",
-    "description": "Flag a problem found in the analysis",
-    "input_schema": {
-        "type": "object",
-        "properties": {"description": {"type": "string"}},
-        "required": ["description"],
-    },
-})
-def handle_flag(inp: dict) -> str:
-    results.append(inp["description"])
-    return "recorded"
-
-await run_tool_loop(
-    provider="anthropic",          # or "openai"
-    system="You are a code reviewer. Call flag_issue for each problem you find.",
-    prompt=prompt,
-    tools=tools,
-)
-return results
-
-# Crash-safe session
-async with agentic_session() as session:
+@activity.defn  # Remove for standalone use — no worker needed
+async def analyze(prompt: str) -> list[str]:
+    results: list[str] = []
     tools = ToolRegistry()
 
-    @tools.handler({...})
-    def handle(inp):
-        session.results.append(inp)
-        return "ok"
+    @tools.handler({
+        "name": "flag_issue",
+        "description": "Flag a problem found in the analysis",
+        "input_schema": {
+            "type": "object",
+            "properties": {"description": {"type": "string"}},
+            "required": ["description"],
+        },
+    })
+    def handle_flag(inp: dict) -> str:
+        results.append(inp["description"])
+        return "recorded"
 
-    await session.run_tool_loop(
-        registry=tools, provider="anthropic",
-        system="...", prompt=prompt,
+    await run_tool_loop(
+        provider="anthropic",          # or "openai"
+        system="You are a code reviewer. Call flag_issue for each problem you find.",
+        prompt=prompt,
+        tools=tools,
     )
-return session.results
+    return results
+
+# Crash-safe session
+@activity.defn
+async def long_analysis(prompt: str) -> list[str]:
+    async with agentic_session() as session:
+        tools = ToolRegistry()
+
+        @tools.handler({...})
+        def handle(inp):
+            session.results.append(inp)
+            return "ok"
+
+        await session.run_tool_loop(
+            registry=tools, provider="anthropic",
+            system="...", prompt=prompt,
+        )
+    return session.results
 ```
 
 Module: `temporalio/contrib/tool_registry/`
@@ -182,39 +196,45 @@ Test: `tests/contrib/tool_registry/`
 import { ToolRegistry, runToolLoop, agenticSession } from '@temporalio/tool-registry';
 
 // Simple loop
-const results: string[] = [];
-const registry = new ToolRegistry();
-registry.define(
-  {
-    name: 'flag_issue',
-    description: 'Flag a problem found in the analysis',
-    input_schema: {
-      type: 'object',
-      properties: { description: { type: 'string' } },
-      required: ['description'],
+export async function analyzeCode(prompt: string): Promise<string[]> {
+  const results: string[] = [];
+  const registry = new ToolRegistry();
+  registry.define(
+    {
+      name: 'flag_issue',
+      description: 'Flag a problem found in the analysis',
+      input_schema: {
+        type: 'object',
+        properties: { description: { type: 'string' } },
+        required: ['description'],
+      },
     },
-  },
-  (inp) => { results.push(inp['description'] as string); return 'recorded'; }
-);
+    (inp) => { results.push(inp['description'] as string); return 'recorded'; }
+  );
 
-await runToolLoop({
-  provider: 'anthropic',   // or 'openai'
-  system: 'You are a code reviewer. Call flag_issue for each problem you find.',
-  prompt,
-  tools: registry,
-});
-return results;
+  await runToolLoop({
+    provider: 'anthropic',   // or 'openai'
+    system: 'You are a code reviewer. Call flag_issue for each problem you find.',
+    prompt,
+    tools: registry,
+  });
+  return results;
+}
 
 // Crash-safe session
-const results = await agenticSession(async (session) => {
-  const registry = new ToolRegistry();
-  registry.define({...}, (inp) => {
-    session.results.push(inp);
-    return 'ok';
+export async function longAnalysis(prompt: string): Promise<object[]> {
+  let results: object[] = [];
+  await agenticSession(async (session) => {
+    const registry = new ToolRegistry();
+    registry.define({...}, (inp) => {
+      session.results.push(inp);
+      return 'ok';
+    });
+    await session.runToolLoop({ registry, provider: 'anthropic', system: '...', prompt });
+    results = session.results;
   });
-  await session.runToolLoop({ registry, provider: 'anthropic', system: '...', prompt });
-  return session.results;
-});
+  return results;
+}
 ```
 
 Package: `packages/tool-registry/`
@@ -225,41 +245,58 @@ Tests: `packages/tool-registry/src/*.test.ts`
 ### Go
 
 ```go
-import "go.temporal.io/sdk/contrib/toolregistry"
+import (
+    "context"
+    "os"
+    "go.temporal.io/sdk/contrib/toolregistry"
+)
 
 // Simple loop
-reg := toolregistry.NewToolRegistry()
-reg.Register(toolregistry.ToolDef{
-    Name:        "flag_issue",
-    Description: "Flag a problem found in the analysis",
-    InputSchema: map[string]any{
-        "type":       "object",
-        "properties": map[string]any{"description": map[string]any{"type": "string"}},
-        "required":   []string{"description"},
-    },
-}, func(inp map[string]any) (string, error) {
-    results = append(results, inp["description"].(string))
-    return "recorded", nil
-})
+func AnalyzeActivity(ctx context.Context, prompt string) ([]string, error) {
+    var results []string
+    reg := toolregistry.NewToolRegistry()
+    reg.Register(toolregistry.ToolDef{
+        Name:        "flag_issue",
+        Description: "Flag a problem found in the analysis",
+        InputSchema: map[string]any{
+            "type":       "object",
+            "properties": map[string]any{"description": map[string]any{"type": "string"}},
+            "required":   []string{"description"},
+        },
+    }, func(inp map[string]any) (string, error) {
+        results = append(results, inp["description"].(string))
+        return "recorded", nil
+    })
 
-cfg := toolregistry.AnthropicConfig{APIKey: os.Getenv("ANTHROPIC_API_KEY")}
-provider := toolregistry.NewAnthropicProvider(cfg, reg,
-    "You are a code reviewer. Call flag_issue for each problem you find.")
+    cfg := toolregistry.AnthropicConfig{APIKey: os.Getenv("ANTHROPIC_API_KEY")}
+    provider := toolregistry.NewAnthropicProvider(cfg, reg,
+        "You are a code reviewer. Call flag_issue for each problem you find.")
 
-if _, err := toolregistry.RunToolLoop(ctx, provider, reg, prompt); err != nil {
-    return nil, err
+    if _, err := toolregistry.RunToolLoop(ctx, provider, reg, prompt); err != nil {
+        return nil, err
+    }
+    return results, nil
 }
 
 // Crash-safe session
-err := toolregistry.RunWithSession(ctx, func(ctx context.Context, s *toolregistry.AgenticSession) error {
-    reg := toolregistry.NewToolRegistry()
-    reg.Register(toolregistry.ToolDef{...}, func(inp map[string]any) (string, error) {
-        s.Results = append(s.Results, inp)
-        return "ok", nil
+func LongAnalysisActivity(ctx context.Context, prompt string) ([]map[string]any, error) {
+    var results []map[string]any
+    err := toolregistry.RunWithSession(ctx, func(ctx context.Context, s *toolregistry.AgenticSession) error {
+        reg := toolregistry.NewToolRegistry()
+        reg.Register(toolregistry.ToolDef{...}, func(inp map[string]any) (string, error) {
+            s.Results = append(s.Results, inp)
+            return "ok", nil
+        })
+        cfg := toolregistry.AnthropicConfig{APIKey: os.Getenv("ANTHROPIC_API_KEY")}
+        provider := toolregistry.NewAnthropicProvider(cfg, reg, "...")
+        if err := s.RunToolLoop(ctx, provider, reg, prompt); err != nil {
+            return err
+        }
+        results = s.Results
+        return nil
     })
-    provider := toolregistry.NewAnthropicProvider(cfg, reg, "...")
-    return s.RunToolLoop(ctx, provider, reg, prompt)
-})
+    return results, err
+}
 ```
 
 Package: `contrib/toolregistry/`
@@ -273,37 +310,51 @@ Tests: `contrib/toolregistry/*_test.go`
 import io.temporal.toolregistry.*;
 
 // Simple loop
-ToolRegistry registry = new ToolRegistry();
-registry.register(
-    ToolDefinition.builder()
-        .name("flag_issue")
-        .description("Flag a problem found in the analysis")
-        .inputSchema(Map.of(
-            "type", "object",
-            "properties", Map.of("description", Map.of("type", "string")),
-            "required", List.of("description")))
-        .build(),
-    input -> {
-        results.add((String) input.get("description"));
-        return "recorded";
-    });
+@ActivityMethod
+public List<String> analyze(String prompt) throws Exception {
+    List<String> results = new ArrayList<>();
+    ToolRegistry registry = new ToolRegistry();
+    registry.register(
+        ToolDefinition.builder()
+            .name("flag_issue")
+            .description("Flag a problem found in the analysis")
+            .inputSchema(Map.of(
+                "type", "object",
+                "properties", Map.of("description", Map.of("type", "string")),
+                "required", List.of("description")))
+            .build(),
+        input -> {
+            results.add((String) input.get("description"));
+            return "recorded";
+        });
 
-Provider provider = new AnthropicProvider(
-    AnthropicConfig.builder().apiKey(System.getenv("ANTHROPIC_API_KEY")).build(),
-    registry,
-    "You are a code reviewer. Call flag_issue for each problem you find.");
+    Provider provider = new AnthropicProvider(
+        AnthropicConfig.builder().apiKey(System.getenv("ANTHROPIC_API_KEY")).build(),
+        registry,
+        "You are a code reviewer. Call flag_issue for each problem you find.");
 
-ToolRegistry.runToolLoop(provider, registry, prompt);
+    ToolRegistry.runToolLoop(provider, registry, prompt);
+    return results;
+}
 
 // Crash-safe session
-AgenticSession.runWithSession(session -> {
-    ToolRegistry registry = new ToolRegistry();
-    registry.register(ToolDefinition.builder()...build(), input -> {
-        session.getResults().add(input);
-        return "ok";
+@ActivityMethod
+public List<Object> longAnalysis(String prompt) throws Exception {
+    List<Object> results = new ArrayList<>();
+    AgenticSession.runWithSession(session -> {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(ToolDefinition.builder()...build(), input -> {
+            session.getResults().add(input);
+            return "ok";
+        });
+        Provider provider = new AnthropicProvider(
+            AnthropicConfig.builder().apiKey(System.getenv("ANTHROPIC_API_KEY")).build(),
+            registry, "...");
+        session.runToolLoop(provider, registry, prompt);
+        results.addAll(session.getResults());
     });
-    session.runToolLoop(provider, registry, prompt);
-});
+    return results;
+}
 ```
 
 Module: `temporal-tool-registry/`
@@ -318,36 +369,45 @@ require 'temporalio/contrib/tool_registry'
 require 'temporalio/contrib/tool_registry/providers/anthropic'
 
 # Simple loop
-registry = Temporalio::Contrib::ToolRegistry::Registry.new
-registry.register(
-  name: 'flag_issue',
-  description: 'Flag a problem found in the analysis',
-  input_schema: {
-    'type' => 'object',
-    'properties' => { 'description' => { 'type' => 'string' } },
-    'required' => ['description']
-  }
-) do |input|
-  results << input['description']
-  'recorded'
+activity :analyze do |prompt|
+  results = []
+  registry = Temporalio::Contrib::ToolRegistry::Registry.new
+  registry.register(
+    name: 'flag_issue',
+    description: 'Flag a problem found in the analysis',
+    input_schema: {
+      'type' => 'object',
+      'properties' => { 'description' => { 'type' => 'string' } },
+      'required' => ['description']
+    }
+  ) do |input|
+    results << input['description']
+    'recorded'
+  end
+
+  provider = Temporalio::Contrib::ToolRegistry::Providers::AnthropicProvider.new(
+    registry,
+    'You are a code reviewer. Call flag_issue for each problem you find.',
+    api_key: ENV['ANTHROPIC_API_KEY']
+  )
+  Temporalio::Contrib::ToolRegistry.run_tool_loop(provider, registry, prompt)
+  results
 end
 
-provider = Temporalio::Contrib::ToolRegistry::Providers::AnthropicProvider.new(
-  registry,
-  'You are a code reviewer. Call flag_issue for each problem you find.',
-  api_key: ENV['ANTHROPIC_API_KEY']
-)
-Temporalio::Contrib::ToolRegistry.run_tool_loop(provider, registry, prompt)
-
 # Crash-safe session
-Temporalio::Contrib::ToolRegistry::AgenticSession.run_with_session do |session|
-  registry = Temporalio::Contrib::ToolRegistry::Registry.new
-  registry.register(name: 'flag', description: '...',
-                    input_schema: { 'type' => 'object' }) do |input|
-    session.add_result(input)
-    'ok'
+activity :long_analysis do |prompt|
+  Temporalio::Contrib::ToolRegistry::AgenticSession.run_with_session do |session|
+    registry = Temporalio::Contrib::ToolRegistry::Registry.new
+    registry.register(name: 'flag', description: '...',
+                      input_schema: { 'type' => 'object' }) do |input|
+      session.add_result(input)
+      'ok'
+    end
+    provider = Temporalio::Contrib::ToolRegistry::Providers::AnthropicProvider.new(
+      registry, '...', api_key: ENV['ANTHROPIC_API_KEY'])
+    session.run_tool_loop(provider, registry, prompt)
+    session.results
   end
-  session.run_tool_loop(provider, registry, prompt)
 end
 ```
 
@@ -363,43 +423,58 @@ using Temporalio.Extensions.ToolRegistry;
 using Temporalio.Extensions.ToolRegistry.Providers;
 
 // Simple loop
-var registry = new ToolRegistry();
-registry.Register(
-    new ToolDefinition(
-        Name: "flag_issue",
-        Description: "Flag a problem found in the analysis",
-        InputSchema: new Dictionary<string, object>
+[Activity]  // Remove for standalone use — no worker needed
+public async Task<List<string>> AnalyzeAsync(string prompt)
+{
+    var results = new List<string>();
+    var registry = new ToolRegistry();
+    registry.Register(
+        new ToolDefinition(
+            Name: "flag_issue",
+            Description: "Flag a problem found in the analysis",
+            InputSchema: new Dictionary<string, object>
+            {
+                ["type"] = "object",
+                ["properties"] = new Dictionary<string, object>
+                    { ["description"] = new Dictionary<string, object> { ["type"] = "string" } },
+                ["required"] = new[] { "description" },
+            }),
+        inp =>
         {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
-                { ["description"] = new Dictionary<string, object> { ["type"] = "string" } },
-            ["required"] = new[] { "description" },
-        }),
-    inp =>
-    {
-        results.Add((string)inp["description"]);
-        return Task.FromResult("recorded");
-    });
+            results.Add((string)inp["description"]);
+            return Task.FromResult("recorded");
+        });
 
-var provider = new AnthropicProvider(
-    new AnthropicConfig { ApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") },
-    registry,
-    "You are a code reviewer. Call flag_issue for each problem you find.");
+    var provider = new AnthropicProvider(
+        new AnthropicConfig { ApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") },
+        registry,
+        "You are a code reviewer. Call flag_issue for each problem you find.");
 
-await ToolRegistry.RunToolLoopAsync(provider, registry, prompt);
+    await ToolRegistry.RunToolLoopAsync(provider, registry, prompt);
+    return results;
+}
 
 // Crash-safe session
-var result = await AgenticSession.RunWithSessionAsync(async session =>
+[Activity]
+public async Task<List<object>> LongAnalysisAsync(string prompt)
 {
-    var registry = new ToolRegistry();
-    registry.Register(new ToolDefinition(...), inp =>
+    var results = new List<object>();
+    await AgenticSession.RunWithSessionAsync(async session =>
     {
-        session.Results.Add(inp);
-        return Task.FromResult("ok");
+        var registry = new ToolRegistry();
+        registry.Register(new ToolDefinition(...), inp =>
+        {
+            session.Results.Add(inp);
+            return Task.FromResult("ok");
+        });
+        var provider = new AnthropicProvider(
+            new AnthropicConfig { ApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") },
+            registry, "...");
+        await session.RunToolLoopAsync(provider, registry, prompt);
+        results.AddRange(session.Results.Cast<object>());
     });
-    await session.RunToolLoopAsync(provider, registry, prompt);
-    return session.Results;
-});
+    return results;
+}
 ```
 
 Project: `src/Temporalio.Extensions.ToolRegistry/`

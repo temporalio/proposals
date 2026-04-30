@@ -1,0 +1,89 @@
+digraph framework_vs_toolregistry {
+    graph [fontname="Helvetica", bgcolor="#141414", fontcolor="#F8FAFC", pad="0.5", rankdir=TB,
+           label="Framework Plugins vs ToolRegistry — Activity Granularity & Session Continuity",
+           labelloc=t, fontsize=14, nodesep=0.4, ranksep=0.5, compound=true]
+    node [fontname="Helvetica", fontsize=11, fontcolor="#F8FAFC"]
+    edge [fontname="Helvetica", fontsize=10, fontcolor="#92A4C3", color="#92A4C3"]
+
+    // ════════════════════════════════════════════════════════════════════════
+    // LEFT — framework plugins (openai_agents / ai-sdk / langgraph / google_adk)
+    // ════════════════════════════════════════════════════════════════════════
+    subgraph cluster_framework {
+        label="Framework plugin  (one activity per LLM call)"
+        labeljust=l
+        style=filled
+        fillcolor="#0D0D0D"
+        color="#667CA1"
+        fontcolor="#F8FAFC"
+        fontsize=12
+
+        f_wf [shape=box, style="filled,rounded", fillcolor="#0A1A10", color="#00C05F", fontcolor="#F8FAFC",
+              label="Workflow\n(framework loop runs here)"]
+
+        f_act1 [shape=box, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                label="Activity\nLLM call #1"]
+        f_act2 [shape=box, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                label="Activity\nLLM call #2"]
+        f_actN [shape=box, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                label="Activity\nLLM call #N"]
+
+        f_provider [shape=ellipse, style=filled, fillcolor="#1A1205", color="#F8A208", fontcolor="#F8FAFC",
+                    label="Provider session\n(server-side IDs)"]
+
+        f_wf -> f_act1 -> f_act2 -> f_actN [label="schedules", color="#00C05F", fontcolor="#92A4C3"]
+
+        f_act1 -> f_provider [style=dashed, color="#F8A208", fontcolor="#92A4C3", label="session_id", constraint=false]
+        f_act2 -> f_provider [style=dashed, color="#F8A208", fontcolor="#92A4C3", constraint=false]
+        f_actN -> f_provider [style=dashed, color="#F8A208", fontcolor="#92A4C3", constraint=false]
+
+        f_note [shape=box, style=filled, fillcolor="#1A0505", color="#F02406", fontcolor="#F8FAFC", fontsize=10,
+                label="Continuity depends on provider session.\nSession can expire server-side\nbefore long HITL pauses resolve."]
+        f_actN -> f_note [style=invis]
+
+        f_pros [shape=box, style=filled, fillcolor="#0F172A", color="#667CA1", fontcolor="#92A4C3", fontsize=10,
+                label="✓ Each LLM call is an event in history\n✓ Per-call retry policy\n✓ Per-call observability"]
+        f_note -> f_pros [style=invis]
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // RIGHT — ToolRegistry (one activity per conversation)
+    // ════════════════════════════════════════════════════════════════════════
+    subgraph cluster_toolregistry {
+        label="ToolRegistry  (one activity per conversation)"
+        labeljust=l
+        style=filled
+        fillcolor="#0D0D0D"
+        color="#667CA1"
+        fontcolor="#F8FAFC"
+        fontsize=12
+
+        t_wf [shape=box, style="filled,rounded", fillcolor="#0A1A10", color="#00C05F", fontcolor="#F8FAFC",
+              label="Workflow\n(your workflow)"]
+
+        subgraph cluster_t_activity {
+            label="Activity (your code)"
+            style=filled
+            fillcolor="#07071A"
+            color="#444CE7"
+            fontcolor="#F8FAFC"
+            fontsize=11
+
+            t_loop [shape=box, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                    label="agentic_session()\nLLM #1 → tools → heartbeat\nLLM #2 → tools → heartbeat\n…\nLLM #N → stop"]
+        }
+
+        t_heartbeat [shape=ellipse, style=filled, fillcolor="#0A1A10", color="#00C05F", fontcolor="#F8FAFC",
+                     label="Temporal heartbeat\n(local conversation state)"]
+
+        t_wf -> t_loop [label="schedules", color="#00C05F", fontcolor="#92A4C3", lhead=cluster_t_activity]
+        t_loop -> t_heartbeat [style=dashed, color="#00C05F", fontcolor="#92A4C3", label="checkpoint per turn"]
+
+        t_note [shape=box, style=filled, fillcolor="#0A1A10", color="#00C05F", fontcolor="#F8FAFC", fontsize=10,
+                label="Continuity is local — heartbeat carries\nfull messages + results.\nSurvives crashes AND provider session expiry."]
+        t_heartbeat -> t_note [style=invis]
+
+        t_pros [shape=box, style=filled, fillcolor="#0F172A", color="#667CA1", fontcolor="#92A4C3", fontsize=10,
+                label="✓ Same pattern across all 6 SDKs\n✓ No framework dependency\n✓ HITL pauses survive any duration"]
+        t_note -> t_pros [style=invis]
+    }
+}

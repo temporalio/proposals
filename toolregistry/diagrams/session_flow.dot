@@ -1,0 +1,91 @@
+digraph session_flow {
+    graph [fontname="Helvetica", bgcolor="#141414", fontcolor="#F8FAFC", pad="0.5", rankdir=TB,
+           label="AgenticSession — Where the Activity Boundary Lives", labelloc=t, fontsize=14, nodesep=0.4, ranksep=0.5]
+    node [fontname="Helvetica", fontsize=11, fontcolor="#F8FAFC"]
+    edge [fontname="Helvetica", fontsize=10, fontcolor="#92A4C3", color="#92A4C3"]
+
+    // ── Workflow (your code) ──────────────────────────────────────────────────
+    subgraph cluster_workflow {
+        label="Workflow (your code)"
+        style=filled
+        fillcolor="#0A1A10"
+        color="#00C05F"
+        fontcolor="#F8FAFC"
+        fontsize=12
+
+        wf [shape=box, style="filled,rounded", fillcolor="#0A1A10", color="#00C05F", fontcolor="#F8FAFC",
+            label="@workflow.defn  /  @WorkflowMethod  /  …\nworkflow.execute_activity(my_activity, …)"]
+    }
+
+    // ── Activity (your code, wraps agentic_session) ───────────────────────────
+    subgraph cluster_activity {
+        label="Activity (your code — must wrap agentic_session)"
+        style=filled
+        fillcolor="#07071A"
+        color="#444CE7"
+        fontcolor="#F8FAFC"
+        fontsize=12
+
+        act_entry [shape=box, style="filled,rounded", fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                   label="@activity.defn  /  @ActivityMethod  /  [Activity]  /  func XxxActivity(ctx, …)\nasync def my_activity(prompt) -> result:"]
+
+        sess_open [shape=box, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                   label="async with agentic_session() as session:\n(reads activity.info().heartbeat_details — resume if present)"]
+
+        // ── tool loop (one iteration shown; arrow loops back) ─────────────────
+        subgraph cluster_loop {
+            label="session.run_tool_loop( … )  — one turn shown, loops until LLM signals stop"
+            style=filled
+            fillcolor="#0D0D0D"
+            color="#667CA1"
+            fontcolor="#F8FAFC"
+            fontsize=11
+
+            hb [shape=diamond, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                label="activity.heartbeat(\n  messages, results)\n— checkpoint BEFORE the turn"]
+            llm_call [shape=box, style=filled, fillcolor="#1A1205", color="#F8A208", fontcolor="#F8FAFC",
+                      label="LLM call\n(Anthropic / OpenAI)"]
+            dispatch [shape=box, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                      label="dispatch tool_use blocks\nto registered handlers"]
+            stop_check [shape=diamond, style=filled, fillcolor="#07071A", color="#444CE7", fontcolor="#F8FAFC",
+                        label="LLM signaled stop?"]
+
+            hb -> llm_call -> dispatch -> stop_check
+            stop_check -> hb [label="no — next turn", constraint=false, style=dashed, color="#444CE7", fontcolor="#92A4C3"]
+        }
+
+        act_return [shape=box, style="filled,rounded", fillcolor="#0A1A10", color="#00C05F", fontcolor="#F8FAFC",
+                    label="return session.results\n(activity completes)"]
+
+        act_entry -> sess_open -> hb
+        stop_check -> act_return [label="yes"]
+    }
+
+    wf -> act_entry [label="schedules"]
+
+    // ── Failure / retry path ──────────────────────────────────────────────────
+    subgraph cluster_retry {
+        label="On crash → Temporal retries the activity"
+        style=filled
+        fillcolor="#1A0505"
+        color="#F02406"
+        fontcolor="#F8FAFC"
+        fontsize=11
+
+        crash [shape=box, style=filled, fillcolor="#1A0505", color="#F02406", fontcolor="#F8FAFC",
+               label="WORKER CRASH\n(network / OOM / timeout)"]
+        retry_note [shape=box, style=filled, fillcolor="#1A0505", color="#F02406", fontcolor="#F8FAFC",
+                    label="Next attempt re-enters agentic_session().\nactivity.info().heartbeat_details restores\nmessages + results — resumes from last checkpoint."]
+
+        crash -> retry_note [style=dashed, color="#F02406", fontcolor="#92A4C3", label="retry"]
+    }
+
+    llm_call -> crash [style=dashed, color="#F02406", fontcolor="#92A4C3", label="example crash point", constraint=false]
+    retry_note -> sess_open [style=dashed, color="#F02406", fontcolor="#92A4C3", label="resumes here", constraint=false]
+
+    // ── Caption ───────────────────────────────────────────────────────────────
+    note [shape=box, style=filled, fillcolor="#0F172A", color="#667CA1", fontcolor="#92A4C3", fontsize=10,
+          label="agentic_session() does NOT start an activity. The user wraps it inside their own activity (@activity.defn etc.).\nConversation state lives in activity heartbeat — not in a provider-side session ID."]
+
+    act_return -> note [style=invis]
+}
