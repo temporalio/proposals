@@ -93,6 +93,8 @@ OpenAI format is derived from the same definitions via `toOpenAI()` / `to_openai
 
 This difference is deliberate, not an oversight. Both approaches are idiomatic for their ecosystems.
 
+The asymmetry surfaces in the testing API too: Python/TS pass `provider="mock"`, Go/Java/Ruby/.NET construct an explicit `MockProvider`. This is friction for cross-SDK doc readers; it is the cost of being idiomatic in each ecosystem.
+
 ### Ruby naming: `Registry` inside the `ToolRegistry` module
 
 In Ruby the class is `Temporalio::Contrib::ToolRegistry::Registry`, not `ToolRegistry::ToolRegistry`. Repeating the outermost module name in the class name is un-idiomatic Ruby (same pattern used throughout the other Ruby contrib packages). Callers can alias freely:
@@ -118,11 +120,55 @@ All are equivalent in behavior; the style difference is purely idiomatic.
 
 ### Heartbeat timing
 
-The checkpoint is written **before** each LLM turn (not after). This guarantees that if the activity is killed mid-turn — e.g., while waiting on the network — the next retry will re-issue the same turn rather than advance past it. It is safe to repeat a turn: the conversation history already includes the user message, so the model will produce the same (or equivalent) response.
+The checkpoint is written **before** each LLM turn. If the activity is killed mid-turn, the next attempt re-issues the same turn. Conversation history is the source of truth — re-issuing is safe in the conversation-state sense.
+
+**Crash semantics differ between the two variants.** With `run_tool_loop` (no session) an activity retry restarts the conversation from the user prompt; all tool calls so far happen again. With `agentic_session` an activity retry restores `messages` and `results` from the last heartbeat and resumes from the next turn — at most one turn is replayed.
+
+**Tool handlers must be idempotent.** LLMs are non-deterministic: a re-issued turn may select a different tool, or call the same tool with slightly different arguments. The conversation-history-as-truth model gives crash safety; it does not give exactly-once handler invocation. For side-effecting tools (file writes, payments, notifications) handlers should either be idempotent on their own (e.g., keyed by a deterministic tool-input hash) or route through a child workflow with a deterministic workflow ID, as in the HITL example.
+
+### Failure modes
+
+| Crash point | `run_tool_loop` | `agentic_session` |
+|---|---|---|
+| Before any turn | Restart from prompt | Restart from prompt |
+| Mid-LLM call | Whole conversation re-runs | Same turn re-issued; earlier turns replayed from history |
+| Mid-handler dispatch | Whole conversation re-runs; handler may run twice | Same turn re-issued; handler may run twice |
+| After handler returns, before next turn | Whole conversation re-runs | Resume from next turn (one re-issue) |
+| After loop exits, before activity returns | Activity-level retry per Temporal retry policy | Same |
+
+Idempotent handlers + JSON-serializable session state are the contract.
+
+### Timeout configuration
+
+A turn is one synchronous LLM call (streaming is out of scope), so a single turn can last many seconds — minutes in thinking-mode. Set `heartbeat_timeout` ≥ worst-case turn latency. Set `start_to_close_timeout` against `(max expected turns) × (worst-case turn latency)` with margin; an under-set timeout will kill correct designs.
 
 ### Cancellation
 
 All SDKs surface cancellation at the checkpoint call, immediately after writing the heartbeat. The mechanisms differ per-language idiom (Go: `ctx.Err()`, Java: `ActivityCompletionException`, Ruby: `CanceledError`, .NET: `CancellationToken`, Python/TS: implicit via context propagation) but the semantics are identical.
+
+An in-flight LLM call cannot be interrupted; cancellation is observed at the next checkpoint, after the current turn returns from the provider.
+
+### Worker drain and shutdown
+
+A worker shutdown signal cannot interrupt an in-flight LLM call for the same reason cancellation can't. If the worker exits before the current turn returns, Temporal will retry the activity once `heartbeat_timeout` elapses — the next attempt picks up on a healthy worker and (with `agentic_session`) resumes from the last checkpoint. To minimize retry waste, set the worker shutdown grace period to at least the worst-case turn latency so in-flight turns can complete cleanly. To minimize drain time, accept some retry cost instead.
+
+### Loop termination
+
+The loop terminates when the provider's response contains no tool-use blocks — Anthropic `stop_reason: end_turn`, OpenAI `finish_reason: stop` (and equivalent for empty `tool_calls`). The provider abstraction normalizes these into a single "no further tool calls" signal.
+
+### Session state model
+
+`agentic_session` checkpoints two fields: `messages` (the conversation history) and `results` (a user-managed list of values returned from handlers). Both must be JSON-serializable; any other attribute set on the session object is in-memory only and is lost on retry. If you need additional state to survive across retries, append it to `results` (or a structured wrapper) so the heartbeat captures it.
+
+### Observability
+
+Per-turn activity is not visible in the workflow event history — the entire loop is one activity span. For operating long-running sessions:
+
+- **Structured logging from inside the activity** is the primary signal: log per-turn with the turn index, the model's stop reason, and tool calls dispatched. These land in the worker's log stream, not Temporal event history.
+- **Heartbeat details are visible in the workflow UI** — the most recent checkpoint shows turn count and accumulated `results` length, which is enough to tell "stuck on turn 7" from "running turn 12."
+- **Workflow-level introspection** of an in-progress conversation is possible if the calling workflow exposes a query that the activity updates via a side channel (e.g., a database row or a workflow signal); not built in.
+
+This is the deliberate tradeoff vs the framework-plugin model, which emits one Temporal event per LLM call at the cost of a per-call activity. ToolRegistry trades event-history granularity for a single long-running activity that survives provider session expiry.
 
 ---
 
@@ -616,7 +662,7 @@ cd sdk-dotnet && dotnet test tests/Temporalio.Extensions.ToolRegistry.Tests/
 
 **Known limitations**
 
-- No built-in conversation compaction. For very long conversations (100+ turns) the heartbeat payload grows unboundedly. Callers must implement their own compaction if needed.
+- No built-in conversation compaction. The heartbeat payload contains the full message list plus `results`; with image inputs or fat tool results the ~2 MiB practical heartbeat-details size limit is reached well before 100 turns (typically 30–60 turns of dense conversation, fewer with images). Callers running long sessions must implement compaction or summarization themselves; cross-reference Heartbeat timing for sizing guidance.
 - Async handler I/O: Go, Java, Ruby, and .NET handlers are synchronous; async I/O requires blocking calls. Python and TypeScript support async handlers natively (`adispatch` / `async dispatch`).
 
 ---
