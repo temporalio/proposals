@@ -148,10 +148,10 @@ Two profiles cover the common shapes:
 
 | Profile | `startToCloseTimeout` | `heartbeatTimeout` | `retry.maximumAttempts` | Use for |
 |---|---|---|---|---|
-| `agenticShortRunning` | 30m | 120s | 1 | Read-only loops; no human in the path. |
-| `agenticLongRunning` | 8h | 120s | 1 | Loops that may block for hours (e.g. operator approval). |
+| `agenticShortRunning` | 30m | 120s | 0 (unlimited) | Read-only loops; no human in the path. |
+| `agenticLongRunning` | 8h | 120s | 0 (unlimited) | Loops that may block for hours (e.g. operator approval). |
 
-`heartbeatTimeout=120s` covers a worst-case Claude turn including thinking-mode (current Sonnet/Opus thinking-mode budgets land in the 60–90s range; 120s gives margin). `maximumAttempts=1` is correct because `AgenticSession`'s heartbeat checkpoint is the resume mechanism; restarting from the user prompt would discard accumulated work.
+`heartbeatTimeout=120s` covers a worst-case Claude turn including thinking-mode (current Sonnet/Opus thinking-mode budgets land in the 60–90s range; 120s gives margin). `maximumAttempts=0` (unlimited) is required because `AgenticSession`'s heartbeat checkpoint is the resume mechanism: the saved conversation state is restored only when Temporal retries the activity. A crash (heartbeat timeout, worker death, transient network error) needs a retry to fire so the new attempt can deserialize the heartbeat and continue from the last completed turn. With `maximumAttempts=1` no retry happens and the heartbeat-stored state is discarded along with the activity.
 
 ### Cancellation
 
