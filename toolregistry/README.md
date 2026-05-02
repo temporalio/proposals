@@ -41,7 +41,7 @@ The quickstart example: accumulate findings as the LLM calls tools, return them 
 Queries that span many tool calls and may take minutes. `AgenticSession` checkpoints after each turn — a crash mid-research resumes from the last completed turn, not from scratch.
 
 **Human-in-the-loop tool calls**
-A tool handler can send a Temporal signal to a workflow and block until a human approves the action. Because conversation state is local in the heartbeat (not in a provider-side session), the activity can sleep for hours waiting for approval without losing context. This pattern is not possible with framework plugins that rely on provider session IDs — those sessions expire. The human's decision (approved/rejected + reason) is returned to the LLM as the tool result, so the model can read a rejection and revise its next proposal. A crash while waiting is safe: deterministic workflow IDs let the retry re-attach to the existing approval workflow rather than re-notifying the reviewer. See the Python SDK README for a full working example (code review agent that proposes auto-fixes requiring human sign-off before application).
+A tool handler can send a Temporal signal to a workflow and block until a human approves the action. Because conversation state is local in the heartbeat (not in a provider-side session), the activity can sleep for hours waiting for approval without losing context. This pattern is not possible with framework plugins that rely on provider session IDs — those sessions expire. The human's decision (approved/rejected + reason) is returned to the LLM as the tool result, so the model can read a rejection and revise its next proposal. A crash while waiting is safe: deterministic workflow IDs let the retry re-attach to the existing approval workflow rather than re-notifying the reviewer. See the Python SDK README for a full working example (code review agent that proposes auto-fixes requiring human sign-off before application). A multi-SDK port of the same shape — companion workflow with deterministic ID, two signals, one query, two `condition()` waits — is in the SDK sample repos: [Python](https://github.com/temporalio/samples-python/tree/main/tool_registry_incident_triage) · [TypeScript](https://github.com/temporalio/samples-typescript/tree/main/tool-registry-incident-triage) · [Go](https://github.com/temporalio/samples-go/tree/main/toolregistry-incident-triage) · [Java](https://github.com/temporalio/samples-java/tree/main/core/src/main/java/io/temporal/samples/toolregistryincidenttriage) · [Ruby](https://github.com/temporalio/samples-ruby/tree/main/tool_registry_incident_triage) · [.NET](https://github.com/temporalio/samples-dotnet/tree/main/src/ToolRegistryIncidentTriage).
 
 **MCP server integration**
 `ToolRegistry.fromMcpTools` / `from_mcp_tools` / `FromMCPTools` converts an MCP tool list into a registry. Handlers can proxy calls to any MCP server. Combined with `AgenticSession`, the conversation survives MCP server restarts mid-loop.
@@ -84,6 +84,8 @@ ToolRegistry is a different layer:
 Each tool is described with a plain dictionary/map matching Anthropic's `tool_use` format (`name`, `description`, `input_schema`). This is also the schema required by the MCP protocol, making registry objects reusable with MCP tool descriptors.
 
 OpenAI format is derived from the same definitions via `toOpenAI()` / `to_openai()`, which wraps each definition in the `{"type": "function", "function": {...}}` envelope OpenAI requires.
+
+**Schema-attribute naming.** `ToolRegistry` definitions use Anthropic's `input_schema` (snake_case) as the canonical in-language form across all six SDKs. The MCP protocol uses `inputSchema` (camelCase) on the wire; `fromMcpTools` / `from_mcp_tools` is the only place this is reconciled, and its implementation is the canonical reference for callers handing native MCP descriptors to the registry. Hand-written tool definitions should always use `input_schema`.
 
 ### Provider strategy: string vs. object
 
@@ -142,6 +144,15 @@ Idempotent handlers + JSON-serializable session state are the contract.
 
 A turn is one synchronous LLM call (streaming is out of scope), so a single turn can last many seconds — minutes in thinking-mode. Set `heartbeat_timeout` ≥ worst-case turn latency. Set `start_to_close_timeout` against `(max expected turns) × (worst-case turn latency)` with margin; an under-set timeout will kill correct designs.
 
+Two profiles cover the common shapes:
+
+| Profile | `startToCloseTimeout` | `heartbeatTimeout` | `retry.maximumAttempts` | Use for |
+|---|---|---|---|---|
+| `agenticShortRunning` | 30m | 120s | 1 | Read-only loops; no human in the path. |
+| `agenticLongRunning` | 8h | 120s | 1 | Loops that may block for hours (e.g. operator approval). |
+
+`heartbeatTimeout=120s` covers a worst-case Claude turn including thinking-mode (current Sonnet/Opus thinking-mode budgets land in the 60–90s range; 120s gives margin). `maximumAttempts=1` is correct because `AgenticSession`'s heartbeat checkpoint is the resume mechanism; restarting from the user prompt would discard accumulated work.
+
 ### Cancellation
 
 All SDKs surface cancellation at the checkpoint call, immediately after writing the heartbeat. The mechanisms differ per-language idiom (Go: `ctx.Err()`, Java: `ActivityCompletionException`, Ruby: `CanceledError`, .NET: `CancellationToken`, Python/TS: implicit via context propagation) but the semantics are identical.
@@ -155,6 +166,31 @@ A worker shutdown signal cannot interrupt an in-flight LLM call for the same rea
 ### Loop termination
 
 The loop terminates when the provider's response contains no tool-use blocks — Anthropic `stop_reason: end_turn`, OpenAI `finish_reason: stop` (and equivalent for empty `tool_calls`). The provider abstraction normalizes these into a single "no further tool calls" signal.
+
+### MCP transport
+
+`fromMcpTools` registers each tool with a no-op handler; the caller wires `tools/call` back to the same server the descriptors came from. Two transports are common:
+
+- **stdio** (worker spawns the MCP server as a subprocess; messages over stdin/stdout).
+- **HTTP+SSE** (separate process; JSON-RPC over POST).
+
+For the typical Kubernetes deployment — worker container plus MCP-server sidecar sharing a pod network namespace — **HTTP-over-localhost** is the right choice. Stdio doesn't work across container boundaries.
+
+A minimal client is small enough to inline; ~10 lines per SDK:
+
+```python
+async def mcp_call_tool(base_url: str, name: str, args: dict) -> str:
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+               "params": {"name": name, "arguments": args}}
+    async with httpx.AsyncClient() as c:
+        r = await c.post(base_url, json=payload, timeout=30)
+        result = r.json()
+    if "error" in result:
+        return f"MCP error: {result['error']['message']}"
+    return "\n".join(b.get("text", "") for b in result.get("result", {}).get("content", []))
+```
+
+Each tool's handler is then `lambda inp: await mcp_call_tool(base_url, tool_name, inp)`.
 
 ### Session state model
 
@@ -488,7 +524,7 @@ public async Task<List<string>> AnalyzeAsync(string prompt)
         inp =>
         {
             results.Add((string)inp["description"]);
-            return Task.FromResult("recorded");
+            return "recorded";
         });
 
     var provider = new AnthropicProvider(
@@ -511,7 +547,7 @@ public async Task<List<object>> LongAnalysisAsync(string prompt)
         registry.Register(new ToolDefinition(...), inp =>
         {
             session.Results.Add(inp);
-            return Task.FromResult("ok");
+            return "ok";
         });
         var provider = new AnthropicProvider(
             new AnthropicConfig { ApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") },
@@ -535,11 +571,11 @@ All SDKs ship a `MockProvider` that replays a scripted sequence of responses. Th
 ### Python
 
 ```python
-from temporalio.contrib.tool_registry.testing import MockProvider, MockResponse
+from temporalio.contrib.tool_registry.testing import MockProvider, ResponseBuilder
 
 provider = MockProvider([
-    MockResponse.tool_call("flag_issue", {"description": "stale API"}),
-    MockResponse.done("analysis complete"),
+    ResponseBuilder.tool_call("flag_issue", {"description": "stale API"}),
+    ResponseBuilder.done("analysis complete"),
 ])
 msgs = await run_tool_loop(provider=provider, system="sys", prompt="analyze", tools=tools)
 assert len(msgs) > 2
@@ -548,11 +584,11 @@ assert len(msgs) > 2
 ### TypeScript
 
 ```typescript
-import { MockProvider, MockResponse } from '@temporalio/tool-registry/testing';
+import { MockProvider, ResponseBuilder } from '@temporalio/tool-registry';
 
 const provider = new MockProvider([
-  MockResponse.toolCall('flag_issue', { description: 'stale API' }),
-  MockResponse.done('analysis complete'),
+  ResponseBuilder.toolCall('flag_issue', { description: 'stale API' }),
+  ResponseBuilder.done('analysis complete'),
 ]);
 const msgs = await runToolLoop({ provider, system: 'sys', prompt: 'analyze', tools: registry });
 assert.ok(msgs.length > 2);
@@ -606,6 +642,8 @@ var provider = new MockProvider(
 var msgs = await ToolRegistry.RunToolLoopAsync(provider, registry, "analyze");
 Assert.True(msgs.Count > 2);
 ```
+
+> **Activities that own a registry plus tool handlers with I/O dependencies are easiest to test if you extract the registry build into a separate function** — `build_triage_registry(alert, session, deps) -> (registry, get_result)` — and pass in a record of dependency callables (`mcp_call_tool`, `request_human_approval`, etc.). Tests then construct the registry with fake callables and drive it via `MockProvider`. A complete worked example is in the SDK sample repos: [Python](https://github.com/temporalio/samples-python/tree/main/tool_registry_incident_triage) · [TypeScript](https://github.com/temporalio/samples-typescript/tree/main/tool-registry-incident-triage) · [Go](https://github.com/temporalio/samples-go/tree/main/toolregistry-incident-triage) · [Java](https://github.com/temporalio/samples-java/tree/main/core/src/main/java/io/temporal/samples/toolregistryincidenttriage) · [Ruby](https://github.com/temporalio/samples-ruby/tree/main/tool_registry_incident_triage) · [.NET](https://github.com/temporalio/samples-dotnet/tree/main/src/ToolRegistryIncidentTriage).
 
 ---
 
