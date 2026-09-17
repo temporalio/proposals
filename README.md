@@ -1,4 +1,10 @@
-# [Temporal](https://temporal.io) proposals
+> [!IMPORTANT]
+> We're archiving this proposals repo, and opening a new GitHub Discussions space for community feature requests at https://github.com/temporalio/temporal/discussions. We'd love to hear from you over there.
+
+
+----------
+
+## [Temporal](https://temporal.io) proposals
 
 This repo tracks select new and accepted feature proposals (internal or external) for the [Temporal open source project](https://github.com/temporalio/temporal). If you're interested in submitting a proposal for consideration, please refer the [Creating a new proposal](#creating-a-new-proposal) section.
 
