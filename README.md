@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> We're archiving this proposals repo, and opening a new GitHub Discussions space for community feature requests at https://github.com/temporalio/temporal/discussions. We'd love to hear from you over there.
+> We've archived this proposals repo, and opened a new GitHub Discussions space for community feature requests at https://github.com/temporalio/temporal/discussions. We'd love to hear from you over there.
 
 
 ----------
